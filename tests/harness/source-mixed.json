@@ -1,0 +1,12 @@
+{
+  "hook_event_name": "PreToolUse",
+  "session_id": "harness",
+  "transcript_path": "${HARNESS}/transcripts/opus.jsonl",
+  "cwd": "${HARNESS}",
+  "permission_mode": "default",
+  "tool_name": "Workflow",
+  "tool_input": {
+    "script": "const r = await agent('Implement the parser module as specified.', {\n  label: 'build: parser module',\n  model: 'sonnet',\n  effort: 'high',\n  schema: {\n    type: 'object',\n    properties: {\n      result: { type: 'string' },\n      blocked_on: { type: ['string', 'null'], description: 'An open decision this stage must not make, or null' }\n    },\n    required: ['result', 'blocked_on']\n  }\n})\nreturn await agent('Review the parser module for correctness.', { label: 'judge: parser review', model: 'opus', effort: 'high' })\n",
+    "scriptPath": "scripts/clean.js"
+  }
+}

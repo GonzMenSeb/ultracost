@@ -1,0 +1,11 @@
+{
+  "hook_event_name": "PreToolUse",
+  "session_id": "harness",
+  "transcript_path": "${HARNESS}/transcripts/opus.jsonl",
+  "cwd": "${HARNESS}",
+  "permission_mode": "default",
+  "tool_name": "Workflow",
+  "tool_input": {
+    "script": "await agent('Decide.', { label: 'decide: x', model: 'sonnet', effort: 'high', schema: { type: 'object', properties: { blocked_on: { type: ['string', 'null'], description: 'An open decision this stage must not make, or null' } } } })\n"
+  }
+}

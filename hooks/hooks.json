@@ -1,18 +1,11 @@
 {
-  "description": "ultracost: inject the model-routing policy at session start, set up the live cost HUD statusline on first run, hard-gate every dynamic-workflow launch with a cost estimate (PreToolUse on the Workflow tool), and auto-run the closed loop (reconcile + calibrate + ledger) on Stop after a workflow finishes.",
+  "description": "tierguard: per-agent delegation gate for Workflow scripts, plus the delegation policy as session context",
   "hooks": {
     "SessionStart": [
       {
         "matcher": "startup|resume|clear|compact",
         "hooks": [
-          {
-            "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/templates/hooks/reinject.mjs\""
-          },
-          {
-            "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/templates/hooks/hud-setup.mjs\""
-          }
+          { "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/session.mjs\"" }
         ]
       }
     ],
@@ -20,20 +13,7 @@
       {
         "matcher": "Workflow",
         "hooks": [
-          {
-            "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/templates/hooks/workflow-gate.mjs\""
-          }
-        ]
-      }
-    ],
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/templates/hooks/loop-autorun.mjs\""
-          }
+          { "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/gate.mjs\"", "timeout": 15, "onFailure": "block" }
         ]
       }
     ]

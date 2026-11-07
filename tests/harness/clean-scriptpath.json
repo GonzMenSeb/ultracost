@@ -1,0 +1,11 @@
+{
+  "hook_event_name": "PreToolUse",
+  "session_id": "harness",
+  "transcript_path": "${HARNESS}/transcripts/opus.jsonl",
+  "cwd": "${HARNESS}",
+  "permission_mode": "default",
+  "tool_name": "Workflow",
+  "tool_input": {
+    "scriptPath": "scripts/clean.js"
+  }
+}

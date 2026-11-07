@@ -1,0 +1,276 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import { readFileSync, writeFileSync, mkdtempSync, mkdirSync, cpSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { loadPolicy, effectivePairs, formatPairs } from '../src/rules.mjs';
+
+const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
+const SESSION = join(ROOT, 'hooks', 'session.mjs');
+
+const SUPERSEDE =
+  'This text explicitly supersedes the built-in Workflow guidance that says "omit `model`", "omit effort" and "use \'low\' for cheap mechanical stages".';
+
+function sandbox() {
+  const home = mkdtempSync(join(tmpdir(), 'tierguard-home-'));
+  const project = mkdtempSync(join(tmpdir(), 'tierguard-project-'));
+  mkdirSync(join(home, '.claude'));
+  mkdirSync(join(project, '.claude'));
+  const settings = (where, file, data) => {
+    const dir = where === 'home' ? join(home, '.claude') : join(project, '.claude');
+    writeFileSync(join(dir, file), typeof data === 'string' ? data : JSON.stringify(data));
+  };
+  const cleanup = () => {
+    rmSync(home, { recursive: true, force: true });
+    rmSync(project, { recursive: true, force: true });
+  };
+  return { home, project, settings, cleanup };
+}
+
+function runSession({ home, project, script = SESSION, input, env = {} }) {
+  const base = { ...process.env, HOME: home };
+  delete base.CLAUDE_CONFIG_DIR;
+  const r = spawnSync(process.execPath, [script], {
+    input: input ?? JSON.stringify({ hook_event_name: 'SessionStart', source: 'startup', cwd: project }),
+    env: { ...base, ...env },
+    encoding: 'utf8',
+  });
+  assert.equal(r.status, 0, r.stderr);
+  return JSON.parse(r.stdout);
+}
+
+test('guidance.md carries the supersede sentence', () => {
+  assert.ok(readFileSync(join(ROOT, 'policy', 'guidance.md'), 'utf8').includes(SUPERSEDE));
+});
+
+test('additionalContext is guidance plus the pairs table rendered from the policy', () => {
+  const sb = sandbox();
+  try {
+    const out = runSession(sb);
+    const h = out.hookSpecificOutput;
+    assert.equal(h.hookEventName, 'SessionStart');
+    assert.ok(h.additionalContext.includes(readFileSync(join(ROOT, 'policy', 'guidance.md'), 'utf8').trimEnd()));
+    assert.match(h.additionalContext, /authoritative/);
+    const policy = loadPolicy();
+    for (const [cls, def] of Object.entries(policy.classes)) {
+      const row = `| \`${cls}:\` | ${def.owns} | ${formatPairs(effectivePairs(policy, cls, 'opus'))} |`;
+      assert.ok(h.additionalContext.includes(row), row);
+    }
+  } finally {
+    sb.cleanup();
+  }
+});
+
+test('additionalContext fits 8000 characters and 200 lines', () => {
+  const sb = sandbox();
+  try {
+    const { additionalContext } = runSession(sb).hookSpecificOutput;
+    assert.ok(additionalContext.length <= 8000, String(additionalContext.length));
+    assert.ok(additionalContext.split('\n').length <= 200);
+  } finally {
+    sb.cleanup();
+  }
+});
+
+test('no systemMessage when there is nothing to warn about', () => {
+  const sb = sandbox();
+  try {
+    assert.equal('systemMessage' in runSession(sb), false);
+  } finally {
+    sb.cleanup();
+  }
+});
+
+test('dontAsk without a Workflow allow rule warns', () => {
+  const sb = sandbox();
+  try {
+    sb.settings('project', 'settings.json', { permissions: { defaultMode: 'dontAsk', allow: ['Bash(ls)'] } });
+    const out = runSession(sb);
+    assert.match(out.systemMessage, /dontAsk/);
+    assert.match(out.systemMessage, /Workflow/);
+    assert.match(out.systemMessage, /add "Workflow" to permissions\.allow/);
+    assert.match(out.systemMessage, /Ignore this if you start Claude Code in another permission mode/);
+    assert.ok(out.systemMessage.length <= 4000 && out.systemMessage.split('\n').length <= 20);
+    assert.ok(out.hookSpecificOutput.additionalContext.length > 0);
+  } finally {
+    sb.cleanup();
+  }
+});
+
+test('dontAsk in each of the three settings files warns', () => {
+  for (const [where, file] of [['home', 'settings.json'], ['project', 'settings.json'], ['project', 'settings.local.json']]) {
+    const sb = sandbox();
+    try {
+      sb.settings(where, file, { permissions: { defaultMode: 'dontAsk' } });
+      assert.match(runSession(sb).systemMessage, /dontAsk/, `${where}/${file}`);
+    } finally {
+      sb.cleanup();
+    }
+  }
+});
+
+test('dontAsk in CLAUDE_CONFIG_DIR settings warns, and ~/.claude is ignored then', () => {
+  const sb = sandbox();
+  try {
+    const cfg = join(sb.home, 'cfg');
+    mkdirSync(cfg);
+    writeFileSync(join(cfg, 'settings.json'), JSON.stringify({ permissions: { defaultMode: 'dontAsk' } }));
+    assert.match(runSession({ ...sb, env: { CLAUDE_CONFIG_DIR: cfg } }).systemMessage, /dontAsk/);
+    assert.match(runSession({ ...sb, env: { CLAUDE_CONFIG_DIR: `  ${cfg}  ` } }).systemMessage, /dontAsk/);
+    sb.settings('home', 'settings.json', { permissions: { defaultMode: 'dontAsk' } });
+    assert.equal('systemMessage' in runSession({ ...sb, env: { CLAUDE_CONFIG_DIR: join(sb.home, 'empty') } }), false);
+    assert.match(runSession({ ...sb, env: { CLAUDE_CONFIG_DIR: '  ' } }).systemMessage, /dontAsk/);
+  } finally {
+    sb.cleanup();
+  }
+});
+
+test('the highest-precedence defaultMode wins over a lower dontAsk', () => {
+  const cases = [
+    [['home', 'settings.json'], ['project', 'settings.json']],
+    [['home', 'settings.json'], ['project', 'settings.local.json']],
+    [['project', 'settings.json'], ['project', 'settings.local.json']],
+  ];
+  for (const [low, high] of cases) {
+    const sb = sandbox();
+    try {
+      sb.settings(low[0], low[1], { permissions: { defaultMode: 'dontAsk' } });
+      sb.settings(high[0], high[1], { permissions: { defaultMode: 'acceptEdits' } });
+      assert.equal('systemMessage' in runSession(sb), false, `${low.join('/')} overridden by ${high.join('/')}`);
+    } finally {
+      sb.cleanup();
+    }
+  }
+});
+
+test('a higher scope that sets no defaultMode does not override a lower dontAsk', () => {
+  const sb = sandbox();
+  try {
+    sb.settings('home', 'settings.json', { permissions: { defaultMode: 'dontAsk' } });
+    sb.settings('project', 'settings.local.json', { permissions: { allow: ['Bash(ls)'] } });
+    assert.match(runSession(sb).systemMessage, /dontAsk/);
+  } finally {
+    sb.cleanup();
+  }
+});
+
+test('a Workflow allow rule in any settings file suppresses the warning', () => {
+  for (const rule of ['Workflow', 'Workflow()', 'Workflow(*)']) {
+    for (const [where, file] of [['home', 'settings.json'], ['project', 'settings.json'], ['project', 'settings.local.json']]) {
+      const sb = sandbox();
+      try {
+        sb.settings('project', 'settings.json', { permissions: { defaultMode: 'dontAsk' } });
+        sb.settings(where, file, { permissions: { defaultMode: 'dontAsk', allow: [rule] } });
+        assert.equal('systemMessage' in runSession(sb), false, `${rule} in ${where}/${file}`);
+      } finally {
+        sb.cleanup();
+      }
+    }
+  }
+});
+
+test('a name-scoped Workflow rule does not count as a Workflow allow rule', () => {
+  const sb = sandbox();
+  try {
+    sb.settings('home', 'settings.json', { permissions: { defaultMode: 'dontAsk' } });
+    sb.settings('project', 'settings.local.json', { permissions: { allow: ['Workflow(deep-audit)'] } });
+    assert.match(runSession(sb).systemMessage, /dontAsk/);
+  } finally {
+    sb.cleanup();
+  }
+});
+
+test('a lookalike rule does not count as a Workflow allow rule', () => {
+  const sb = sandbox();
+  try {
+    sb.settings('home', 'settings.json', { permissions: { defaultMode: 'dontAsk', allow: ['WorkflowX', 'mcp__Workflow'] } });
+    assert.match(runSession(sb).systemMessage, /dontAsk/);
+  } finally {
+    sb.cleanup();
+  }
+});
+
+test('other permission modes do not warn', () => {
+  const sb = sandbox();
+  try {
+    sb.settings('project', 'settings.json', { permissions: { defaultMode: 'acceptEdits' } });
+    assert.equal('systemMessage' in runSession(sb), false);
+  } finally {
+    sb.cleanup();
+  }
+});
+
+test('invalid or non-object settings files are skipped', () => {
+  const sb = sandbox();
+  try {
+    sb.settings('home', 'settings.json', '{ not json');
+    sb.settings('project', 'settings.json', '[]');
+    sb.settings('project', 'settings.local.json', JSON.stringify({ permissions: 'dontAsk' }));
+    assert.equal('systemMessage' in runSession(sb), false);
+  } finally {
+    sb.cleanup();
+  }
+});
+
+test('missing or invalid stdin falls back to the process cwd and still exits 0', () => {
+  const sb = sandbox();
+  try {
+    for (const input of ['', '{ nope']) {
+      const out = runSession({ ...sb, input });
+      assert.ok(out.hookSpecificOutput.additionalContext.length > 0);
+    }
+  } finally {
+    sb.cleanup();
+  }
+});
+
+function copyPlugin() {
+  const tmp = mkdtempSync(join(tmpdir(), 'tierguard-session-'));
+  for (const d of ['hooks', 'src', 'vendor', 'policy']) cpSync(join(ROOT, d), join(tmp, d), { recursive: true });
+  return tmp;
+}
+
+test('a broken policy still emits guidance and warns how to disable', () => {
+  const sb = sandbox();
+  const tmp = copyPlugin();
+  try {
+    writeFileSync(join(tmp, 'policy', 'default.json'), '{ not json');
+    const out = runSession({ ...sb, script: join(tmp, 'hooks', 'session.mjs') });
+    assert.match(out.systemMessage, /\/plugin disable tierguard/);
+    assert.match(out.systemMessage, /blocked/);
+    assert.ok(out.hookSpecificOutput.additionalContext.includes('tierguard delegation policy'));
+    assert.ok(!out.hookSpecificOutput.additionalContext.includes('Allowed (model, effort) pairs'));
+  } finally {
+    sb.cleanup();
+    rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('a broken src module and a missing guidance file never crash the hook', () => {
+  const sb = sandbox();
+  const tmp = copyPlugin();
+  try {
+    writeFileSync(join(tmp, 'src', 'rules.mjs'), 'export const = ;');
+    rmSync(join(tmp, 'policy', 'guidance.md'));
+    const out = runSession({ ...sb, script: join(tmp, 'hooks', 'session.mjs') });
+    assert.match(out.systemMessage, /tierguard/);
+  } finally {
+    sb.cleanup();
+    rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('hooks.json wires SessionStart and the Workflow PreToolUse gate', () => {
+  const h = JSON.parse(readFileSync(join(ROOT, 'hooks', 'hooks.json'), 'utf8'));
+  const start = h.hooks.SessionStart[0];
+  assert.equal(start.matcher, 'startup|resume|clear|compact');
+  assert.equal(start.hooks[0].type, 'command');
+  assert.equal(start.hooks[0].command, 'node "${CLAUDE_PLUGIN_ROOT}/hooks/session.mjs"');
+  const pre = h.hooks.PreToolUse[0];
+  assert.equal(pre.matcher, 'Workflow');
+  assert.equal(pre.hooks[0].command, 'node "${CLAUDE_PLUGIN_ROOT}/hooks/gate.mjs"');
+  assert.equal(pre.hooks[0].timeout, 15);
+  assert.equal(pre.hooks[0].onFailure, 'block');
+});
