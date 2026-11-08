@@ -1,0 +1,2 @@
+{"type":"user","isSidechain":false,"message":{"role":"user","content":"hi"}}
+{"type":"assistant","isSidechain":false,"message":{"role":"assistant","model":"claude-sonnet-5-5"}}

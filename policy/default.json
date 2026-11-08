@@ -1,0 +1,55 @@
+{
+  "limits": { "maxConcurrentOpus": 3, "bigFanout": 3 },
+  "labelCheck": {
+    "words": ["research", "investigate", "map", "explore", "survey", "scan", "search", "find", "audit", "inventory", "readiness"],
+    "classes": ["decide", "judge", "design"],
+    "fanoutClasses": ["synth"],
+    "use": "investigate"
+  },
+  "classes": {
+    "investigate": {
+      "owns": "Investigation: web research, code mapping, and any reading that reports findings",
+      "pairs": { "sonnet": ["medium", "high", "xhigh"] }
+    },
+    "decide": {
+      "owns": "Open decisions: any choice, approach, software design, design of complex functionality, taste, diagnosing unclear or cross-cutting bugs",
+      "pairs": { "opus": ["medium", "high", "xhigh"] },
+      "fanoutPairs": { "sonnet": ["medium", "high", "xhigh"] }
+    },
+    "judge": {
+      "owns": "Adversarial review, verification and verdicts",
+      "pairs": { "opus": ["medium", "high", "xhigh"] },
+      "verdictPairs": { "sonnet": ["medium", "high", "xhigh"] }
+    },
+    "synth": {
+      "owns": "Synthesizing complex, distributed, multi-faceted or conflicting work",
+      "pairs": { "opus": ["medium", "high", "xhigh"] },
+      "fanoutPairs": { "sonnet": ["medium", "high", "xhigh"] }
+    },
+    "design": {
+      "owns": "Visual / UI design",
+      "pairs": { "opus": ["medium", "high", "xhigh"] },
+      "fanoutPairs": { "sonnet": ["medium", "high", "xhigh"] }
+    },
+    "build": {
+      "owns": "Decided implementation: well-defined modules, scoped UI implementation, \"like this\" examples, long build-test-debug loops",
+      "pairs": { "sonnet": ["medium", "high", "xhigh"], "opus": ["medium", "high", "xhigh"] }
+    },
+    "fix": {
+      "owns": "Fixes whose cause or repro is known",
+      "pairs": { "sonnet": ["medium", "high", "xhigh"], "opus": ["medium", "high", "xhigh"] }
+    },
+    "combine": {
+      "owns": "Merging groundwork toward one stated goal",
+      "pairs": { "sonnet": ["medium", "high", "xhigh"], "opus": ["medium", "high", "xhigh"] }
+    },
+    "code": {
+      "owns": "Very simple, fully specified, mechanically checkable code; blind, well-specified UI implementation",
+      "pairs": { "haiku": ["xhigh"], "sonnet": ["medium", "high", "xhigh"] }
+    },
+    "grunt": {
+      "owns": "Non-code, zero-decision work: search, extraction, summaries, compaction, repetitive separable groundwork",
+      "pairs": { "haiku": ["xhigh"], "sonnet": ["medium", "high", "xhigh"] }
+    }
+  }
+}

@@ -1,0 +1,6 @@
+{"type":"user","isSidechain":false,"timestamp":"2026-11-06T19:13:00.000Z","message":{"role":"user","content":"go"}}
+{"type":"assistant","isSidechain":false,"timestamp":"2026-11-06T19:13:01.000Z","message":{"role":"assistant","model":"claude-sonnet-5-5"}}
+{"type":"user","isSidechain":false,"timestamp":"2026-11-06T19:13:00.000Z","message":{"role":"user","content":"go"}}
+{"type":"assistant","isSidechain":false,"timestamp":"2026-11-06T19:13:01.000Z","message":{"role":"assistant","model":"<synthetic>"}}
+{"type":"user","isSidechain":false,"timestamp":"2026-11-06T19:13:00.000Z","message":{"role":"user","content":"<command-name>/model</command-name>\n            <command-message>model</command-message>\n            <command-args>opus</command-args>"}}
+{"type":"user","isSidechain":false,"timestamp":"2026-11-06T19:13:00.000Z","message":{"role":"user","content":"<local-command-stdout>API error: 429 This request would exceed your account's rate limit. Please try again later · model not changed</local-command-stdout>"}}

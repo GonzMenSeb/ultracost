@@ -1,0 +1,4 @@
+{"type":"user","isSidechain":false,"timestamp":"2026-11-06T19:12:08.000Z","message":{"role":"user","content":"go"}}
+{"type":"assistant","isSidechain":false,"timestamp":"2026-11-06T19:12:09.000Z","message":{"role":"assistant","model":"claude-opus-5-5"}}
+{"type":"user","isSidechain":false,"timestamp":"2026-11-06T19:12:10.000Z","message":{"role":"user","content":"go"}}
+{"type":"api-request","timestamp":"2026-11-06T19:12:11.000Z","querySource":"agent:builtin:workflow-subagent","params":{"model":"claude-sonnet-5-5","output_config":{"effort":"xhigh"}},"agentId":"a7eb28778c12c1d78"}

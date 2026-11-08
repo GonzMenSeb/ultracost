@@ -1,0 +1,272 @@
+import { expect, mock, test } from 'claude-code/testing'
+
+import { sha256Hex } from '../src/fingerprint.mjs'
+
+const SCRIPT = "export const meta = { name: 'map', description: 'x', phases: [] }\nawait agent('p', { label: 'investigate: map', model: 'sonnet', effort: 'high' })\n"
+const CONFIG = '/cfg'
+const SESSION = 'sess-1'
+const SONNET = 'claude-sonnet-4-6'
+
+const BAND = {
+  plugin: 'tierguard',
+  component: 'AbovePrompt',
+  props: { hasSurvey: false, isWorking: false, maxRows: 10, bodyColumns: 80, scroll: { offset: 0, bodyRows: 10 }, view: {} },
+} as const
+
+const PANE = {
+  plugin: 'tierguard',
+  component: 'Pane',
+  requestId: 'tierguard',
+  props: { title: 'tierguard-eval', isFocused: true, bodyColumns: 60, placement: 'dock', scroll: { offset: 0, bodyRows: 20 }, view: {} },
+} as const
+
+const gateRecord = (toolUseId: string, over: Record<string, unknown> = {}) =>
+  JSON.stringify({
+    v: 1,
+    kind: 'gate',
+    at: '2026-11-07T00:00:00.000Z',
+    session_id: SESSION,
+    tool_use_id: toolUseId,
+    decision: 'pass',
+    fingerprint: sha256Hex(SCRIPT),
+    scriptPath: null,
+    sessionModel: 'opus',
+    maxOpus: 0,
+    stages: [{ index: 0, line: 2, label: 'investigate: map', class: 'investigate', model: 'sonnet', effort: 'high', inFanout: false, bigFanout: false, verdict: false }],
+    errors: [],
+    ...over,
+  })
+
+async function world($: any, on: any, options: { gate: boolean; launch?: Record<string, unknown> }) {
+  const writes: Record<string, string> = {}
+  const logs: string[] = []
+  const notices: unknown[] = []
+  let toolUseId = ''
+  mock.env(on, { CLAUDE_CONFIG_DIR: CONFIG })
+  mock.clock(on, { now: 5000 })
+  on('session.id', () => ({ value: SESSION }))
+  on('session.end', () => ({ sessionId: SESSION }))
+  on('turn.complete', () => ({ text: '' }))
+  on('session.messages', () => ({ value: notices }))
+  on('ui.log', (_: any, e: any) => (logs.push(String(e.text)), { value: undefined }))
+  on('fs.write', (_: any, e: any) => ((writes[e.path] = e.text), { value: undefined }))
+  on('fs.read', (_: any, e: any) =>
+    options.gate && e.path === `${CONFIG}/tierguard/sessions/${SESSION}/${toolUseId}.gate.json`
+      ? { value: gateRecord(toolUseId) }
+      : String(e.path).endsWith('/saved/map.js')
+        ? { value: SCRIPT }
+        : { deny: `ENOENT ${e.path}` },
+  )
+  on('tool.call', (_: any, e: any) => {
+    toolUseId = e.tool_use_id
+    return { result: { status: 'async_launched', taskId: 'w1', runId: 'wf_run001', workflowName: 'map' } }
+  })
+  on('agent.spawn', () => ({ model: SONNET, agentId: 'a1' }))
+  on('ui.render', ($: any, e: any) => {
+    const { Text } = $.ui.resolve(e)
+    return <Text>engine</Text>
+  })
+
+  await $.tool.call({ tool: 'Workflow', ...(options.launch ?? { script: SCRIPT }) })
+  await $.agent.spawn({
+    tool_use_id: toolUseId,
+    prompt: 'p',
+    description: 'investigate: map',
+    subagentType: 'general-purpose',
+    provider: { plugin: 'engine', tier: 'core' },
+    model: 'sonnet',
+    parentModel: 'claude-opus-4-7',
+    background: true,
+    fork: false,
+    workflow: { runId: 'wf_run001', agentIndex: 1 },
+  })
+  return { writes, logs, notices, id: () => toolUseId }
+}
+
+test('a compliant workflow draws a green band and writes its eval record', async ($, on) => {
+  const w = await world($, on, { gate: true })
+
+  for (const surface of ['terminal', 'desktop'] as const) {
+    const ui = await $.ui.mount({ ...BAND, surface })
+    expect((await ui.find({ type: 'Button' }))?.text).toContain('tierguard-eval')
+    expect((await ui.find({ type: 'Button' }))?.text).toContain('1 running');
+    expect((await ui.find({ type: 'Text', text: '■' }))?.props.color).toBe('success')
+    await ui.unmount()
+  }
+
+  expect(w.logs).toEqual([])
+  const path = `${CONFIG}/tierguard/sessions/${SESSION}/${w.id()}.eval.json`
+  const record = JSON.parse(w.writes[path] ?? '{}')
+  expect(record).toMatchObject({ kind: 'eval', status: 'running', ok: true, name: 'map', run_id: 'wf_run001', session_id: SESSION })
+  expect(record.agents).toHaveLength(1)
+})
+
+test('a run with no gate record draws a red band', async ($, on) => {
+  const w = await world($, on, { gate: false })
+
+  for (const surface of ['terminal', 'desktop'] as const) {
+    const ui = await $.ui.mount({ ...BAND, surface })
+    expect((await ui.find({ type: 'Button' }))?.text).toContain('tierguard-eval')
+    expect((await ui.find({ type: 'Button' }))?.text).toContain('1 running · 1 red')
+    expect((await ui.find({ type: 'Text', text: '■' }))?.props.color).toBe('error')
+    await ui.unmount()
+  }
+
+  const record = JSON.parse(w.writes[`${CONFIG}/tierguard/sessions/${SESSION}/${w.id()}.eval.json`] ?? '{}')
+  expect(record).toMatchObject({ ok: false, reason: 'not approved by the gate' })
+})
+
+test('the pane lists the run and drills into its checks and agents', async ($, on) => {
+  const w = await world($, on, { gate: false })
+
+  for (const surface of ['terminal', 'desktop'] as const) {
+    const ui = await $.ui.mount({ ...PANE, surface })
+    const row = await ui.find({ type: 'Button', key: `run:${w.id()}` })
+    expect(row?.text).toContain('map')
+    expect(row?.text).toContain('not approved by the gate')
+    await ui.press({ key: `run:${w.id()}` })
+    expect((await ui.find({ type: 'Text', text: /Approved by the gate/ }))?.text).toContain('✗')
+    expect((await ui.find({ type: 'Text', text: /investigate: map/ }))?.text).toContain('sonnet')
+    await ui.press({ key: 'back' })
+    expect(await ui.find({ type: 'Button', key: `run:${w.id()}` })).toBeDefined()
+    await ui.unmount()
+  }
+})
+
+test('a completion notice takes the run off the band and the list', async ($, on) => {
+  const w = await world($, on, { gate: true })
+  await $.session.append({
+    message: {
+      type: 'user',
+      content: [{ type: 'text', text: `<task-notification>\n<task-id>w1</task-id>\n<tool-use-id>${w.id()}</tool-use-id>\n<status>completed</status>\n</task-notification>` }],
+    },
+    door: 'queue',
+    origin: { kind: 'task-notification' },
+    uuid: 'u1',
+  })
+
+  const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  expect(await band.find({ type: 'Text', text: 'engine' })).toBeDefined()
+  expect(await band.find({ type: 'Button' })).toBeUndefined()
+  await band.unmount()
+
+  const pane = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  expect(await pane.find({ type: 'Text', text: /No workflow is running/ })).toBeDefined()
+  await pane.unmount()
+
+  const record = JSON.parse(w.writes[`${CONFIG}/tierguard/sessions/${SESSION}/${w.id()}.eval.json`] ?? '{}')
+  expect(record).toMatchObject({ status: 'completed', ok: true })
+})
+
+test('a survey keeps the band quiet', async ($, on) => {
+  await world($, on, { gate: true })
+  const ui = await $.ui.mount({ ...BAND, props: { ...BAND.props, hasSurvey: true }, surface: 'terminal' })
+  expect(await ui.find({ type: 'Button' })).toBeUndefined()
+  await ui.unmount()
+})
+
+test('a refused launch is not shown and the tool call is passed on untouched', async ($, on) => {
+  mock.env(on, { CLAUDE_CONFIG_DIR: CONFIG })
+  mock.clock(on, { now: 5000 })
+  on('session.id', () => ({ value: SESSION }))
+  on('ui.log', () => ({ value: undefined }))
+  on('fs.read', (_: any, e: any) => ({ deny: `ENOENT ${e.path}` }))
+  on('tool.call', () => ({ deny: 'refused by the gate' }))
+  on('ui.render', ($: any, e: any) => {
+    const { Text } = $.ui.resolve(e)
+    return <Text>engine</Text>
+  })
+
+  const ran = await $.tool.call({ tool: 'Workflow', script: SCRIPT })
+  expect(ran.deny).toBe('refused by the gate')
+  const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  expect(await ui.find({ type: 'Button' })).toBeUndefined()
+  await ui.unmount()
+})
+
+test('a launch by scriptPath is fingerprinted from the file and stays green', async ($, on) => {
+  const w = await world($, on, { gate: true, launch: { scriptPath: 'saved/map.js' } })
+  expect(w.logs).toEqual([])
+  expect(JSON.parse(w.writes[`${CONFIG}/tierguard/sessions/${SESSION}/${w.id()}.eval.json`] ?? '{}').reason).toBe(null)
+  const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  expect((await ui.find({ type: 'Button' }))?.text).toContain('1 running')
+  expect((await ui.find({ type: 'Text', text: '■' }))?.props.color).toBe('success')
+  await ui.unmount()
+})
+
+test('a script that is not the one the gate approved is red', async ($, on) => {
+  await world($, on, { gate: true, launch: { script: `${SCRIPT}// edited after approval\n` } })
+  const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  expect((await ui.find({ type: 'Button' }))?.text).toContain('1 red')
+  await ui.unmount()
+})
+
+test('/tierguard opens the pane and the policy limit applies to opus agents', async ($, on) => {
+  const opened: unknown[] = []
+  let toolUseId = ''
+  mock.env(on, { CLAUDE_CONFIG_DIR: CONFIG })
+  mock.clock(on, { now: 5000 })
+  on('session.id', () => ({ value: SESSION }))
+  on('ui.log', () => ({ value: undefined }))
+  on('fs.write', () => ({ value: undefined }))
+  on('command.register', () => ({ value: { command: 'tierguard' } }))
+  on('ui.open', (_: any, e: any) => (opened.push(e), { value: { isPlaced: true } }))
+  on('session.start', (_: any, e: any) => ({ cwd: e.cwd }))
+  on('fs.read', (_: any, e: any) =>
+    String(e.path).endsWith('/policy/default.json')
+      ? { value: JSON.stringify({ limits: { maxConcurrentOpus: 2, bigFanout: 3 } }) }
+      : e.path === `${CONFIG}/tierguard/sessions/${SESSION}/${toolUseId}.gate.json`
+        ? { value: gateRecord(toolUseId, { stages: [{ index: 0, line: 2, label: 'design: ${…}', class: 'design', model: 'opus', effort: 'high' }] }) }
+        : { deny: `ENOENT ${e.path}` },
+  )
+  on('tool.call', (_: any, e: any) => ((toolUseId = e.tool_use_id), { result: { status: 'async_launched', taskId: 'w1', runId: 'wf_run001', workflowName: 'map' } }))
+  let n = 0
+  on('agent.spawn', () => ({ model: 'claude-opus-4-7', agentId: `a${(n += 1)}` }))
+
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  const ran = await $.command.run({ command: 'tierguard', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: true, columns: 120 } })
+  expect(ran.text).toBe('tierguard-eval opened.')
+  expect(opened).toEqual([{ id: 'tierguard', title: 'tierguard-eval', focus: true, closeOnEscape: true }])
+
+  await $.tool.call({ tool: 'Workflow', script: SCRIPT })
+  for (let i = 1; i <= 3; i++) {
+    await $.agent.spawn({
+      tool_use_id: toolUseId,
+      prompt: 'p',
+      description: `design: part ${i}`,
+      subagentType: 'general-purpose',
+      provider: { plugin: 'engine', tier: 'core' },
+      model: 'opus',
+      parentModel: 'claude-opus-4-7',
+      background: true,
+      fork: false,
+      workflow: { runId: 'wf_run001', agentIndex: i },
+    })
+  }
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  await ui.press({ key: `run:${toolUseId}` })
+  expect((await ui.find({ type: 'Text', text: /At most 2 Opus at once/ }))?.text).toContain('✗')
+  await ui.unmount()
+})
+
+test('a clear ends the running workflows', async ($, on) => {
+  const w = await world($, on, { gate: true })
+  await $.session.end({ reason: 'clear', sessionId: SESSION, resume: { id: SESSION } })
+  const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  expect(await ui.find({ type: 'Button' })).toBeUndefined()
+  await ui.unmount()
+  const record = JSON.parse(w.writes[`${CONFIG}/tierguard/sessions/${SESSION}/${w.id()}.eval.json`] ?? '{}')
+  expect(record.status).toBe('cleared')
+})
+
+test('a completion notice the append hook never saw still ends the run at the next main turn', async ($, on) => {
+  const w = await world($, on, { gate: true })
+  w.notices.push({ role: 'user', text: `<task-notification>\n<task-id>w1</task-id>\n<tool-use-id>${w.id()}</tool-use-id>\n<status>killed</status>\n</task-notification>`, toolUses: [] })
+  await $.turn.complete({ answer: '', durationMs: 1, isAborted: false, turnId: 't1', reason: 'answer' })
+
+  const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  expect(await ui.find({ type: 'Button' })).toBeUndefined()
+  await ui.unmount()
+  const record = JSON.parse(w.writes[`${CONFIG}/tierguard/sessions/${SESSION}/${w.id()}.eval.json`] ?? '{}')
+  expect(record.status).toBe('killed')
+})
