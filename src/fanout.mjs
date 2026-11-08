@@ -765,7 +765,7 @@ const overLimit = (n, limit) =>
   `Up to ${n} opus agents can run at once here; the limit is ${limit}. Keep at most the ${limit} most complex on opus and run the rest on sonnet (items.slice(0, ${limit}) on opus, items.slice(${limit}) on sonnet), or batch them: for (let i = 0; i < items.length; i += ${limit}) await parallel(items.slice(i, i + ${limit}).map(...)).`
 
 const unknownCount = (why, limit) =>
-  `tierguard cannot count how many opus agents run at once here (${why}). Give the opus part a literal list, a const array literal, Array.from({ length: N }), .slice(0, N) or .slice(i, i + N) with N at most ${limit}, or await the opus agents one at a time.`
+  `ultraguard cannot count how many opus agents run at once here (${why}). Give the opus part a literal list, a const array literal, Array.from({ length: N }), .slice(0, N) or .slice(i, i + N) with N at most ${limit}, or await the opus agents one at a time.`
 
 export function fanout(ast, calls, stages, limits) {
   const cap = limits.maxConcurrentOpus
@@ -781,7 +781,7 @@ export function fanout(ast, calls, stages, limits) {
     top = evaluate(ast, calls, isOpus, scopes, makeSizer(scopes, ast), sink)
   } catch {
     const all = calls.map((_, i) => i)
-    sink.unknowns = [{ why: 'tierguard could not analyse the script', stages: all.filter((i) => isOpus[i]) }]
+    sink.unknowns = [{ why: 'ultraguard could not analyse the script', stages: all.filter((i) => isOpus[i]) }]
     sink.constructs = []
     top = { o: sink.unknowns[0].stages.length ? INF : 0, a: INF, reach: new Set() }
   }

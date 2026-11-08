@@ -9,7 +9,7 @@ import { sessionModel } from '../src/sessionModel.mjs'
 const FIX = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures', 'transcripts')
 const fx = (n) => path.join(FIX, `${n}.jsonl`)
 
-const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tierguard-session-'))
+const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ultraguard-session-'))
 test.after(() => fs.rmSync(dir, { recursive: true, force: true }))
 
 const entry = (model, extra = {}) => JSON.stringify({

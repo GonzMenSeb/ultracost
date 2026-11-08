@@ -68,13 +68,13 @@ function coverageText({ coverage }) {
   if (coverage.unpriced > 0) {
     reasons.push(
       coverage.unpriced === 1
-        ? 'tierguard has no price for the model one agent ran on'
-        : `tierguard has no price for the models ${coverage.unpriced} agents ran on`
+        ? 'ultraguard has no price for the model one agent ran on'
+        : `ultraguard has no price for the models ${coverage.unpriced} agents ran on`
     )
   }
   for (const key of coverage.noRatio) {
     const [from, to] = key.split('>')
-    reasons.push(`tierguard has no ratio for ${configText(from)} against ${configText(to)}`)
+    reasons.push(`ultraguard has no ratio for ${configText(from)} against ${configText(to)}`)
   }
   return { base: `from ${coverage.used} of ${coverage.total} agents`, reasons }
 }
@@ -95,9 +95,9 @@ const versusLine = (baseline) => [
 ]
 
 export function savedBlock(saved) {
-  const head = [bold(saved.running ? 'tierguard saved so far' : 'tierguard saved')]
+  const head = [bold(saved.running ? 'ultraguard saved so far' : 'ultraguard saved')]
   if (saved.status === 'none') return [head, [seg("  every agent ran on your session's model and effort, so nothing was saved")]]
-  if (!saved.baseline) return [head, [seg("  tierguard could not read your session's model or effort, so it has no estimate")]]
+  if (!saved.baseline) return [head, [seg("  ultraguard could not read your session's model or effort, so it has no estimate")]]
 
   const out = [head, versusLine(saved.baseline)]
   const { base, reasons } = coverageText(saved)
@@ -153,7 +153,7 @@ export function listCell(view) {
 }
 
 export function toastText(view) {
-  const head = `tierguard: ${view.title} finished`
+  const head = `ultraguard: ${view.title} finished`
   if (!view.ok) return `${head}, but ${view.reason}`
   const saved = view.saved
   if (saved?.status === 'none') return `${head} as approved; every agent ran on your session's model and effort`

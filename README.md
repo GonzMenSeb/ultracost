@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/banner.svg" alt="tierguard. Every ultracode workflow on the right model. Opus only where judgment pays, never more than 3 at once.">
+  <img src="assets/banner.svg" alt="ultraguard. Every ultracode workflow on the right model. Opus only where judgment pays, never more than 3 at once.">
 </p>
 
 <p align="center">
@@ -7,7 +7,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/GonzMenSeb/ultracost/actions/workflows/ci.yml"><img src="https://github.com/GonzMenSeb/ultracost/actions/workflows/ci.yml/badge.svg" alt="CI status"></a>
+  <a href="https://github.com/GonzMenSeb/ultraguard/actions/workflows/ci.yml"><img src="https://github.com/GonzMenSeb/ultraguard/actions/workflows/ci.yml/badge.svg" alt="CI status"></a>
   <img src="https://img.shields.io/badge/dependencies-0-4ade80" alt="Zero dependencies">
   <img src="https://img.shields.io/badge/node-%3E%3D18-60a5fa" alt="Node 18 or later">
   <img src="https://img.shields.io/badge/Claude%20Code-2.1.319-c084fc" alt="Tested on Claude Code 2.1.319">
@@ -20,15 +20,15 @@ With ultracode on, your session runs Opus 5.5 or Fable. A workflow fans out to m
 
 Pinning models is not enough on its own. In this project's own history, a workflow launched 10 research agents at once, all on Opus: six web-research and four code-mapping agents, every one labeled `synth:`. The label claimed synthesis. The work was reading.
 
-## What tierguard does
+## What ultraguard does
 
 <p align="center">
-  <img src="assets/flow.svg" alt="Flow: at session start tierguard loads the policy into Claude's context; when Claude launches a workflow the gate checks every agent() call and passes or denies the launch; while the workflow runs, tierguard-eval checks each agent against what the gate approved and shows the run green or red.">
+  <img src="assets/flow.svg" alt="Flow: at session start ultraguard loads the policy into Claude's context; when Claude launches a workflow the gate checks every agent() call and passes or denies the launch; while the workflow runs, ultraguard-eval checks each agent against what the gate approved and shows the run green or red.">
 </p>
 
 1. **At session start** it gives Claude the delegation policy, so Claude writes compliant workflow scripts the first time.
 2. **Before launch** a gate reads the workflow script and denies it if any `agent()` call breaks the policy. It never runs the script and makes no model call.
-3. **During the run** tierguard-eval watches the agents the workflow spawns and shows, above the prompt, whether the run matches what the gate approved.
+3. **During the run** ultraguard-eval watches the agents the workflow spawns and shows, above the prompt, whether the run matches what the gate approved.
 
 Every gate decision and every run is written to a small JSON file, so you can check afterwards what happened.
 
@@ -37,29 +37,29 @@ Every gate decision and every run is written to a small JSON file, so you can ch
 In Claude Code:
 
 ```
-/plugin marketplace add GonzMenSeb/ultracost
-/plugin install tierguard@ultracost
+/plugin marketplace add GonzMenSeb/ultraguard
+/plugin install ultraguard@ultraguard
 ```
 
-The marketplace is `ultracost`, the plugin is `tierguard`. Start a new session afterwards so the policy loads at session start.
+The marketplace and the plugin are both named `ultraguard`. Start a new session afterwards so the policy loads at session start.
 
 Two things people trip on:
 
 - **Node 18 or later must be on `PATH`.** The hooks run with whatever `node` is found there.
-- **`dontAsk` mode refuses every launch** unless `permissions.allow` has a `Workflow` entry. tierguard never allows a launch itself; it only denies. tierguard warns you at session start when your settings files set `dontAsk` without a `Workflow` allow rule. Details are in the [reference](docs/reference.md).
+- **`dontAsk` mode refuses every launch** unless `permissions.allow` has a `Workflow` entry. ultraguard never allows a launch itself; it only denies. ultraguard warns you at session start when your settings files set `dontAsk` without a `Workflow` allow rule. Details are in the [reference](docs/reference.md).
 
-The gate needs Claude Code 2.1.295 or later. tierguard is pinned to and live-tested on 2.1.319.
+The gate needs Claude Code 2.1.295 or later. ultraguard is pinned to and live-tested on 2.1.319.
 
 ### See it work
 
 1. Turn on ultracode: `/effort ultracode`.
 2. Give Claude a multi-step task, or ask it outright to use a workflow.
-3. When Claude launches the workflow, a `■ tierguard-eval` row appears above the prompt. Green means the run matches what the gate approved.
+3. When Claude launches the workflow, a `■ ultraguard-eval` row appears above the prompt. Green means the run matches what the gate approved.
 
-Claude Code shows only one plugin row above the prompt. If another plugin draws there (Cognee's memory row does), tierguard's row is hidden: turn that plugin's row off, or run `/tierguard` to open the pane directly.
+Claude Code shows only one plugin row above the prompt. If another plugin draws there (Cognee's memory row does), ultraguard's row is hidden: turn that plugin's row off, or run `/ultraguard` to open the pane directly.
 
 <p align="center">
-  <img src="assets/eval-green.svg" alt="The Claude Code prompt while a workflow runs, with a row above it: a green square, the title tierguard-eval and the summary 1 running.">
+  <img src="assets/eval-green.svg" alt="The Claude Code prompt while a workflow runs, with a row above it: a green square, the title ultraguard-eval and the summary 1 running.">
 </p>
 
 ## The rules
@@ -119,14 +119,14 @@ For Opus work over a list whose size is only known at run time, the alternative 
 ## When the gate says no
 
 <p align="center">
-  <img src="assets/terminal-deny.svg" alt="The deny reason Claude sees: tierguard blocked this Workflow launch (2 problems). Line 3 of ten-opus.js gets LABEL and FANOUT: the synth: research label reads like investigation, and up to 10 Opus agents can run at once where the limit is 3, with the slice(0, 3) fix. It ends: If this is your second deny for the same workflow, stop and ask the user.">
+  <img src="assets/terminal-deny.svg" alt="The deny reason Claude sees: ultraguard blocked this Workflow launch (2 problems). Line 3 of ten-opus.js gets LABEL and FANOUT: the synth: research label reads like investigation, and up to 10 Opus agents can run at once where the limit is 3, with the slice(0, 3) fix. It ends: If this is your second deny for the same workflow, stop and ask the user.">
 </p>
 
 The deny shows in your terminal, and its reason goes to Claude. Each line names the script line, a code such as `FANOUT` or `LABEL` and what is wrong. The reason then lists the allowed models and efforts for each failing class. Claude reads it, fixes the script and launches again. The reason ends with "If this is your second deny for the same workflow, stop and ask the user," so a second deny turns into a question for you rather than a loop. Problems only you can fix, such as an environment variable that overrides the pinned model, are flagged so Claude tells you instead of relaunching.
 
 ## Know it was enforced
 
-A passing gate prints nothing. tierguard-eval is how you see that the rules held. It uses no model; it runs four checks on each running workflow:
+A passing gate prints nothing. ultraguard-eval is how you see that the rules held. It uses no model; it runs four checks on each running workflow:
 
 1. **Approved by the gate.** The gate passed this launch, and the script that ran is the exact script the gate read.
 2. **Every agent matches the plan.** Each agent's label matches a stage the gate approved, and it runs on that stage's model.
@@ -136,30 +136,30 @@ A passing gate prints nothing. tierguard-eval is how you see that the rules held
 A run is green while all four hold. Otherwise it turns red and names the first failure.
 
 <p align="center">
-  <img src="assets/eval-red.svg" alt="The same row when a run breaks the plan: a red square, the title tierguard-eval and the summary 1 running, 1 red.">
+  <img src="assets/eval-red.svg" alt="The same row when a run breaks the plan: a red square, the title ultraguard-eval and the summary 1 running, 1 red.">
 </p>
 
-Select the row, or run `/tierguard`, to open the pane: one row per workflow, running ones first and ended ones under "finished this session", and on Enter the four checks with ✓ or ✗ and one line per agent with the model and effort the gate approved and what it actually ran on.
+Select the row, or run `/ultraguard`, to open the pane: one row per workflow, running ones first and ended ones under "finished this session", and on Enter the four checks with ✓ or ✗ and one line per agent with the model and effort the gate approved and what it actually ran on.
 
 <p align="center">
-  <img src="assets/eval-pane.svg" alt="The tierguard-eval pane. Above, the run list: one finished workflow under 'finished this session' with the dollars it saved and their margin of error. Below, its detail after Enter: the four checks all passing, then the 'tierguard saved' block (the limit lines still learning, the dollars saved with a plus-minus, the tokens, how many agents the figure covers and where the ratio comes from), then a table of three grunt agents approved for sonnet at medium that ran on sonnet at medium, each with what it saved.">
+  <img src="assets/eval-pane.svg" alt="The ultraguard-eval pane. Above, the run list: one finished workflow under 'finished this session' with the dollars it saved and their margin of error. Below, its detail after Enter: the four checks all passing, then the 'ultraguard saved' block (the limit lines still learning, the dollars saved with a plus-minus, the tokens, how many agents the figure covers and where the ratio comes from), then a table of three grunt agents approved for sonnet at medium that ran on sonnet at medium, each with what it saved.">
 </p>
 
-Both parts leave a record in `~/.claude/tierguard/sessions/<session_id>/` (or under `CLAUDE_CONFIG_DIR`): `<tool_use_id>.gate.json` for each gate decision, pass or deny, and `<tool_use_id>.eval.json` for each run tierguard-eval saw.
+Both parts leave a record in `~/.claude/ultraguard/sessions/<session_id>/` (or under `CLAUDE_CONFIG_DIR`): `<tool_use_id>.gate.json` for each gate decision, pass or deny, and `<tool_use_id>.eval.json` for each run ultraguard-eval saw.
 
-If a workflow is running, there is no tierguard-eval row and `/tierguard` is not a command, tierguard is not loaded in that session.
+If a workflow is running, there is no ultraguard-eval row and `/ultraguard` is not a command, ultraguard is not loaded in that session.
 
 ### See what it saved
 
-For each tracked run, tierguard shows what it saved against running every agent of the workflow on your session's model at your session's effort. That is what Claude Code does when a stage pins nothing. Open a run in the pane to see:
+For each tracked run, ultraguard shows what it saved against running every agent of the workflow on your session's model at your session's effort. That is what Claude Code does when a stage pins nothing. Open a run in the pane to see:
 
 - **On a subscription:** the percent of your 5-hour limit and of your weekly limit saved, in the percentages `/usage` shows.
 - **On an API key:** the dollars saved at API prices.
 - **Tokens:** how many fewer tokens the agents used. It can read "more tokens" when the cheaper model read and wrote more at a lower price per token.
 
-Each percentage and dollar figure has a `±`: how far off the estimate can be, 9 times out of 10. The token figure is the median, with no `±`. A figure tierguard cannot back is shown as unknown, never as 0.
+Each percentage and dollar figure has a `±`: how far off the estimate can be, 9 times out of 10. The token figure is the median, with no `±`. A figure ultraguard cannot back is shown as unknown, never as 0.
 
-Limit figures need 5 readings. tierguard learns how fast your own limit fills from the `/usage` percentages as you work, and until a window has 5 readings the pane says "learning how fast your limit fills, 3 of 5 readings so far".
+Limit figures need 5 readings. ultraguard learns how fast your own limit fills from the `/usage` percentages as you work, and until a window has 5 readings the pane says "learning how fast your limit fills, 3 of 5 readings so far".
 
 The ratios between models come from 22 replayed agents. The replays measured two transitions: Sonnet at high against Opus at high, and Sonnet at high against Opus at medium. Other efforts of the same model are chained from those with published effort steps, and every other pair, the same model at another effort included, uses published figures. The pane says which, and the `±` is wide for published figures. The results table is in the [reference](docs/reference.md#calibration-results).
 
@@ -177,8 +177,8 @@ To change it, edit the file in your own copy, bump the patch version in `package
 
 - Whether a label is honest is only partly enforceable. The word check catches the common case; a misleading label without those words passes.
 - Only `Workflow` launches are gated. Agent tool calls are not.
-- The threat model is a cooperative Claude writing workflow scripts. tierguard is not a sandbox, and deliberate evasion is out of scope.
-- tierguard-eval observes and reports. It never stops a running workflow.
+- The threat model is a cooperative Claude writing workflow scripts. ultraguard is not a sandbox, and deliberate evasion is out of scope.
+- ultraguard-eval observes and reports. It never stops a running workflow.
 
 The full list is in the [reference](docs/reference.md).
 
@@ -188,10 +188,10 @@ The full list is in the [reference](docs/reference.md).
 npm test
 ```
 
-Tests run on Node 18 with `node:test`, which is also the CI runtime. There are no dependencies; acorn is vendored in `vendor/acorn.mjs`. The tierguard-eval module is checked with `claude plugin validate .` and `claude plugin test .`. To try a working copy, start Claude Code with `claude --plugin-dir <path-to-this-repo>`.
+Tests run on Node 18 with `node:test`, which is also the CI runtime. There are no dependencies; acorn is vendored in `vendor/acorn.mjs`. The ultraguard-eval module is checked with `claude plugin validate .` and `claude plugin test .`. To try a working copy, start Claude Code with `claude --plugin-dir <path-to-this-repo>`.
 
 ## Credits and license
 
-tierguard is a fork of [danielkremen818/ultracost](https://github.com/danielkremen818/ultracost). The engine was rewritten; the hook wiring pattern, test discipline and attribution were kept. It includes acorn 8.19.0 (MIT).
+ultraguard is a fork of [danielkremen818/ultracost](https://github.com/danielkremen818/ultracost). The engine was rewritten; the hook wiring pattern, test discipline and attribution were kept. It includes acorn 8.19.0 (MIT).
 
 MIT. See [`LICENSE`](LICENSE) and [`NOTICE`](NOTICE).

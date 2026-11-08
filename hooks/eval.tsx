@@ -40,13 +40,13 @@ import { agentColumn, listCell, listHeader, savedBlock, toastText } from '../src
 import { estimateRun } from '../src/savings.mjs'
 import { seedOf } from '../src/stats.mjs'
 
-const PANE = 'tierguard'
-const TITLE = 'tierguard-eval'
+const PANE = 'ultraguard'
+const TITLE = 'ultraguard-eval'
 const KEPT = 20
 const TOAST_MS = 8000
 const DRAWS_RUNNING = 1000
 
-const ev = atom({ plugin: 'tierguard', key: 'eval' } as const, createState() as EvalState, { shape: 'eval-2' })
+const ev = atom({ plugin: 'ultraguard', key: 'eval' } as const, createState() as EvalState, { shape: 'eval-2' })
 
 type Ids = { toolUseId: string; runId: string }
 type Notice = { toolUseId: string | null | undefined; taskId: string | null | undefined; status: string }
@@ -182,7 +182,7 @@ const written = new Map<string, string>()
 
 function note($: EngineInterface, where: string, err: unknown) {
   try {
-    $.ui.log(`tierguard-eval: ${where}: ${err instanceof Error ? err.message : String(err)}`, { to: 'debug' })
+    $.ui.log(`ultraguard-eval: ${where}: ${err instanceof Error ? err.message : String(err)}`, { to: 'debug' })
   } catch {}
 }
 
@@ -262,7 +262,7 @@ async function reconcile($: EngineInterface) {
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await guard($, 'start', async () => {
-      await $.command.register({ name: 'tierguard', description: 'Open tierguard-eval, the live check of running workflows' })
+      await $.command.register({ name: 'ultraguard', description: 'Open ultraguard-eval, the live check of running workflows' })
       const limits = JSON.parse(await $.fs.read(`${$.plugin.root}/policy/default.json`))?.limits
       const limit = limits?.maxConcurrentOpus
       await update($, ev, s => noteLimit(s, limit))
@@ -277,9 +277,9 @@ export const register: Register = on => {
     return next(e)
   })
 
-  on('command.run', { command: 'tierguard' }, async $ => {
+  on('command.run', { command: 'ultraguard' }, async $ => {
     const opened = await openPane($)
-    return { text: opened.isPlaced ? 'tierguard-eval opened.' : `tierguard-eval is not shown yet: ${opened.reason}` }
+    return { text: opened.isPlaced ? 'ultraguard-eval opened.' : `ultraguard-eval is not shown yet: ${opened.reason}` }
   })
 
   on('session.end', async ($, e, next) => {

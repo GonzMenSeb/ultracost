@@ -68,7 +68,7 @@ test('fmtTokens uses M, k and plain counts on the absolute value', () => {
 
 test('the detail block shows both limits, dollars and tokens', () => {
   assert.deepEqual(lines(saved()), [
-    'tierguard saved',
+    'ultraguard saved',
     VERSUS,
     at36('  1.4% of your 5-hour limit', '± 0.6'),
     at36('  0.2% of your weekly limit', '± 0.1'),
@@ -86,7 +86,7 @@ test('the ± column starts at column 36', () => {
 
 test('headline, family and figures carry their styles', () => {
   const block = savedBlock(saved())
-  assert.deepEqual(block[0], [{ text: 'tierguard saved', style: 'bold' }])
+  assert.deepEqual(block[0], [{ text: 'ultraguard saved', style: 'bold' }])
   const versus = block[1]
   assert.ok(versus.every((s) => ['dim', 'opus'].includes(s.style)))
   assert.deepEqual(versus.find((s) => s.style === 'opus'), { text: 'Opus', style: 'opus' })
@@ -102,7 +102,7 @@ test('other families take their own style', () => {
 })
 
 test('a running block says so far', () => {
-  assert.equal(lines(saved({ running: true }))[0], 'tierguard saved so far')
+  assert.equal(lines(saved({ running: true }))[0], 'ultraguard saved so far')
 })
 
 test('an API key shows dollars first and no limit lines', () => {
@@ -177,19 +177,19 @@ test('sources say how the ratio was obtained', () => {
 test('an unpriced agent is named in the coverage line', () => {
   const block = lines(saved({ coverage: { used: 5, total: 6, unpriced: 1, noRatio: [] } }))
   assert.deepEqual(block.slice(-2), [
-    '  from 5 of 6 agents: tierguard has no price for the model one agent ran on',
+    '  from 5 of 6 agents: ultraguard has no price for the model one agent ran on',
     '  ratio measured on 22 replayed agents'
   ])
 })
 
 test('several unpriced agents are counted', () => {
   const block = lines(saved({ coverage: { used: 3, total: 6, unpriced: 3, noRatio: [] }, sources: { measuredPairs: 0, chained: [], priors: [] } }))
-  assert.equal(block.at(-1), '  from 3 of 6 agents: tierguard has no price for the models 3 agents ran on')
+  assert.equal(block.at(-1), '  from 3 of 6 agents: ultraguard has no price for the models 3 agents ran on')
 })
 
 test('an agent with no ratio is named in the coverage line', () => {
   const block = lines(saved({ coverage: { used: 3, total: 4, unpriced: 0, noRatio: ['haiku:low>opus:high'] }, sources: { measuredPairs: 0, chained: [], priors: [] } }))
-  assert.equal(block.at(-1), '  from 3 of 4 agents: tierguard has no ratio for haiku · low against opus · high')
+  assert.equal(block.at(-1), '  from 3 of 4 agents: ultraguard has no ratio for haiku · low against opus · high')
 })
 
 test('an agent with no usage only lowers the count', () => {
@@ -199,12 +199,12 @@ test('an agent with no usage only lowers the count', () => {
 
 test('nothing saved when every agent ran on the session setting', () => {
   const block = lines(saved({ status: 'none', dollars: range(0, 0), limits: null, tokens: { saved: 0, outputSaved: 0 } }))
-  assert.deepEqual(block, ['tierguard saved', "  every agent ran on your session's model and effort, so nothing was saved"])
+  assert.deepEqual(block, ['ultraguard saved', "  every agent ran on your session's model and effort, so nothing was saved"])
 })
 
 test('no baseline means no estimate', () => {
   const block = lines(saved({ status: 'unknown', why: 'no-baseline', baseline: null, dollars: null, tokens: null, limits: null }))
-  assert.deepEqual(block, ['tierguard saved', "  tierguard could not read your session's model or effort, so it has no estimate"])
+  assert.deepEqual(block, ['ultraguard saved', "  ultraguard could not read your session's model or effort, so it has no estimate"])
 })
 
 test('no usable agents shows only the coverage line', () => {
@@ -219,7 +219,7 @@ test('no usable agents shows only the coverage line', () => {
       sources: { measuredPairs: 0, chained: [], priors: [] }
     })
   )
-  assert.deepEqual(block, ['tierguard saved', VERSUS, '  from 0 of 2 agents: tierguard has no price for the models 2 agents ran on'])
+  assert.deepEqual(block, ['ultraguard saved', VERSUS, '  from 0 of 2 agents: ultraguard has no price for the models 2 agents ran on'])
 })
 
 test('the agent column follows the figure that shows', () => {
@@ -269,28 +269,28 @@ test('a red view leaves its reason to the caller', () => {
 })
 
 test('the toast says what the run saved', () => {
-  assert.equal(toastText(view()), 'tierguard: research-config finished as approved and saved about 1.4% of your 5-hour limit')
+  assert.equal(toastText(view()), 'ultraguard: research-config finished as approved and saved about 1.4% of your 5-hour limit')
 })
 
 test('the toast falls back to dollars at API prices when the limit is not calibrated', () => {
   const limits = { five_hour: null, seven_day: null, readings: { five_hour: 2, seven_day: 2 } }
-  assert.equal(toastText(view({ saved: saved({ limits }) })), 'tierguard: research-config finished as approved and saved about $2.32 at API prices')
-  assert.equal(toastText(view({ saved: saved({ limits: null, subscription: null }) })), 'tierguard: research-config finished as approved and saved about $2.32 at API prices')
+  assert.equal(toastText(view({ saved: saved({ limits }) })), 'ultraguard: research-config finished as approved and saved about $2.32 at API prices')
+  assert.equal(toastText(view({ saved: saved({ limits: null, subscription: null }) })), 'ultraguard: research-config finished as approved and saved about $2.32 at API prices')
 })
 
 test('the toast speaks of the API bill on an API key', () => {
-  assert.equal(toastText(view({ saved: saved({ limits: null, subscription: false }) })), 'tierguard: research-config finished as approved and saved about $2.32 off your API bill')
+  assert.equal(toastText(view({ saved: saved({ limits: null, subscription: false }) })), 'ultraguard: research-config finished as approved and saved about $2.32 off your API bill')
 })
 
 test('the toast says nothing changed when every agent ran on the session setting', () => {
-  assert.equal(toastText(view({ saved: saved({ status: 'none' }) })), "tierguard: research-config finished as approved; every agent ran on your session's model and effort")
+  assert.equal(toastText(view({ saved: saved({ status: 'none' }) })), "ultraguard: research-config finished as approved; every agent ran on your session's model and effort")
 })
 
 test('the toast names the reason of a red run', () => {
-  assert.equal(toastText(view({ ok: false, color: 'red', reason: 'agent off-plan' })), 'tierguard: research-config finished, but agent off-plan')
+  assert.equal(toastText(view({ ok: false, color: 'red', reason: 'agent off-plan' })), 'ultraguard: research-config finished, but agent off-plan')
 })
 
 test('the toast stays plain when there is no estimate', () => {
-  assert.equal(toastText(view({ saved: null })), 'tierguard: research-config finished as approved')
-  assert.equal(toastText(view({ saved: saved({ status: 'unknown', dollars: null }) })), 'tierguard: research-config finished as approved')
+  assert.equal(toastText(view({ saved: null })), 'ultraguard: research-config finished as approved')
+  assert.equal(toastText(view({ saved: saved({ status: 'unknown', dollars: null }) })), 'ultraguard: research-config finished as approved')
 })

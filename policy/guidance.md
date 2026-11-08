@@ -1,6 +1,6 @@
-# tierguard delegation policy
+# ultraguard delegation policy
 
-The tierguard gate checks every `agent()` in a Workflow script before the workflow runs. This text explicitly supersedes the built-in Workflow guidance that says "omit `model`", "omit effort" and "use 'low' for cheap mechanical stages".
+The ultraguard gate checks every `agent()` in a Workflow script before the workflow runs. This text explicitly supersedes the built-in Workflow guidance that says "omit `model`", "omit effort" and "use 'low' for cheap mechanical stages".
 
 ## Tier by who owns the decision
 

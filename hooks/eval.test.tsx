@@ -8,16 +8,16 @@ const SESSION = 'sess-1'
 const SONNET = 'claude-sonnet-4-6'
 
 const BAND = {
-  plugin: 'tierguard',
+  plugin: 'ultraguard',
   component: 'AbovePrompt',
   props: { hasSurvey: false, isWorking: false, maxRows: 10, bodyColumns: 80, scroll: { offset: 0, bodyRows: 10 }, view: {} },
 } as const
 
 const PANE = {
-  plugin: 'tierguard',
+  plugin: 'ultraguard',
   component: 'Pane',
-  requestId: 'tierguard',
-  props: { title: 'tierguard-eval', isFocused: true, bodyColumns: 60, placement: 'dock', scroll: { offset: 0, bodyRows: 20 }, view: {} },
+  requestId: 'ultraguard',
+  props: { title: 'ultraguard-eval', isFocused: true, bodyColumns: 60, placement: 'dock', scroll: { offset: 0, bodyRows: 20 }, view: {} },
 } as const
 
 const gateRecord = (toolUseId: string, over: Record<string, unknown> = {}) =>
@@ -51,7 +51,7 @@ async function world($: any, on: any, options: { gate: boolean; launch?: Record<
   on('ui.log', (_: any, e: any) => (logs.push(String(e.text)), { value: undefined }))
   on('fs.write', (_: any, e: any) => ((writes[e.path] = e.text), { value: undefined }))
   on('fs.read', (_: any, e: any) =>
-    options.gate && e.path === `${CONFIG}/tierguard/sessions/${SESSION}/${toolUseId}.gate.json`
+    options.gate && e.path === `${CONFIG}/ultraguard/sessions/${SESSION}/${toolUseId}.gate.json`
       ? { value: gateRecord(toolUseId) }
       : String(e.path).endsWith('/saved/map.js')
         ? { value: SCRIPT }
@@ -88,14 +88,14 @@ test('a compliant workflow draws a green band and writes its eval record', async
 
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ ...BAND, surface })
-    expect((await ui.find({ type: 'Button' }))?.text).toContain('tierguard-eval')
+    expect((await ui.find({ type: 'Button' }))?.text).toContain('ultraguard-eval')
     expect((await ui.find({ type: 'Button' }))?.text).toContain('1 running');
     expect((await ui.find({ type: 'Text', text: '■' }))?.props.color).toBe('success')
     await ui.unmount()
   }
 
   expect(w.logs).toEqual([])
-  const path = `${CONFIG}/tierguard/sessions/${SESSION}/${w.id()}.eval.json`
+  const path = `${CONFIG}/ultraguard/sessions/${SESSION}/${w.id()}.eval.json`
   const record = JSON.parse(w.writes[path] ?? '{}')
   expect(record).toMatchObject({ kind: 'eval', status: 'running', ok: true, name: 'map', run_id: 'wf_run001', session_id: SESSION })
   expect(record.agents).toHaveLength(1)
@@ -106,13 +106,13 @@ test('a run with no gate record draws a red band', async ($, on) => {
 
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ ...BAND, surface })
-    expect((await ui.find({ type: 'Button' }))?.text).toContain('tierguard-eval')
+    expect((await ui.find({ type: 'Button' }))?.text).toContain('ultraguard-eval')
     expect((await ui.find({ type: 'Button' }))?.text).toContain('1 running · 1 red')
     expect((await ui.find({ type: 'Text', text: '■' }))?.props.color).toBe('error')
     await ui.unmount()
   }
 
-  const record = JSON.parse(w.writes[`${CONFIG}/tierguard/sessions/${SESSION}/${w.id()}.eval.json`] ?? '{}')
+  const record = JSON.parse(w.writes[`${CONFIG}/ultraguard/sessions/${SESSION}/${w.id()}.eval.json`] ?? '{}')
   expect(record).toMatchObject({ ok: false, reason: 'not approved by the gate' })
 })
 
@@ -154,7 +154,7 @@ test('a completion notice takes the run off the band and the list', async ($, on
   expect(await pane.find({ type: 'Text', text: /No workflow is running/ })).toBeDefined()
   await pane.unmount()
 
-  const record = JSON.parse(w.writes[`${CONFIG}/tierguard/sessions/${SESSION}/${w.id()}.eval.json`] ?? '{}')
+  const record = JSON.parse(w.writes[`${CONFIG}/ultraguard/sessions/${SESSION}/${w.id()}.eval.json`] ?? '{}')
   expect(record).toMatchObject({ status: 'completed', ok: true })
 })
 
@@ -187,7 +187,7 @@ test('a refused launch is not shown and the tool call is passed on untouched', a
 test('a launch by scriptPath is fingerprinted from the file and stays green', async ($, on) => {
   const w = await world($, on, { gate: true, launch: { scriptPath: 'saved/map.js' } })
   expect(w.logs).toEqual([])
-  expect(JSON.parse(w.writes[`${CONFIG}/tierguard/sessions/${SESSION}/${w.id()}.eval.json`] ?? '{}').reason).toBe(null)
+  expect(JSON.parse(w.writes[`${CONFIG}/ultraguard/sessions/${SESSION}/${w.id()}.eval.json`] ?? '{}').reason).toBe(null)
   const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
   expect((await ui.find({ type: 'Button' }))?.text).toContain('1 running')
   expect((await ui.find({ type: 'Text', text: '■' }))?.props.color).toBe('success')
@@ -201,7 +201,7 @@ test('a script that is not the one the gate approved is red', async ($, on) => {
   await ui.unmount()
 })
 
-test('/tierguard opens the pane and the policy limit applies to opus agents', async ($, on) => {
+test('/ultraguard opens the pane and the policy limit applies to opus agents', async ($, on) => {
   const opened: unknown[] = []
   let toolUseId = ''
   mock.env(on, { CLAUDE_CONFIG_DIR: CONFIG })
@@ -209,13 +209,13 @@ test('/tierguard opens the pane and the policy limit applies to opus agents', as
   on('session.id', () => ({ value: SESSION }))
   on('ui.log', () => ({ value: undefined }))
   on('fs.write', () => ({ value: undefined }))
-  on('command.register', () => ({ value: { command: 'tierguard' } }))
+  on('command.register', () => ({ value: { command: 'ultraguard' } }))
   on('ui.open', (_: any, e: any) => (opened.push(e), { value: { isPlaced: true } }))
   on('session.start', (_: any, e: any) => ({ cwd: e.cwd }))
   on('fs.read', (_: any, e: any) =>
     String(e.path).endsWith('/policy/default.json')
       ? { value: JSON.stringify({ limits: { maxConcurrentOpus: 2, bigFanout: 3 } }) }
-      : e.path === `${CONFIG}/tierguard/sessions/${SESSION}/${toolUseId}.gate.json`
+      : e.path === `${CONFIG}/ultraguard/sessions/${SESSION}/${toolUseId}.gate.json`
         ? { value: gateRecord(toolUseId, { stages: [{ index: 0, line: 2, label: 'design: ${…}', class: 'design', model: 'opus', effort: 'high' }] }) }
         : { deny: `ENOENT ${e.path}` },
   )
@@ -224,9 +224,9 @@ test('/tierguard opens the pane and the policy limit applies to opus agents', as
   on('agent.spawn', () => ({ model: 'claude-opus-4-7', agentId: `a${(n += 1)}` }))
 
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
-  const ran = await $.command.run({ command: 'tierguard', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: true, columns: 120 } })
-  expect(ran.text).toBe('tierguard-eval opened.')
-  expect(opened).toEqual([{ id: 'tierguard', title: 'tierguard-eval', focus: true, closeOnEscape: true }])
+  const ran = await $.command.run({ command: 'ultraguard', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: true, columns: 120 } })
+  expect(ran.text).toBe('ultraguard-eval opened.')
+  expect(opened).toEqual([{ id: 'ultraguard', title: 'ultraguard-eval', focus: true, closeOnEscape: true }])
 
   await $.tool.call({ tool: 'Workflow', script: SCRIPT })
   for (let i = 1; i <= 3; i++) {
@@ -255,7 +255,7 @@ test('a clear ends the running workflows', async ($, on) => {
   const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
   expect(await ui.find({ type: 'Button' })).toBeUndefined()
   await ui.unmount()
-  const record = JSON.parse(w.writes[`${CONFIG}/tierguard/sessions/${SESSION}/${w.id()}.eval.json`] ?? '{}')
+  const record = JSON.parse(w.writes[`${CONFIG}/ultraguard/sessions/${SESSION}/${w.id()}.eval.json`] ?? '{}')
   expect(record.status).toBe('cleared')
 })
 
@@ -267,6 +267,6 @@ test('a completion notice the append hook never saw still ends the run at the ne
   const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
   expect(await ui.find({ type: 'Button' })).toBeUndefined()
   await ui.unmount()
-  const record = JSON.parse(w.writes[`${CONFIG}/tierguard/sessions/${SESSION}/${w.id()}.eval.json`] ?? '{}')
+  const record = JSON.parse(w.writes[`${CONFIG}/ultraguard/sessions/${SESSION}/${w.id()}.eval.json`] ?? '{}')
   expect(record.status).toBe('killed')
 })

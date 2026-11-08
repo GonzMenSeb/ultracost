@@ -1,26 +1,26 @@
-# tierguard 0.4.9 Savings Implementation Plan
+# ultraguard 0.4.9 Savings Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Show, for every workflow tierguard-eval tracks, what tierguard saved against running every agent on the session's model and effort: percent of the 5-hour and weekly limits, dollars at API prices, and tokens, each with a ± margin of error.
+**Goal:** Show, for every workflow ultraguard-eval tracks, what ultraguard saved against running every agent on the session's model and effort: percent of the 5-hour and weekly limits, dollars at API prices, and tokens, each with a ± margin of error.
 
 **Architecture:** Pure ES modules do all the math (`src/prices.mjs`, `src/stats.mjs`, `src/calibrate.mjs`, `src/savings.mjs`, `src/meter.mjs`, `src/savedText.mjs`), tested with `node:test`. `src/eval.mjs` records per-agent usage, the run's baseline and the meter readings in the existing eval state; `hooks/eval.tsx` feeds it from `turn.step`, `agent.spawn` and `session.measure`, stores each run's estimate when an agent finishes and when the run ends, renders the approved design and raises a toast. Ratios ship precomputed in `data/ratios.json`, built by `scripts/calibrate.mjs` from `data/replays.json` (the 22 measured pairs) and `data/published.json`.
 
 **Tech Stack:** Node 18 ESM, no dependencies, `node --test`; the Claude Code 2.1.319 mod API (`claude plugin test`, `claude plugin validate`).
 
-**Spec:** `docs/superpowers/specs/2026-11-08-tierguard-savings-design.md`. Approved mockup: `.superpowers/brainstorm/481422-1794143604/content/savings-v4.html` (picks 1A, 2A, finished runs in the pane, toast).
+**Spec:** `docs/superpowers/specs/2026-11-08-ultraguard-savings-design.md`. Approved mockup: `.superpowers/brainstorm/481422-1794143604/content/savings-v4.html` (picks 1A, 2A, finished runs in the pane, toast).
 
 ## Global Constraints
 
 - Node 18 APIs only (CI runs Node 18); plain ESM JavaScript in `src/` and `scripts/`; no dependencies.
-- No model call anywhere in tierguard; nothing on the request path waits on the estimate.
+- No model call anywhere in ultraguard; nothing on the request path waits on the estimate.
 - Comments only where absolutely necessary (user rule).
-- A figure tierguard cannot back is shown as unknown, never as 0; nothing is extrapolated to agents left out.
+- A figure ultraguard cannot back is shown as unknown, never as 0; nothing is extrapolated to agents left out.
 - Green and red keep meaning only enforced or evaded; the row above the prompt does not change.
 - UI copy is exactly the spec's "Display" section wording; percentages one decimal ("< 0.1%" below), dollars two decimals, tokens `2.9M` / `84k`.
 - Prices never fall back to Opus for an unknown model.
-- Version 0.4.9 in `package.json`, `.claude-plugin/plugin.json` and the `tierguard` entry of `.claude-plugin/marketplace.json` (enforced by `tests/version-sync.test.js`).
-- After `npm test` passes, live-verify by loading this working copy into Claude Code (`claude --plugin-dir /home/sebastian/versioned-code/ultracost`) with ultracode on (CLAUDE.md hard rule).
+- Version 0.4.9 in `package.json`, `.claude-plugin/plugin.json` and the `ultraguard` entry of `.claude-plugin/marketplace.json` (enforced by `tests/version-sync.test.js`).
+- After `npm test` passes, live-verify by loading this working copy into Claude Code (`claude --plugin-dir /home/sebastian/versioned-code/ultraguard`) with ultracode on (CLAUDE.md hard rule).
 - Commit messages end with `Claude-Session: https://claude.ai/code/session_01Df6UEPByr1JvqX6Jdr9owL`.
 
 ## Review Focus
@@ -36,7 +36,7 @@
 ### Task 0: Branch
 
 - [ ] **Step 1:** `git checkout -b savings` from `main` (the spec is uncommitted on `main`; it moves with the branch).
-- [ ] **Step 2:** Commit the spec and this plan: `git add docs/superpowers && git commit -m "Spec and plan for tierguard 0.4.9 savings"`.
+- [ ] **Step 2:** Commit the spec and this plan: `git add docs/superpowers && git commit -m "Spec and plan for ultraguard 0.4.9 savings"`.
 
 ### Task 1: Prices
 
@@ -125,7 +125,7 @@
 - `anthropic-agentic-370` (same URL): opus low 0.35, medium 0.84, high 1.38, xhigh 4.11; sonnet medium 0.16, high 0.33; fable medium 2.68.
 - `community-claude-effort-cost` (https://huggingface.co/datasets/JOHNISKING/claude-effort-cost): opus low 0.17, medium 0.25, high 0.35, xhigh 0.82, max 5.33; sonnet medium 0.097, high 0.117; haiku low 0.0095, medium 0.0142, high 0.0205, xhigh 0.0388, max 0.378.
 
-`data/replays.json`: built once from `/tmp/claude-1000/-home-sebastian-versioned-code-ultracost/f9f13f27-1f36-491f-8162-8f4927636605/scratchpad/replay/pairs.json` (22 rows; usage already merged by max per message id). Anonymize: `wq9m0v29a`→`{workflow:'w1', kind:'web research'}`, `witttj32b`→`{w2, 'code mapping'}`, `wcua90vt3`→`{w3, 'yes/no check'}`. Per pair: `{ workflow, kind, from: 'sonnet:high', to: 'opus:' + oe[0], baseline: {input:o.inp, output:o.out, cacheRead:o.cr, cacheWrite:o.cw}, actual: {…from r} }`. No labels, prompts or paths. Top level: `{ v:1, claudeCode:'2.1.319', measuredAt:'2026-11-08', method: 'same prompts replayed on Sonnet at high in repo snapshots at the original commits', pairs:[…] }`.
+`data/replays.json`: built once from `/tmp/claude-1000/-home-sebastian-versioned-code-ultraguard/f9f13f27-1f36-491f-8162-8f4927636605/scratchpad/replay/pairs.json` (22 rows; usage already merged by max per message id). Anonymize: `wq9m0v29a`→`{workflow:'w1', kind:'web research'}`, `witttj32b`→`{w2, 'code mapping'}`, `wcua90vt3`→`{w3, 'yes/no check'}`. Per pair: `{ workflow, kind, from: 'sonnet:high', to: 'opus:' + oe[0], baseline: {input:o.inp, output:o.out, cacheRead:o.cr, cacheWrite:o.cw}, actual: {…from r} }`. No labels, prompts or paths. Top level: `{ v:1, claudeCode:'2.1.319', measuredAt:'2026-11-08', method: 'same prompts replayed on Sonnet at high in repo snapshots at the original commits', pairs:[…] }`.
 
 Algorithm (`buildRatios`):
 - **measured:** group pairs by `from>to`; per bucket (`output` = output; `fresh` = input + cacheWrite; `read` = cacheRead) `fieller(actual, baseline)`; `agentSd = logSd(ln(baseline/actual))` over pairs with both > 0; `dollars` = `fieller` on per-pair costs (`requestCost` with each side's family). A bucket with `lo === null` is dropped; a transition with no bucket left is dropped.
@@ -260,7 +260,7 @@ Algorithm (`buildRatios`):
 - Consumes: `Saved` (Task 4).
 - Produces (a segment is `{ text: string, style: 'plain'|'bold'|'dim'|'opus'|'sonnet'|'haiku'|'fable' }`, a line is `Segment[]`):
   - `fmtPct(x)`, `fmtUsd(x)`, `fmtTokens(n)` (`2.9M`, `84k`, `512`; absolute value).
-  - `savedBlock(saved: Saved): Line[]` — the spec's detail block exactly: heading `tierguard saved` / `tierguard saved so far` (bold); the `compared with running every agent on <Family> at <effort> effort, your session's setting` line (dim, family styled); figure lines with ± aligned at column 36; `± = how far off the estimate can be, 9 times out of 10`; the sources and coverage lines; every variant from the spec's Display list (API, learning, more tokens, may have saved nothing, unpriced, no replay, chained, nothing saved, no baseline). With `subscription: null` (no limit reading yet) the dollar line reads `at API prices` and no limit lines show.
+  - `savedBlock(saved: Saved): Line[]` — the spec's detail block exactly: heading `ultraguard saved` / `ultraguard saved so far` (bold); the `compared with running every agent on <Family> at <effort> effort, your session's setting` line (dim, family styled); figure lines with ± aligned at column 36; `± = how far off the estimate can be, 9 times out of 10`; the sources and coverage lines; every variant from the spec's Display list (API, learning, more tokens, may have saved nothing, unpriced, no replay, chained, nothing saved, no baseline). With `subscription: null` (no limit reading yet) the dollar line reads `at API prices` and no limit lines show.
   - `agentColumn(saved): { header: string, cell(agentId): string }` — `saved of 5-hour limit` with `0.4%`, or `saved at API prices` with `$0.63`, `—` for an unknown agent.
   - `listHeader(views): Line` and `listCell(view): Line` — `1.4% ± 0.6`, `0.6% so far`, `$2.32 ± $1.10`, `—`; a red view returns its reason in the error tone (left to the caller).
   - `toastText(view): string` — the four spec sentences.
@@ -285,14 +285,14 @@ Algorithm (`buildRatios`):
   - Pane, detail view: after the checks, `savedBlock(view.saved)` lines rendered segment by segment (`bold` → `weight="bold"`, `dim` → `dimColor`, families → `MODEL_COLORS`); the agent table gets the `agentColumn` header and cells.
   - `ui.close`: swallow Esc while a detail view is open for any listed run (running or finished), not only running ones.
 - [ ] **Step 1: Write the failing plugin tests** in `hooks/eval.test.tsx`:
-  - `the detail shows what a finished run saved, against the session's model and effort` — drive a launch, a spawn with `parentModel: 'claude-opus-5-5'`, main-loop step effort `high`, agent steps on sonnet/high with usage, five `session.measure` readings that rise, agent completion, the completion notice; assert the detail text contains `tierguard saved`, `of your 5-hour limit`, `± = how far off the estimate can be, 9 times out of 10`, `compared with running every agent on Opus at high effort`.
+  - `the detail shows what a finished run saved, against the session's model and effort` — drive a launch, a spawn with `parentModel: 'claude-opus-5-5'`, main-loop step effort `high`, agent steps on sonnet/high with usage, five `session.measure` readings that rise, agent completion, the completion notice; assert the detail text contains `ultraguard saved`, `of your 5-hour limit`, `± = how far off the estimate can be, 9 times out of 10`, `compared with running every agent on Opus at high effort`.
   - `an API session shows dollars and no limit lines` (empty `rateLimits`): `off your API bill`, no `5-hour`.
   - `the run list labels the saved column and keeps red reasons`.
   - `a finished run stays listed under "finished this session" and opens`.
   - `a toast says what the run saved when it ends`.
   - `an agent with no usage leaves the coverage line at "from 1 of 2 agents"`.
 - [ ] **Step 2:** `claude plugin test .` → the new tests FAIL. **Step 3:** implement. **Step 4:** `claude plugin validate .` and `claude plugin test .` → PASS; `npm test` → PASS.
-- [ ] **Step 5:** Commit `feat(savings): tierguard-eval shows what each workflow saved`.
+- [ ] **Step 5:** Commit `feat(savings): ultraguard-eval shows what each workflow saved`.
 
 ### Task 9: Docs, version, live verification
 
@@ -300,8 +300,8 @@ Algorithm (`buildRatios`):
 - Modify: `README.md`, `docs/reference.md`, `CHANGELOG.md`, `package.json`, `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`, `assets/eval-pane.svg`
 
 - [ ] **Step 1:** Bump to 0.4.9 in the three files; `node --test tests/version-sync.test.js` → PASS.
-- [ ] **Step 2: Live verification** (CLAUDE.md hard rule): with the tmux driver pattern in `/tmp/claude-1000/-home-sebastian-versioned-code-ultracost/f9f13f27-1f36-491f-8162-8f4927636605/scratchpad/live/drive.sh` (answer the trust prompt with Down then Enter), start `claude --plugin-dir /home/sebastian/versioned-code/ultracost --settings '{"enabledPlugins":{"tierguard@ultracost":false}}' --model opus --permission-mode bypassPermissions`, turn on ultracode, launch a compliant two-agent Sonnet workflow (`grunt:` stages, sonnet/medium, with `blocked_on` schemas). Capture: the run list with the saved column while running, the toast at the end, the "finished this session" row, and the detail view with the saved block. Check `actualDollars` in `<tool_use_id>.eval.json` against the two agent transcripts' usage priced by hand.
-- [ ] **Step 3:** Regenerate `assets/eval-pane.svg` from the detail capture with `/tmp/claude-1000/-home-sebastian-versioned-code-ultracost/f9f13f27-1f36-491f-8162-8f4927636605/scratchpad/readme/term2svg.mjs`.
+- [ ] **Step 2: Live verification** (CLAUDE.md hard rule): with the tmux driver pattern in `/tmp/claude-1000/-home-sebastian-versioned-code-ultraguard/f9f13f27-1f36-491f-8162-8f4927636605/scratchpad/live/drive.sh` (answer the trust prompt with Down then Enter), start `claude --plugin-dir /home/sebastian/versioned-code/ultraguard --settings '{"enabledPlugins":{"ultraguard@ultraguard":false}}' --model opus --permission-mode bypassPermissions`, turn on ultracode, launch a compliant two-agent Sonnet workflow (`grunt:` stages, sonnet/medium, with `blocked_on` schemas). Capture: the run list with the saved column while running, the toast at the end, the "finished this session" row, and the detail view with the saved block. Check `actualDollars` in `<tool_use_id>.eval.json` against the two agent transcripts' usage priced by hand.
+- [ ] **Step 3:** Regenerate `assets/eval-pane.svg` from the detail capture with `/tmp/claude-1000/-home-sebastian-versioned-code-ultraguard/f9f13f27-1f36-491f-8162-8f4927636605/scratchpad/readme/term2svg.mjs`.
 - [ ] **Step 4:** README: under "Know it was enforced", a short "See what it saved" part: what it compares against, the three figures and ±, that limit figures need 5 readings, and that the replays measured two transitions (link the spec's results table in `docs/reference.md`). `docs/reference.md`: the estimator, data files, `scripts/calibrate.mjs`, the meter, the record's `savings` block, limits. `CHANGELOG.md`: 0.4.9 entry.
 - [ ] **Step 5:** `npm test`, `claude plugin validate .`, `claude plugin test .` → all PASS.
-- [ ] **Step 6:** Commit `docs: savings in README and reference (0.4.9)`; push the branch and open a PR to `GonzMenSeb/ultracost` (`--repo GonzMenSeb/ultracost`), body ending with `https://claude.ai/code/session_01Df6UEPByr1JvqX6Jdr9owL`. Merge only when the user says so.
+- [ ] **Step 6:** Commit `docs: savings in README and reference (0.4.9)`; push the branch and open a PR to `GonzMenSeb/ultraguard` (`--repo GonzMenSeb/ultraguard`), body ending with `https://claude.ai/code/session_01Df6UEPByr1JvqX6Jdr9owL`. Merge only when the user says so.

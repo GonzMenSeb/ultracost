@@ -337,7 +337,7 @@ test('opus stage with an unknown or missing class asks for blocked_on on every s
 test('gate on an Opus session: an unknown-class opus draft is denied with the blocked_on snippet', () => {
   const root = fileURLToPath(new URL('..', import.meta.url))
   const script = "await agent('Summarize the three reports into one list of findings', { label: 'summarize: findings', model: 'opus', effort: 'medium' })"
-  const configDir = mkdtempSync(join(tmpdir(), 'tierguard-rules-'))
+  const configDir = mkdtempSync(join(tmpdir(), 'ultraguard-rules-'))
   const env = { ...process.env, CLAUDE_CONFIG_DIR: configDir }
   for (const k of ['CLAUDE_CODE_WORKFLOW_SUBAGENT_MODEL', 'CLAUDE_CODE_SUBAGENT_MODEL_FORCE', 'CLAUDE_CODE_EFFORT_LEVEL']) delete env[k]
   const input = JSON.stringify({
@@ -349,7 +349,7 @@ test('gate on an Opus session: an unknown-class opus draft is denied with the bl
     transcript_path: `${root}tests/harness/transcripts/opus.jsonl`
   })
   const r = spawnSync(process.execPath, [`${root}hooks/gate.mjs`], { input, env, encoding: 'utf8' })
-  const wrote = existsSync(join(configDir, 'tierguard', 'sessions', 'rules', 'toolu_rules.gate.json'))
+  const wrote = existsSync(join(configDir, 'ultraguard', 'sessions', 'rules', 'toolu_rules.gate.json'))
   rmSync(configDir, { recursive: true, force: true })
   assert.ok(wrote)
   assert.equal(r.status, 0, r.stderr)

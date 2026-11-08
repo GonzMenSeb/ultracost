@@ -154,6 +154,6 @@ export type EvalState = {
 
 declare module 'claude-code' {
   interface PluginState {
-    tierguard: { eval: Shaped<EvalState> }
+    ultraguard: { eval: Shaped<EvalState> }
   }
 }

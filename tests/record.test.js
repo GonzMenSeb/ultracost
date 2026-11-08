@@ -3,13 +3,13 @@ import assert from 'node:assert/strict'
 import { recordPath, ID_RE } from '../src/record.mjs'
 
 test('recordPath builds the per-launch path', () => {
-  assert.equal(recordPath('/h/.claude', 'abc-123', 'toolu_01X', 'gate'), '/h/.claude/tierguard/sessions/abc-123/toolu_01X.gate.json')
-  assert.equal(recordPath('/h/.claude/', 'abc', 'wf_1-2', 'eval'), '/h/.claude/tierguard/sessions/abc/wf_1-2.eval.json')
+  assert.equal(recordPath('/h/.claude', 'abc-123', 'toolu_01X', 'gate'), '/h/.claude/ultraguard/sessions/abc-123/toolu_01X.gate.json')
+  assert.equal(recordPath('/h/.claude/', 'abc', 'wf_1-2', 'eval'), '/h/.claude/ultraguard/sessions/abc/wf_1-2.eval.json')
 })
 
 test('recordPath falls back to unknown for a bad session id', () => {
   for (const s of [undefined, '', '../x', 'a/b', 'a'.repeat(129)]) {
-    assert.equal(recordPath('/c', s, 'toolu_1', 'gate'), '/c/tierguard/sessions/unknown/toolu_1.gate.json')
+    assert.equal(recordPath('/c', s, 'toolu_1', 'gate'), '/c/ultraguard/sessions/unknown/toolu_1.gate.json')
   }
 })
 

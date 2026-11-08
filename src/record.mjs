@@ -6,5 +6,5 @@ export function recordPath(configDir, sessionId, id, kind) {
   if (kind !== 'gate' && kind !== 'eval') return null
   if (typeof id !== 'string' || !ID_RE.test(id)) return null
   const session = typeof sessionId === 'string' && ID_RE.test(sessionId) ? sessionId : 'unknown'
-  return `${configDir.replace(/[\\/]+$/, '')}/tierguard/sessions/${session}/${id}.${kind}.json`
+  return `${configDir.replace(/[\\/]+$/, '')}/ultraguard/sessions/${session}/${id}.${kind}.json`
 }

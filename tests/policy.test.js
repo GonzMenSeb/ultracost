@@ -76,7 +76,7 @@ test('shipped policy text has no low, max, fable, mythos or full ids', () => {
   for (const bad of ['"low"', '"max"', 'fable', 'mythos', 'claude-']) assert.ok(!text.includes(bad), bad)
 })
 
-const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tierguard-policy-'))
+const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ultraguard-policy-'))
 test.after(() => fs.rmSync(dir, { recursive: true, force: true }))
 
 function write(name, content) {

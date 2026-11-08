@@ -568,10 +568,10 @@ test('a notification drives noteRunEnd; an unknown launch changes nothing', () =
 test('the eval record path sits next to the gate record for the same launch', () => {
   const gatePath = recordPath('/h/.claude', 'sess-1', TU, 'gate')
   const evalPath = recordPath('/h/.claude', 'sess-1', only(compliant()).key, 'eval')
-  assert.equal(gatePath, `/h/.claude/tierguard/sessions/sess-1/${TU}.gate.json`)
-  assert.equal(evalPath, `/h/.claude/tierguard/sessions/sess-1/${TU}.eval.json`)
+  assert.equal(gatePath, `/h/.claude/ultraguard/sessions/sess-1/${TU}.gate.json`)
+  assert.equal(evalPath, `/h/.claude/ultraguard/sessions/sess-1/${TU}.eval.json`)
   const orphan = noteSpawn(createState(), { toolUseId: '', runId: RUN, agentId: 'a1', label: 'x', resolvedModel: OPUS })
-  assert.equal(recordPath('/h/.claude', 'sess-1', only(orphan).key, 'eval'), `/h/.claude/tierguard/sessions/sess-1/${RUN}.eval.json`)
+  assert.equal(recordPath('/h/.claude', 'sess-1', only(orphan).key, 'eval'), `/h/.claude/ultraguard/sessions/sess-1/${RUN}.eval.json`)
 })
 
 test('runView explains a red agent and a red run', () => {

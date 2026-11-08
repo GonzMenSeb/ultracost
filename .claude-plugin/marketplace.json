@@ -1,14 +1,14 @@
 {
-  "name": "ultracost",
+  "name": "ultraguard",
   "owner": {
     "name": "Sebas Mendoza"
   },
   "description": "Per-agent delegation gate for Claude Code dynamic workflows.",
   "plugins": [
     {
-      "name": "tierguard",
+      "name": "ultraguard",
       "source": "./",
-      "version": "0.4.9",
+      "version": "0.4.10",
       "license": "MIT",
       "description": "Denies Workflow scripts whose agent() stages break the model and effort tier policy, injects that policy at session start, and shows live whether each running workflow follows what the gate approved.",
       "category": "developer-tools",
