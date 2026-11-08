@@ -342,7 +342,7 @@ test('a run no one has focused only reserves the room of the outline, and its bu
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
   const rest = await ui.find({ type: 'Box', key: `box:${w.id()}` })
   expect(rest?.props.borderStyle).toBeUndefined()
-  expect(rest?.props.paddingX).toBe(1)
+  expect(rest?.props.paddingX).toBe(2)
   expect(rest?.props.paddingY).toBe(1)
   expect(rest?.props.backgroundColor).toBeUndefined()
   expect((await ui.find({ type: 'Button', key: `run:${w.id()}` }))?.text).toBe('□')

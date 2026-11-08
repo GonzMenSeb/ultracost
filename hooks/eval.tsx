@@ -597,7 +597,7 @@ export const register: Register = on => {
       const rowKey = `run:${v.key}`
       const picked = e.props.isFocused && state.ui.focus === rowKey
       return (
-        <Box key={`box:${v.key}`} borderStyle={picked ? 'round' : undefined} borderColor={picked ? 'text' : undefined} paddingX={picked ? 0 : 1} paddingY={picked ? 0 : 1}>
+        <Box key={`box:${v.key}`} borderStyle={picked ? 'round' : undefined} borderColor={picked ? 'text' : undefined} paddingX={picked ? 1 : 2} paddingY={picked ? 0 : 1}>
           <Button key={rowKey} plain autoFocus={i === 0 && !ended ? true : undefined} onPress={() => update($, ev, s => openRun(s, v.key))}>
             <Text color={tone(v.ok)}>□</Text>
           </Button>
@@ -621,7 +621,7 @@ export const register: Register = on => {
         {runs.length === 0 && <Text dimColor>No workflow is running.</Text>}
         {all.length > 0 && (
           <Text wrap="truncate-end">
-            <Text dimColor>{` ${fit('  workflow', nameWidth)}${fit('id', 9)}${fit('agents', agentsWidth)}`}</Text>
+            <Text dimColor>{`  ${fit('  workflow', nameWidth)}${fit('id', 9)}${fit('agents', agentsWidth)}`}</Text>
             {line(listHeader(all))}
           </Text>
         )}
