@@ -1,0 +1,404 @@
+{
+  "v": 1,
+  "claudeCode": "2.1.319",
+  "measuredAt": "2026-11-08",
+  "method": "same prompts replayed on Sonnet at high in repo snapshots at the original commits",
+  "pairs": [
+    {
+      "workflow": "w1",
+      "kind": "web research",
+      "from": "sonnet:high",
+      "to": "opus:high",
+      "baseline": {
+        "input": 20,
+        "output": 9084,
+        "cacheRead": 640582,
+        "cacheWrite": 79817
+      },
+      "actual": {
+        "input": 14,
+        "output": 7220,
+        "cacheRead": 365739,
+        "cacheWrite": 80936
+      }
+    },
+    {
+      "workflow": "w1",
+      "kind": "web research",
+      "from": "sonnet:high",
+      "to": "opus:high",
+      "baseline": {
+        "input": 34,
+        "output": 11205,
+        "cacheRead": 1604291,
+        "cacheWrite": 99898
+      },
+      "actual": {
+        "input": 14,
+        "output": 13055,
+        "cacheRead": 503698,
+        "cacheWrite": 92180
+      }
+    },
+    {
+      "workflow": "w1",
+      "kind": "web research",
+      "from": "sonnet:high",
+      "to": "opus:high",
+      "baseline": {
+        "input": 30,
+        "output": 8450,
+        "cacheRead": 1043204,
+        "cacheWrite": 69368
+      },
+      "actual": {
+        "input": 16,
+        "output": 7286,
+        "cacheRead": 502870,
+        "cacheWrite": 64433
+      }
+    },
+    {
+      "workflow": "w1",
+      "kind": "web research",
+      "from": "sonnet:high",
+      "to": "opus:high",
+      "baseline": {
+        "input": 42,
+        "output": 14342,
+        "cacheRead": 1801771,
+        "cacheWrite": 129171
+      },
+      "actual": {
+        "input": 22,
+        "output": 12837,
+        "cacheRead": 850677,
+        "cacheWrite": 91440
+      }
+    },
+    {
+      "workflow": "w2",
+      "kind": "code mapping",
+      "from": "sonnet:high",
+      "to": "opus:medium",
+      "baseline": {
+        "input": 70,
+        "output": 18114,
+        "cacheRead": 4191530,
+        "cacheWrite": 131082
+      },
+      "actual": {
+        "input": 58,
+        "output": 26202,
+        "cacheRead": 3687236,
+        "cacheWrite": 186303
+      }
+    },
+    {
+      "workflow": "w2",
+      "kind": "code mapping",
+      "from": "sonnet:high",
+      "to": "opus:medium",
+      "baseline": {
+        "input": 38,
+        "output": 15156,
+        "cacheRead": 2503400,
+        "cacheWrite": 156852
+      },
+      "actual": {
+        "input": 66,
+        "output": 33852,
+        "cacheRead": 5045129,
+        "cacheWrite": 195243
+      }
+    },
+    {
+      "workflow": "w2",
+      "kind": "code mapping",
+      "from": "sonnet:high",
+      "to": "opus:medium",
+      "baseline": {
+        "input": 156,
+        "output": 31756,
+        "cacheRead": 12918070,
+        "cacheWrite": 230858
+      },
+      "actual": {
+        "input": 184,
+        "output": 66844,
+        "cacheRead": 19263749,
+        "cacheWrite": 292049
+      }
+    },
+    {
+      "workflow": "w2",
+      "kind": "code mapping",
+      "from": "sonnet:high",
+      "to": "opus:medium",
+      "baseline": {
+        "input": 90,
+        "output": 18413,
+        "cacheRead": 4328537,
+        "cacheWrite": 113728
+      },
+      "actual": {
+        "input": 70,
+        "output": 28617,
+        "cacheRead": 4441424,
+        "cacheWrite": 164770
+      }
+    },
+    {
+      "workflow": "w3",
+      "kind": "yes/no check",
+      "from": "sonnet:high",
+      "to": "opus:medium",
+      "baseline": {
+        "input": 14,
+        "output": 2339,
+        "cacheRead": 422744,
+        "cacheWrite": 53642
+      },
+      "actual": {
+        "input": 16,
+        "output": 4996,
+        "cacheRead": 466442,
+        "cacheWrite": 72315
+      }
+    },
+    {
+      "workflow": "w3",
+      "kind": "yes/no check",
+      "from": "sonnet:high",
+      "to": "opus:medium",
+      "baseline": {
+        "input": 4,
+        "output": 696,
+        "cacheRead": 78387,
+        "cacheWrite": 41982
+      },
+      "actual": {
+        "input": 14,
+        "output": 2304,
+        "cacheRead": 386346,
+        "cacheWrite": 45539
+      }
+    },
+    {
+      "workflow": "w3",
+      "kind": "yes/no check",
+      "from": "sonnet:high",
+      "to": "opus:medium",
+      "baseline": {
+        "input": 6,
+        "output": 1966,
+        "cacheRead": 125840,
+        "cacheWrite": 68079
+      },
+      "actual": {
+        "input": 8,
+        "output": 2202,
+        "cacheRead": 204826,
+        "cacheWrite": 45484
+      }
+    },
+    {
+      "workflow": "w3",
+      "kind": "yes/no check",
+      "from": "sonnet:high",
+      "to": "opus:medium",
+      "baseline": {
+        "input": 22,
+        "output": 5166,
+        "cacheRead": 729955,
+        "cacheWrite": 58371
+      },
+      "actual": {
+        "input": 20,
+        "output": 5334,
+        "cacheRead": 625319,
+        "cacheWrite": 58149
+      }
+    },
+    {
+      "workflow": "w3",
+      "kind": "yes/no check",
+      "from": "sonnet:high",
+      "to": "opus:medium",
+      "baseline": {
+        "input": 14,
+        "output": 6014,
+        "cacheRead": 430456,
+        "cacheWrite": 57260
+      },
+      "actual": {
+        "input": 12,
+        "output": 5439,
+        "cacheRead": 361117,
+        "cacheWrite": 54969
+      }
+    },
+    {
+      "workflow": "w3",
+      "kind": "yes/no check",
+      "from": "sonnet:high",
+      "to": "opus:medium",
+      "baseline": {
+        "input": 28,
+        "output": 5058,
+        "cacheRead": 904246,
+        "cacheWrite": 57201
+      },
+      "actual": {
+        "input": 12,
+        "output": 3461,
+        "cacheRead": 332497,
+        "cacheWrite": 47074
+      }
+    },
+    {
+      "workflow": "w3",
+      "kind": "yes/no check",
+      "from": "sonnet:high",
+      "to": "opus:medium",
+      "baseline": {
+        "input": 18,
+        "output": 3485,
+        "cacheRead": 564198,
+        "cacheWrite": 54339
+      },
+      "actual": {
+        "input": 16,
+        "output": 4330,
+        "cacheRead": 490478,
+        "cacheWrite": 54813
+      }
+    },
+    {
+      "workflow": "w3",
+      "kind": "yes/no check",
+      "from": "sonnet:high",
+      "to": "opus:medium",
+      "baseline": {
+        "input": 12,
+        "output": 1398,
+        "cacheRead": 343833,
+        "cacheWrite": 49800
+      },
+      "actual": {
+        "input": 12,
+        "output": 2318,
+        "cacheRead": 324778,
+        "cacheWrite": 43816
+      }
+    },
+    {
+      "workflow": "w3",
+      "kind": "yes/no check",
+      "from": "sonnet:high",
+      "to": "opus:medium",
+      "baseline": {
+        "input": 8,
+        "output": 2332,
+        "cacheRead": 209019,
+        "cacheWrite": 51174
+      },
+      "actual": {
+        "input": 8,
+        "output": 2259,
+        "cacheRead": 206261,
+        "cacheWrite": 50560
+      }
+    },
+    {
+      "workflow": "w3",
+      "kind": "yes/no check",
+      "from": "sonnet:high",
+      "to": "opus:medium",
+      "baseline": {
+        "input": 4,
+        "output": 795,
+        "cacheRead": 78441,
+        "cacheWrite": 41742
+      },
+      "actual": {
+        "input": 8,
+        "output": 1465,
+        "cacheRead": 194244,
+        "cacheWrite": 39125
+      }
+    },
+    {
+      "workflow": "w3",
+      "kind": "yes/no check",
+      "from": "sonnet:high",
+      "to": "opus:medium",
+      "baseline": {
+        "input": 12,
+        "output": 3324,
+        "cacheRead": 350136,
+        "cacheWrite": 52460
+      },
+      "actual": {
+        "input": 8,
+        "output": 3318,
+        "cacheRead": 205962,
+        "cacheWrite": 47833
+      }
+    },
+    {
+      "workflow": "w3",
+      "kind": "yes/no check",
+      "from": "sonnet:high",
+      "to": "opus:medium",
+      "baseline": {
+        "input": 18,
+        "output": 3313,
+        "cacheRead": 525584,
+        "cacheWrite": 70920
+      },
+      "actual": {
+        "input": 8,
+        "output": 2496,
+        "cacheRead": 199735,
+        "cacheWrite": 44874
+      }
+    },
+    {
+      "workflow": "w3",
+      "kind": "yes/no check",
+      "from": "sonnet:high",
+      "to": "opus:medium",
+      "baseline": {
+        "input": 18,
+        "output": 3426,
+        "cacheRead": 570322,
+        "cacheWrite": 56152
+      },
+      "actual": {
+        "input": 26,
+        "output": 5785,
+        "cacheRead": 857784,
+        "cacheWrite": 58673
+      }
+    },
+    {
+      "workflow": "w3",
+      "kind": "yes/no check",
+      "from": "sonnet:high",
+      "to": "opus:medium",
+      "baseline": {
+        "input": 16,
+        "output": 3023,
+        "cacheRead": 481696,
+        "cacheWrite": 52409
+      },
+      "actual": {
+        "input": 14,
+        "output": 3556,
+        "cacheRead": 411460,
+        "cacheWrite": 53473
+      }
+    }
+  ]
+}

@@ -139,15 +139,29 @@ A run is green while all four hold. Otherwise it turns red and names the first f
   <img src="assets/eval-red.svg" alt="The same row when a run breaks the plan: a red square, the title tierguard-eval and the summary 1 running, 1 red.">
 </p>
 
-Select the row, or run `/tierguard`, to open the pane: one row per running workflow, and on Enter the four checks with ✓ or ✗ and one line per agent with the model and effort the gate approved and what it actually ran on.
+Select the row, or run `/tierguard`, to open the pane: one row per workflow, running ones first and ended ones under "finished this session", and on Enter the four checks with ✓ or ✗ and one line per agent with the model and effort the gate approved and what it actually ran on.
 
 <p align="center">
-  <img src="assets/eval-pane.svg" alt="The tierguard-eval pane. Above, the run list: one green run with 2 sonnet agents, as approved. Below, its detail after Enter: the four checks all passing with the gate approval time and the peak Opus count, then a table of two grunt agents approved for sonnet at medium that ran on sonnet at medium.">
+  <img src="assets/eval-pane.svg" alt="The tierguard-eval pane. Above, the run list: one finished workflow under 'finished this session' with the dollars it saved and their margin of error. Below, its detail after Enter: the four checks all passing, then the 'tierguard saved' block (the limit lines still learning, the dollars saved with a plus-minus, the tokens, how many agents the figure covers and where the ratio comes from), then a table of three grunt agents approved for sonnet at medium that ran on sonnet at medium, each with what it saved.">
 </p>
 
 Both parts leave a record in `~/.claude/tierguard/sessions/<session_id>/` (or under `CLAUDE_CONFIG_DIR`): `<tool_use_id>.gate.json` for each gate decision, pass or deny, and `<tool_use_id>.eval.json` for each run tierguard-eval saw.
 
 If a workflow is running, there is no tierguard-eval row and `/tierguard` is not a command, tierguard is not loaded in that session.
+
+### See what it saved
+
+For each tracked run, tierguard shows what it saved against running every agent of the workflow on your session's model at your session's effort. That is what Claude Code does when a stage pins nothing. Open a run in the pane to see:
+
+- **On a subscription:** the percent of your 5-hour limit and of your weekly limit saved, in the percentages `/usage` shows.
+- **On an API key:** the dollars saved at API prices.
+- **Tokens:** how many fewer tokens the agents used. It can read "more tokens" when the cheaper model read and wrote more at a lower price per token.
+
+Each percentage and dollar figure has a `±`: how far off the estimate can be, 9 times out of 10. The token figure is the median, with no `±`. A figure tierguard cannot back is shown as unknown, never as 0.
+
+Limit figures need 5 readings. tierguard learns how fast your own limit fills from the `/usage` percentages as you work, and until a window has 5 readings the pane says "learning how fast your limit fills, 3 of 5 readings so far".
+
+The ratios between models come from 22 replayed agents. The replays measured two transitions: Sonnet at high against Opus at high, and Sonnet at high against Opus at medium. Other efforts of the same model are chained from those with published effort steps, and every other pair, the same model at another effort included, uses published figures. The pane says which, and the `±` is wide for published figures. The results table is in the [reference](docs/reference.md#calibration-results).
 
 ## Tuning
 

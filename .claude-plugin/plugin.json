@@ -1,6 +1,6 @@
 {
   "name": "tierguard",
-  "version": "0.4.8",
+  "version": "0.4.9",
   "description": "Per-agent delegation gate for Claude Code dynamic workflows: a PreToolUse hook denies Workflow scripts whose agent() stages break the model and effort tier policy, and a SessionStart hook injects that policy, and tierguard-eval shows live whether each running workflow follows what the gate approved.",
   "author": {
     "name": "Sebas Mendoza"

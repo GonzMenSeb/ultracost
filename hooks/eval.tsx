@@ -6,35 +6,52 @@ import { sha256Hex } from '../src/fingerprint.mjs'
 import { recordPath } from '../src/record.mjs'
 import {
   activeRuns,
+  agentPieces,
   bandText,
   bandView,
   closeRun,
   createState,
   endAllRuns,
   evalRecord,
+  finishedRuns,
   gateWanted,
+  hideFinished,
   noteAgentDone,
   noteGateRecord,
   noteLaunch,
   noteLaunchResult,
   noteLimit,
+  noteMainStep,
+  noteMeterReading,
   noteRunEnd,
+  noteSaved,
   noteSpawn,
   noteStep,
+  noteStored,
+  noteUsage,
   openRun,
   parseTaskNotifications,
   runOfAgent,
   runView
 } from '../src/eval.mjs'
+import { intervalsOf, staleKeys, storedValue } from '../src/meter.mjs'
+import { loadPrices, priceFamily } from '../src/prices.mjs'
+import { agentColumn, listCell, listHeader, savedBlock, toastText } from '../src/savedText.mjs'
+import { estimateRun } from '../src/savings.mjs'
+import { seedOf } from '../src/stats.mjs'
 
 const PANE = 'tierguard'
 const TITLE = 'tierguard-eval'
 const KEPT = 20
+const TOAST_MS = 8000
+const DRAWS_RUNNING = 1000
 
-const ev = atom({ plugin: 'tierguard', key: 'eval' } as const, createState() as EvalState, { shape: 'eval-1' })
+const ev = atom({ plugin: 'tierguard', key: 'eval' } as const, createState() as EvalState, { shape: 'eval-2' })
 
 type Ids = { toolUseId: string; runId: string }
 type Notice = { toolUseId: string | null | undefined; taskId: string | null | undefined; status: string }
+type Segment = { text: string; style: string }
+type Data = { prices: any; ratios: any }
 type WorkflowOutput = { taskId?: string; runId?: string; workflowName?: string; summary?: string; error?: string }
 
 const tone = (ok: boolean) => (ok ? 'success' : 'error')
@@ -43,9 +60,19 @@ const countsWidth = (c: { opus: number; sonnet: number; haiku: number }) => {
   const parts = (['opus', 'sonnet', 'haiku'] as const).filter(m => c[m] > 0).map(m => `${m} ${c[m]}`)
   return parts.length === 0 ? 'no agents yet'.length : parts.join(' · ').length
 }
-const MODEL_COLORS: Record<string, string> = { opus: '#c084fc', sonnet: '#60a5fa', haiku: '#2dd4bf' }
+const MODEL_COLORS: Record<string, string> = { opus: '#c084fc', sonnet: '#60a5fa', haiku: '#2dd4bf', fable: '#fbbf24' }
 const modelColor = (model: string | null) => (model && MODEL_COLORS[model]) || undefined
 
+
+const lineOf = (Text: any, wrap: 'truncate-end' | 'wrap' = 'truncate-end') => (line: Segment[]) => (
+  <Text wrap={wrap}>
+    {line.map(g => (
+      <Text weight={g.style === 'bold' ? 'bold' : undefined} dimColor={g.style === 'dim' ? true : undefined} color={MODEL_COLORS[g.style]}>
+        {g.text}
+      </Text>
+    ))}
+  </Text>
+)
 
 function cap<V>(map: Map<string, V>) {
   while (map.size > KEPT) map.delete(map.keys().next().value as string)
@@ -78,6 +105,75 @@ async function fingerprintOf($: EngineInterface, e: { script?: unknown; scriptPa
 async function openPane($: EngineInterface) {
   await update($, ev, closeRun)
   return $.ui.open({ id: PANE, title: TITLE, focus: true, closeOnEscape: true })
+}
+
+let dataLoad: Promise<Data | null> | null = null
+
+function getData($: EngineInterface): Promise<Data | null> {
+  if (!dataLoad) {
+    dataLoad = (async () => {
+      const dir = `${$.plugin.root}/data`
+      return {
+        prices: loadPrices(JSON.parse(await $.fs.read(`${dir}/prices.json`))),
+        ratios: JSON.parse(await $.fs.read(`${dir}/ratios.json`))
+      }
+    })().catch(err => {
+      note($, 'data', err)
+      return null
+    })
+  }
+  return dataLoad
+}
+
+async function recordReading($: EngineInterface, rateLimits: unknown) {
+  const data = await getData($)
+  if (!data) return
+  const at = await $.clock.now()
+  const before = await read($, ev)
+  const after = await update($, ev, s => noteMeterReading(s, rateLimits, at, data.prices))
+  const grew = (['five_hour', 'seven_day'] as const).some(k => after.meter.mine[k] !== before.meter.mine[k])
+  if (grew) await $.store.set(`meter:${await $.session.id()}`, storedValue(after.meter))
+}
+
+async function loadMeter($: EngineInterface) {
+  if (!(await getData($))) return
+  const stored: Record<string, unknown> = {}
+  for (const key of await $.store.keys()) if (key.startsWith('meter:')) stored[key] = await $.store.get(key)
+  const own = `meter:${await $.session.id()}`
+  const now = await $.clock.now()
+  for (const key of staleKeys(stored, own, now)) {
+    await $.store.delete(key)
+    delete stored[key]
+  }
+  await update($, ev, s => noteStored(s, stored, own, now))
+  await recordReading($, (await $.session.usage()).rateLimits)
+}
+
+async function estimate($: EngineInterface, key: string) {
+  const data = await getData($)
+  if (!data) return
+  try {
+    await recordReading($, (await $.session.usage()).rateLimits)
+  } catch (err) {
+    note($, 'usage', err)
+  }
+  const at = await $.clock.now()
+  const s = await read($, ev)
+  const run = s.runs[key]
+  if (!run) return
+  const family = priceFamily(run.baseline.model)
+  const running = run.status === 'running'
+  const saved = estimateRun({
+    agents: agentPieces(run),
+    baseline: family && run.baseline.effort ? { family, effort: run.baseline.effort } : null,
+    ratios: data.ratios,
+    prices: data.prices,
+    meter: { subscription: s.meter.subscription, five_hour: intervalsOf(s.meter, 'five_hour', at), seven_day: intervalsOf(s.meter, 'seven_day', at) },
+    seed: seedOf(run.key),
+    ...(running ? { draws: DRAWS_RUNNING } : {}),
+    running
+  })
+  await update($, ev, st => noteSaved(st, key, saved))
 }
 
 let inflight = 0
@@ -141,9 +237,19 @@ async function endRuns($: EngineInterface, notices: Notice[]) {
   if (notices.length === 0) return
   const at = await $.clock.now()
   for (const n of notices) {
+    const before = await read($, ev)
     const out = await update($, ev, s => noteRunEnd(s, { ...n, at }))
     const run = (n.toolUseId && out.runs[n.toolUseId]) || Object.values(out.runs).find(r => (n.toolUseId && r.toolUseId === n.toolUseId) || (n.taskId && r.taskId === n.taskId))
-    if (run && run.status !== 'running') await persist($, run.key)
+    if (!run || run.status === 'running') continue
+    const fresh = before.runs[run.key]?.status === 'running'
+    if (fresh) await guard($, 'savings', () => estimate($, run.key))
+    await persist($, run.key)
+    if (fresh) {
+      await guard($, 'toast', async () => {
+        const final = (await read($, ev)).runs[run.key]
+        if (final) await $.ui.toast(toastText(runView(final)), { timeoutMs: TOAST_MS })
+      })
+    }
   }
 }
 
@@ -161,6 +267,13 @@ export const register: Register = on => {
       const limit = limits?.maxConcurrentOpus
       await update($, ev, s => noteLimit(s, limit))
     })
+    dataLoad = null
+    await guard($, 'meter', () => loadMeter($))
+    return next(e)
+  })
+
+  on('session.measure', async ($, e, next) => {
+    if (e.changed.includes('rateLimits')) await guard($, 'measure', () => recordReading($, e.rateLimits))
     return next(e)
   })
 
@@ -174,7 +287,7 @@ export const register: Register = on => {
       await guard($, 'clear', async () => {
         const live = Object.values((await read($, ev)).runs).filter(r => r.status === 'running')
         const at = await $.clock.now()
-        await update($, ev, s => endAllRuns(s, 'cleared', at))
+        await update($, ev, s => hideFinished(endAllRuns(s, 'cleared', at)))
         for (const run of live) await persist($, run.key)
       })
     }
@@ -214,7 +327,7 @@ export const register: Register = on => {
         await ensureGate($, ids)
         const at = await $.clock.now()
         const out = await update($, ev, s =>
-          noteSpawn(s, { ...ids, agentId, label: e.description, askedModel: e.model ?? null, resolvedModel: started.model, at }),
+          noteSpawn(s, { ...ids, agentId, label: e.description, askedModel: e.model ?? null, resolvedModel: started.model, parentModel: e.parentModel, at }),
         )
         await ensureGate($, ids)
         const key = runOfAgent(out, agentId)
@@ -238,8 +351,21 @@ export const register: Register = on => {
         const key = runOfAgent(out, agentId)
         if (key) await persist($, key)
       })
+    } else {
+      await guard($, 'main step', async () => {
+        const before = await read($, ev)
+        const args = { model: e.model, effort: e.effort }
+        if (noteMainStep(before, args) !== before) await update($, ev, s => noteMainStep(s, args))
+      })
     }
-    return yield* next(e)
+    const result = yield* next(e)
+    await guard($, 'usage', async () => {
+      if (!result.usage) return
+      const data = await getData($)
+      const own = agentId !== undefined && (runOfAgent(await read($, ev), agentId) !== null || inflight > 0)
+      await update($, ev, s => noteUsage(s, { agentId: own ? agentId : undefined, effort: e.effort, usage: result.usage, prices: data?.prices }))
+    })
+    return result
   })
 
   on('turn.complete', async ($, e, next) => {
@@ -253,7 +379,9 @@ export const register: Register = on => {
         if (noteAgentDone(before, { agentId }) === before) return
         const out = await update($, ev, s => noteAgentDone(s, { agentId }))
         const key = runOfAgent(out, agentId)
-        if (key) await persist($, key)
+        if (!key) return
+        await guard($, 'savings', () => estimate($, key))
+        await persist($, key)
       })
     }
     return next(e)
@@ -271,7 +399,7 @@ export const register: Register = on => {
     const state = await read($, ev)
     if (state.ui.run !== null) {
       await update($, ev, closeRun)
-      if (e.origin.kind === 'person' && activeRuns(state).some(r => r.key === state.ui.run)) return { value: undefined }
+      if (e.origin.kind === 'person' && [...activeRuns(state), ...finishedRuns(state)].some(r => r.key === state.ui.run)) return { value: undefined }
     }
     return next(e)
   })
@@ -292,9 +420,12 @@ export const register: Register = on => {
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const { Box, Button, Text } = $.ui.resolve(e)
+    const line = lineOf(Text)
+    const wrapped = lineOf(Text, 'wrap')
     const state = await read($, ev)
     const runs = activeRuns(state).map(r => runView(r))
-    const open = runs.find(v => v.key === state.ui.run)
+    const finished = finishedRuns(state).map(r => runView(r))
+    const open = [...runs, ...finished].find(v => v.key === state.ui.run)
     const pair = (model: string | null, effort: string | null, width: number) => {
       const m = model ?? '—'
       const rest = ` · ${effort ?? '—'}`
@@ -323,6 +454,8 @@ export const register: Register = on => {
 
     if (open) {
       const labelWidth = Math.min(34, Math.max(12, ...open.agents.map((a: EvalAgentView) => a.label.length + 4)))
+      const column = open.saved ? agentColumn(open.saved) : null
+      const roomy = column !== null && labelWidth + 36 + column.header.length <= e.props.bodyColumns
       return (
         <Box flexDirection="column">
           <Text wrap="truncate-end">
@@ -340,14 +473,17 @@ export const register: Register = on => {
             </Text>
           ))}
           <Text> </Text>
-          <Text dimColor wrap="truncate-end">{`${fit('  agent', labelWidth)}${fit('approved', 18)}ran on`}</Text>
+          {open.saved && savedBlock(open.saved).map(wrapped)}
+          {open.saved && <Text> </Text>}
+          <Text dimColor wrap="truncate-end">{`${fit('  agent', labelWidth)}${fit('approved', 18)}${column ? fit('ran on', 18) : 'ran on'}${column ? (roomy ? column.header : 'saved') : ''}`}</Text>
           {open.agents.map((a: EvalAgentView) => (
             <Text wrap="truncate-end">
               <Text color={tone(a.ok)}>■</Text>
               {` ${fit(a.label, labelWidth - 2)}`}
               {pair(a.approvedModel, a.approvedEffort, 18)}
               {pair(a.ranModel, a.ranEffort, 18)}
-              {a.reason && <Text color="error">{a.reason}</Text>}
+              {column && <Text>{column.cell(a.agentId)}</Text>}
+              {a.reason && <Text color="error">{`  ${a.reason}`}</Text>}
             </Text>
           ))}
           <Text> </Text>
@@ -357,7 +493,18 @@ export const register: Register = on => {
     }
 
     const view = bandView(state)
-    const nameWidth = Math.min(30, Math.max(12, ...runs.map(v => v.title.length + 4)))
+    const all = [...runs, ...finished]
+    const nameWidth = Math.min(30, Math.max(12, 12, ...all.map(v => v.title.length + 4)))
+    const agentsWidth = Math.max(12, ...runs.map(v => countsWidth(v.counts) + 2))
+    const row = (v: (typeof all)[number], i: number, ended: boolean) => (
+      <Button key={`run:${v.key}`} plain autoFocus={i === 0 && !ended ? true : undefined} onPress={() => update($, ev, s => openRun(s, v.key))}>
+        <Text color={tone(v.ok)}>■</Text>
+        {` ${fit(v.title, nameWidth - 2)}`}
+        <Text dimColor>{fit(v.shortId, 9)}</Text>
+        {ended ? <Text dimColor>{fit(`done ${v.endedClock ?? ''}`.trim(), agentsWidth)}</Text> : <Text>{counts(v.counts)}{' '.repeat(Math.max(1, agentsWidth - countsWidth(v.counts)))}</Text>}
+        {v.ok ? line(listCell(v)) : <Text color="error">{v.reason}</Text>}
+      </Button>
+    )
     return (
       <Box flexDirection="column">
         <Text wrap="truncate-end">
@@ -366,18 +513,18 @@ export const register: Register = on => {
         </Text>
         <Text> </Text>
         {runs.length === 0 && <Text dimColor>No workflow is running.</Text>}
-        {runs.map((v, i) => (
-          <Button key={`run:${v.key}`} plain autoFocus={i === 0 ? true : undefined} onPress={() => update($, ev, s => openRun(s, v.key))}>
-            <Text color={tone(v.ok)}>■</Text>
-            {` ${fit(v.title, nameWidth - 2)}`}
-            <Text dimColor>{fit(v.shortId, 9)}</Text>
-            {counts(v.counts)}
-            {' '.repeat(Math.max(1, 26 - countsWidth(v.counts)))}
-            {v.ok ? <Text color="success">as approved</Text> : <Text color="error">{v.reason}</Text>}
-          </Button>
-        ))}
-        {runs.length > 0 && <Text> </Text>}
-        {runs.length > 0 && <Text dimColor>{e.props.isFocused ? '↑↓ choose · enter details · esc close' : 'ctrl+x tab: focus this pane'}</Text>}
+        {all.length > 0 && (
+          <Text wrap="truncate-end">
+            <Text dimColor>{`${fit('  workflow', nameWidth)}${fit('id', 9)}${fit('agents', agentsWidth)}`}</Text>
+            {line(listHeader(all))}
+          </Text>
+        )}
+        {runs.map((v, i) => row(v, i, false))}
+        {finished.length > 0 && <Text> </Text>}
+        {finished.length > 0 && <Text dimColor>finished this session</Text>}
+        {finished.map((v, i) => row(v, runs.length + i, true))}
+        {all.length > 0 && <Text> </Text>}
+        {all.length > 0 && <Text dimColor>{e.props.isFocused ? '↑↓ choose · enter details · esc close' : 'ctrl+x tab: focus this pane'}</Text>}
       </Box>
     )
   }).catch(($, e, next) => {

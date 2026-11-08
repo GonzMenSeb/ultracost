@@ -1,0 +1,1166 @@
+{
+  "v": 1,
+  "claudeCode": "2.1.319",
+  "measuredAt": "2026-11-08",
+  "tau": 0.296489151,
+  "pooledAgentSd": {
+    "output": 0.41268703,
+    "fresh": 0.221663054,
+    "read": 0.667494463
+  },
+  "measured": {
+    "sonnet:high>opus:high": {
+      "pairs": 4,
+      "workflows": 1,
+      "output": {
+        "r": 1.066414179,
+        "lo": 0.889651136,
+        "hi": 1.371934863,
+        "mu": 0.064301786,
+        "sigma": 0.131655905,
+        "agentSd": 0.165469913
+      },
+      "fresh": {
+        "r": 1.149898953,
+        "lo": 0.891163798,
+        "hi": 1.371629892,
+        "mu": 0.139674072,
+        "sigma": 0.131071966,
+        "agentSd": 0.155394621
+      },
+      "read": {
+        "r": 2.289646709,
+        "lo": 1.61832418,
+        "hi": 3.047532576,
+        "mu": 0.82839753,
+        "sigma": 0.192383317,
+        "agentSd": 0.253813948
+      },
+      "dollars": {
+        "r": 2.602945759,
+        "lo": 2.192771752,
+        "hi": 2.889936326
+      }
+    },
+    "sonnet:high>opus:medium": {
+      "pairs": 18,
+      "workflows": 2,
+      "output": {
+        "r": 0.614196838,
+        "lo": 0.538370596,
+        "hi": 0.86013763,
+        "mu": -0.48743982,
+        "sigma": 0.142414969,
+        "agentSd": 0.418086373
+      },
+      "fresh": {
+        "r": 0.899060954,
+        "lo": 0.827059497,
+        "hi": 1.030767268,
+        "mu": -0.106404444,
+        "sigma": 0.066924647,
+        "agentSd": 0.230123977
+      },
+      "read": {
+        "r": 0.789194062,
+        "lo": 0.6785051,
+        "hi": 1.84397811,
+        "mu": -0.236743029,
+        "sigma": 0.303887093,
+        "agentSd": 0.626653265
+      },
+      "dollars": {
+        "r": 1.592577741,
+        "lo": 1.446411166,
+        "hi": 2.104757054
+      }
+    }
+  },
+  "steps": {
+    "opus": {
+      "low>medium": {
+        "mu": 0.706012279,
+        "sd": 0.244324309,
+        "sources": 4
+      },
+      "low>high": {
+        "mu": 1.081228049,
+        "sd": 0.293504395,
+        "sources": 4
+      },
+      "low>xhigh": {
+        "mu": 1.940795464,
+        "sd": 0.375758254,
+        "sources": 4
+      },
+      "low>max": {
+        "mu": 2.886043951,
+        "sd": 0.790918917,
+        "sources": 2
+      },
+      "medium>low": {
+        "mu": -0.706012279,
+        "sd": 0.244324309,
+        "sources": 4
+      },
+      "medium>high": {
+        "mu": 0.37521577,
+        "sd": 0.081338668,
+        "sources": 4
+      },
+      "medium>xhigh": {
+        "mu": 1.234783185,
+        "sd": 0.280985049,
+        "sources": 4
+      },
+      "medium>max": {
+        "mu": 2.235067345,
+        "sd": 1.166129751,
+        "sources": 2
+      },
+      "high>low": {
+        "mu": -1.081228049,
+        "sd": 0.293504395,
+        "sources": 4
+      },
+      "high>medium": {
+        "mu": -0.37521577,
+        "sd": 0.081338668,
+        "sources": 4
+      },
+      "high>xhigh": {
+        "mu": 0.859567415,
+        "sd": 0.223765398,
+        "sources": 4
+      },
+      "high>max": {
+        "mu": 1.894240944,
+        "sd": 1.172287469,
+        "sources": 2
+      },
+      "xhigh>low": {
+        "mu": -1.940795464,
+        "sd": 0.375758254,
+        "sources": 4
+      },
+      "xhigh>medium": {
+        "mu": -1.234783185,
+        "sd": 0.280985049,
+        "sources": 4
+      },
+      "xhigh>high": {
+        "mu": -0.859567415,
+        "sd": 0.223765398,
+        "sources": 4
+      },
+      "xhigh>max": {
+        "mu": 1.18916051,
+        "sd": 0.965401104,
+        "sources": 2
+      },
+      "max>low": {
+        "mu": -2.886043951,
+        "sd": 0.790918917,
+        "sources": 2
+      },
+      "max>medium": {
+        "mu": -2.235067345,
+        "sd": 1.166129751,
+        "sources": 2
+      },
+      "max>high": {
+        "mu": -1.894240944,
+        "sd": 1.172287469,
+        "sources": 2
+      },
+      "max>xhigh": {
+        "mu": -1.18916051,
+        "sd": 0.965401104,
+        "sources": 2
+      }
+    },
+    "sonnet": {
+      "low>medium": {
+        "mu": 0.424883194,
+        "sd": 0.4,
+        "sources": 1
+      },
+      "low>high": {
+        "mu": 1.168040795,
+        "sd": 0.4,
+        "sources": 1
+      },
+      "low>xhigh": {
+        "mu": 2.081889523,
+        "sd": 0.4,
+        "sources": 1
+      },
+      "low>max": {
+        "mu": 2.977927649,
+        "sd": 0.4,
+        "sources": 1
+      },
+      "medium>low": {
+        "mu": -0.424883194,
+        "sd": 0.4,
+        "sources": 1
+      },
+      "medium>high": {
+        "mu": 0.551513132,
+        "sd": 0.315423415,
+        "sources": 3
+      },
+      "medium>xhigh": {
+        "mu": 1.657006329,
+        "sd": 0.4,
+        "sources": 1
+      },
+      "medium>max": {
+        "mu": 2.553044455,
+        "sd": 0.4,
+        "sources": 1
+      },
+      "high>low": {
+        "mu": -1.168040795,
+        "sd": 0.4,
+        "sources": 1
+      },
+      "high>medium": {
+        "mu": -0.551513132,
+        "sd": 0.315423415,
+        "sources": 3
+      },
+      "high>xhigh": {
+        "mu": 0.913848728,
+        "sd": 0.4,
+        "sources": 1
+      },
+      "high>max": {
+        "mu": 1.809886854,
+        "sd": 0.4,
+        "sources": 1
+      },
+      "xhigh>low": {
+        "mu": -2.081889523,
+        "sd": 0.4,
+        "sources": 1
+      },
+      "xhigh>medium": {
+        "mu": -1.657006329,
+        "sd": 0.4,
+        "sources": 1
+      },
+      "xhigh>high": {
+        "mu": -0.913848728,
+        "sd": 0.4,
+        "sources": 1
+      },
+      "xhigh>max": {
+        "mu": 0.896038126,
+        "sd": 0.4,
+        "sources": 1
+      },
+      "max>low": {
+        "mu": -2.977927649,
+        "sd": 0.4,
+        "sources": 1
+      },
+      "max>medium": {
+        "mu": -2.553044455,
+        "sd": 0.4,
+        "sources": 1
+      },
+      "max>high": {
+        "mu": -1.809886854,
+        "sd": 0.4,
+        "sources": 1
+      },
+      "max>xhigh": {
+        "mu": -0.896038126,
+        "sd": 0.4,
+        "sources": 1
+      }
+    },
+    "haiku": {
+      "low>medium": {
+        "mu": 0.606440191,
+        "sd": 0.289192567,
+        "sources": 2
+      },
+      "low>high": {
+        "mu": 1.077713724,
+        "sd": 0.436398922,
+        "sources": 2
+      },
+      "low>xhigh": {
+        "mu": 1.619854956,
+        "sd": 0.300840712,
+        "sources": 2
+      },
+      "low>max": {
+        "mu": 3.005440051,
+        "sd": 0.959066387,
+        "sources": 2
+      },
+      "medium>low": {
+        "mu": -0.606440191,
+        "sd": 0.289192567,
+        "sources": 2
+      },
+      "medium>high": {
+        "mu": 0.471273533,
+        "sd": 0.147206355,
+        "sources": 2
+      },
+      "medium>xhigh": {
+        "mu": 1.013414765,
+        "sd": 0.011648146,
+        "sources": 2
+      },
+      "medium>max": {
+        "mu": 2.39899986,
+        "sd": 1.248258954,
+        "sources": 2
+      },
+      "high>low": {
+        "mu": -1.077713724,
+        "sd": 0.436398922,
+        "sources": 2
+      },
+      "high>medium": {
+        "mu": -0.471273533,
+        "sd": 0.147206355,
+        "sources": 2
+      },
+      "high>xhigh": {
+        "mu": 0.542141232,
+        "sd": 0.135558209,
+        "sources": 2
+      },
+      "high>max": {
+        "mu": 1.927726327,
+        "sd": 1.395465308,
+        "sources": 2
+      },
+      "xhigh>low": {
+        "mu": -1.619854956,
+        "sd": 0.300840712,
+        "sources": 2
+      },
+      "xhigh>medium": {
+        "mu": -1.013414765,
+        "sd": 0.011648146,
+        "sources": 2
+      },
+      "xhigh>high": {
+        "mu": -0.542141232,
+        "sd": 0.135558209,
+        "sources": 2
+      },
+      "xhigh>max": {
+        "mu": 1.385585095,
+        "sd": 1.259907099,
+        "sources": 2
+      },
+      "max>low": {
+        "mu": -3.005440051,
+        "sd": 0.959066387,
+        "sources": 2
+      },
+      "max>medium": {
+        "mu": -2.39899986,
+        "sd": 1.248258954,
+        "sources": 2
+      },
+      "max>high": {
+        "mu": -1.927726327,
+        "sd": 1.395465308,
+        "sources": 2
+      },
+      "max>xhigh": {
+        "mu": -1.385585095,
+        "sd": 1.259907099,
+        "sources": 2
+      }
+    },
+    "fable": {
+      "low>medium": {
+        "mu": 0.2182097,
+        "sd": 0.4,
+        "sources": 1
+      },
+      "low>high": {
+        "mu": 0.522833773,
+        "sd": 0.4,
+        "sources": 1
+      },
+      "low>xhigh": {
+        "mu": 0.886776671,
+        "sd": 0.4,
+        "sources": 1
+      },
+      "low>max": {
+        "mu": 1.066791422,
+        "sd": 0.4,
+        "sources": 1
+      },
+      "medium>low": {
+        "mu": -0.2182097,
+        "sd": 0.4,
+        "sources": 1
+      },
+      "medium>high": {
+        "mu": 0.304624074,
+        "sd": 0.4,
+        "sources": 1
+      },
+      "medium>xhigh": {
+        "mu": 0.668566972,
+        "sd": 0.4,
+        "sources": 1
+      },
+      "medium>max": {
+        "mu": 0.848581722,
+        "sd": 0.4,
+        "sources": 1
+      },
+      "high>low": {
+        "mu": -0.522833773,
+        "sd": 0.4,
+        "sources": 1
+      },
+      "high>medium": {
+        "mu": -0.304624074,
+        "sd": 0.4,
+        "sources": 1
+      },
+      "high>xhigh": {
+        "mu": 0.363942898,
+        "sd": 0.4,
+        "sources": 1
+      },
+      "high>max": {
+        "mu": 0.543957649,
+        "sd": 0.4,
+        "sources": 1
+      },
+      "xhigh>low": {
+        "mu": -0.886776671,
+        "sd": 0.4,
+        "sources": 1
+      },
+      "xhigh>medium": {
+        "mu": -0.668566972,
+        "sd": 0.4,
+        "sources": 1
+      },
+      "xhigh>high": {
+        "mu": -0.363942898,
+        "sd": 0.4,
+        "sources": 1
+      },
+      "xhigh>max": {
+        "mu": 0.180014751,
+        "sd": 0.4,
+        "sources": 1
+      },
+      "max>low": {
+        "mu": -1.066791422,
+        "sd": 0.4,
+        "sources": 1
+      },
+      "max>medium": {
+        "mu": -0.848581722,
+        "sd": 0.4,
+        "sources": 1
+      },
+      "max>high": {
+        "mu": -0.543957649,
+        "sd": 0.4,
+        "sources": 1
+      },
+      "max>xhigh": {
+        "mu": -0.180014751,
+        "sd": 0.4,
+        "sources": 1
+      }
+    }
+  },
+  "priors": {
+    "opus:medium>sonnet:low": {
+      "mu": -0.876285397,
+      "sd": 0.6,
+      "sources": 1
+    },
+    "opus:medium>sonnet:medium": {
+      "mu": -0.556695286,
+      "sd": 0.6,
+      "sources": 3
+    },
+    "opus:medium>sonnet:high": {
+      "mu": -0.005182154,
+      "sd": 0.6,
+      "sources": 3
+    },
+    "opus:medium>sonnet:xhigh": {
+      "mu": 1.205604126,
+      "sd": 0.6,
+      "sources": 1
+    },
+    "opus:medium>sonnet:max": {
+      "mu": 2.101642252,
+      "sd": 0.6,
+      "sources": 1
+    },
+    "opus:medium>haiku:low": {
+      "mu": -0.00368703,
+      "sd": 0.6,
+      "sources": 2
+    },
+    "opus:medium>haiku:medium": {
+      "mu": 0.602753161,
+      "sd": 0.6,
+      "sources": 2
+    },
+    "opus:medium>haiku:high": {
+      "mu": 1.074026694,
+      "sd": 0.6,
+      "sources": 2
+    },
+    "opus:medium>haiku:xhigh": {
+      "mu": 1.616167926,
+      "sd": 0.6,
+      "sources": 2
+    },
+    "opus:medium>haiku:max": {
+      "mu": 3.001753021,
+      "sd": 1.556426469,
+      "sources": 2
+    },
+    "opus:medium>fable:low": {
+      "mu": -0.314990348,
+      "sd": 0.6,
+      "sources": 1
+    },
+    "opus:medium>fable:medium": {
+      "mu": 0.073549401,
+      "sd": 0.6,
+      "sources": 2
+    },
+    "opus:medium>fable:high": {
+      "mu": 0.207843426,
+      "sd": 0.6,
+      "sources": 1
+    },
+    "opus:medium>fable:xhigh": {
+      "mu": 0.571786324,
+      "sd": 0.6,
+      "sources": 1
+    },
+    "opus:medium>fable:max": {
+      "mu": 0.751801074,
+      "sd": 0.6,
+      "sources": 1
+    },
+    "opus:high>sonnet:low": {
+      "mu": -1.221465962,
+      "sd": 0.6,
+      "sources": 1
+    },
+    "opus:high>sonnet:medium": {
+      "mu": -0.949391849,
+      "sd": 0.6,
+      "sources": 3
+    },
+    "opus:high>sonnet:high": {
+      "mu": -0.397878716,
+      "sd": 0.6,
+      "sources": 3
+    },
+    "opus:high>sonnet:xhigh": {
+      "mu": 0.860423562,
+      "sd": 0.6,
+      "sources": 1
+    },
+    "opus:high>sonnet:max": {
+      "mu": 1.756461687,
+      "sd": 0.6,
+      "sources": 1
+    },
+    "opus:high>haiku:low": {
+      "mu": -0.344513431,
+      "sd": 0.6035178,
+      "sources": 2
+    },
+    "opus:high>haiku:medium": {
+      "mu": 0.26192676,
+      "sd": 0.6,
+      "sources": 2
+    },
+    "opus:high>haiku:high": {
+      "mu": 0.733200294,
+      "sd": 0.6,
+      "sources": 2
+    },
+    "opus:high>haiku:xhigh": {
+      "mu": 1.275341525,
+      "sd": 0.6,
+      "sources": 2
+    },
+    "opus:high>haiku:max": {
+      "mu": 2.660926621,
+      "sd": 1.562584187,
+      "sources": 2
+    },
+    "opus:high>fable:low": {
+      "mu": -0.660170912,
+      "sd": 0.6,
+      "sources": 1
+    },
+    "opus:high>fable:medium": {
+      "mu": -0.347259325,
+      "sd": 0.6,
+      "sources": 2
+    },
+    "opus:high>fable:high": {
+      "mu": -0.137337139,
+      "sd": 0.6,
+      "sources": 1
+    },
+    "opus:high>fable:xhigh": {
+      "mu": 0.226605759,
+      "sd": 0.6,
+      "sources": 1
+    },
+    "opus:high>fable:max": {
+      "mu": 0.40662051,
+      "sd": 0.6,
+      "sources": 1
+    },
+    "opus:xhigh>sonnet:low": {
+      "mu": -1.780255645,
+      "sd": 0.6,
+      "sources": 1
+    },
+    "opus:xhigh>sonnet:medium": {
+      "mu": -1.783225315,
+      "sd": 0.667908849,
+      "sources": 3
+    },
+    "opus:xhigh>sonnet:high": {
+      "mu": -1.231712182,
+      "sd": 0.608667473,
+      "sources": 3
+    },
+    "opus:xhigh>sonnet:xhigh": {
+      "mu": 0.301633879,
+      "sd": 0.6,
+      "sources": 1
+    },
+    "opus:xhigh>sonnet:max": {
+      "mu": 1.197672004,
+      "sd": 0.6,
+      "sources": 1
+    },
+    "opus:xhigh>haiku:low": {
+      "mu": -1.049593865,
+      "sd": 0.6,
+      "sources": 2
+    },
+    "opus:xhigh>haiku:medium": {
+      "mu": -0.443153674,
+      "sd": 0.6,
+      "sources": 2
+    },
+    "opus:xhigh>haiku:high": {
+      "mu": 0.028119859,
+      "sd": 0.6,
+      "sources": 2
+    },
+    "opus:xhigh>haiku:xhigh": {
+      "mu": 0.570261091,
+      "sd": 0.6,
+      "sources": 2
+    },
+    "opus:xhigh>haiku:max": {
+      "mu": 1.955846186,
+      "sd": 1.355697822,
+      "sources": 2
+    },
+    "opus:xhigh>fable:low": {
+      "mu": -1.218960595,
+      "sd": 0.6,
+      "sources": 1
+    },
+    "opus:xhigh>fable:medium": {
+      "mu": -1.172323931,
+      "sd": 0.6,
+      "sources": 2
+    },
+    "opus:xhigh>fable:high": {
+      "mu": -0.696126822,
+      "sd": 0.6,
+      "sources": 1
+    },
+    "opus:xhigh>fable:xhigh": {
+      "mu": -0.332183924,
+      "sd": 0.6,
+      "sources": 1
+    },
+    "opus:xhigh>fable:max": {
+      "mu": -0.152169173,
+      "sd": 0.6,
+      "sources": 1
+    },
+    "sonnet:medium>opus:low": {
+      "mu": -0.169112031,
+      "sd": 0.6,
+      "sources": 3
+    },
+    "sonnet:medium>opus:medium": {
+      "mu": 0.556695286,
+      "sd": 0.6,
+      "sources": 3
+    },
+    "sonnet:medium>opus:high": {
+      "mu": 0.949391849,
+      "sd": 0.6,
+      "sources": 3
+    },
+    "sonnet:medium>opus:xhigh": {
+      "mu": 1.783225315,
+      "sd": 0.667908849,
+      "sources": 3
+    },
+    "sonnet:medium>opus:max": {
+      "mu": 2.587569826,
+      "sd": 1.026264423,
+      "sources": 2
+    },
+    "sonnet:medium>haiku:low": {
+      "mu": 0.348815451,
+      "sd": 0.6,
+      "sources": 2
+    },
+    "sonnet:medium>haiku:medium": {
+      "mu": 0.955255642,
+      "sd": 0.6,
+      "sources": 2
+    },
+    "sonnet:medium>haiku:high": {
+      "mu": 1.426529175,
+      "sd": 0.6,
+      "sources": 2
+    },
+    "sonnet:medium>haiku:xhigh": {
+      "mu": 1.968670407,
+      "sd": 0.6,
+      "sources": 2
+    },
+    "sonnet:medium>haiku:max": {
+      "mu": 3.354255502,
+      "sd": 1.416561141,
+      "sources": 2
+    },
+    "sonnet:medium>fable:low": {
+      "mu": 0.136411855,
+      "sd": 0.6,
+      "sources": 1
+    },
+    "sonnet:medium>fable:medium": {
+      "mu": 0.78179095,
+      "sd": 0.604108752,
+      "sources": 2
+    },
+    "sonnet:medium>fable:high": {
+      "mu": 0.659245629,
+      "sd": 0.6,
+      "sources": 1
+    },
+    "sonnet:medium>fable:xhigh": {
+      "mu": 1.023188527,
+      "sd": 0.6,
+      "sources": 1
+    },
+    "sonnet:medium>fable:max": {
+      "mu": 1.203203278,
+      "sd": 0.6,
+      "sources": 1
+    },
+    "sonnet:high>opus:low": {
+      "mu": -0.720625163,
+      "sd": 0.6,
+      "sources": 3
+    },
+    "sonnet:high>opus:medium": {
+      "mu": 0.005182154,
+      "sd": 0.6,
+      "sources": 3
+    },
+    "sonnet:high>opus:high": {
+      "mu": 0.397878716,
+      "sd": 0.6,
+      "sources": 3
+    },
+    "sonnet:high>opus:xhigh": {
+      "mu": 1.231712182,
+      "sd": 0.608667473,
+      "sources": 3
+    },
+    "sonnet:high>opus:max": {
+      "mu": 2.122259547,
+      "sd": 1.419199874,
+      "sources": 2
+    },
+    "sonnet:high>haiku:low": {
+      "mu": -0.116494828,
+      "sd": 0.850430206,
+      "sources": 2
+    },
+    "sonnet:high>haiku:medium": {
+      "mu": 0.489945363,
+      "sd": 0.6,
+      "sources": 2
+    },
+    "sonnet:high>haiku:high": {
+      "mu": 0.961218896,
+      "sd": 0.6,
+      "sources": 2
+    },
+    "sonnet:high>haiku:xhigh": {
+      "mu": 1.503360128,
+      "sd": 0.6,
+      "sources": 2
+    },
+    "sonnet:high>haiku:max": {
+      "mu": 2.888945223,
+      "sd": 1.809496592,
+      "sources": 2
+    },
+    "sonnet:high>fable:low": {
+      "mu": -0.606745746,
+      "sd": 0.6,
+      "sources": 1
+    },
+    "sonnet:high>fable:medium": {
+      "mu": 0.04825273,
+      "sd": 0.617712611,
+      "sources": 2
+    },
+    "sonnet:high>fable:high": {
+      "mu": -0.083911972,
+      "sd": 0.6,
+      "sources": 1
+    },
+    "sonnet:high>fable:xhigh": {
+      "mu": 0.280030926,
+      "sd": 0.6,
+      "sources": 1
+    },
+    "sonnet:high>fable:max": {
+      "mu": 0.460045676,
+      "sd": 0.6,
+      "sources": 1
+    },
+    "sonnet:xhigh>opus:low": {
+      "mu": -2.121894858,
+      "sd": 0.6,
+      "sources": 1
+    },
+    "sonnet:xhigh>opus:medium": {
+      "mu": -1.205604126,
+      "sd": 0.6,
+      "sources": 1
+    },
+    "sonnet:xhigh>opus:high": {
+      "mu": -0.860423562,
+      "sd": 0.6,
+      "sources": 1
+    },
+    "sonnet:xhigh>opus:xhigh": {
+      "mu": -0.301633879,
+      "sd": 0.6,
+      "sources": 1
+    },
+    "sonnet:xhigh>opus:max": {
+      "mu": 0.204884964,
+      "sd": 0.6,
+      "sources": 1
+    },
+    "sonnet:xhigh>haiku:low": {
+      "mu": -1.631688521,
+      "sd": 0.6,
+      "sources": 1
+    },
+    "sonnet:xhigh>haiku:medium": {
+      "mu": -0.820758305,
+      "sd": 0.6,
+      "sources": 1
+    },
+    "sonnet:xhigh>haiku:high": {
+      "mu": -0.24539416,
+      "sd": 0.6,
+      "sources": 1
+    },
+    "sonnet:xhigh>haiku:xhigh": {
+      "mu": 0.200892942,
+      "sd": 0.6,
+      "sources": 1
+    },
+    "sonnet:xhigh>haiku:max": {
+      "mu": 0.695589184,
+      "sd": 0.6,
+      "sources": 1
+    },
+    "sonnet:xhigh>fable:low": {
+      "mu": -1.520594474,
+      "sd": 0.6,
+      "sources": 1
+    },
+    "sonnet:xhigh>fable:medium": {
+      "mu": -1.302384774,
+      "sd": 0.6,
+      "sources": 1
+    },
+    "sonnet:xhigh>fable:high": {
+      "mu": -0.9977607,
+      "sd": 0.6,
+      "sources": 1
+    },
+    "sonnet:xhigh>fable:xhigh": {
+      "mu": -0.633817803,
+      "sd": 0.6,
+      "sources": 1
+    },
+    "sonnet:xhigh>fable:max": {
+      "mu": -0.453803052,
+      "sd": 0.6,
+      "sources": 1
+    },
+    "haiku:medium>opus:low": {
+      "mu": -1.253729767,
+      "sd": 0.6,
+      "sources": 2
+    },
+    "haiku:medium>opus:medium": {
+      "mu": -0.602753161,
+      "sd": 0.6,
+      "sources": 2
+    },
+    "haiku:medium>opus:high": {
+      "mu": -0.26192676,
+      "sd": 0.6,
+      "sources": 2
+    },
+    "haiku:medium>opus:xhigh": {
+      "mu": 0.443153674,
+      "sd": 0.6,
+      "sources": 2
+    },
+    "haiku:medium>opus:max": {
+      "mu": 1.632314184,
+      "sd": 0.857962236,
+      "sources": 2
+    },
+    "haiku:medium>sonnet:low": {
+      "mu": -1.261131218,
+      "sd": 0.6,
+      "sources": 1
+    },
+    "haiku:medium>sonnet:medium": {
+      "mu": -0.955255642,
+      "sd": 0.6,
+      "sources": 2
+    },
+    "haiku:medium>sonnet:high": {
+      "mu": -0.489945363,
+      "sd": 0.6,
+      "sources": 2
+    },
+    "haiku:medium>sonnet:xhigh": {
+      "mu": 0.820758305,
+      "sd": 0.6,
+      "sources": 1
+    },
+    "haiku:medium>sonnet:max": {
+      "mu": 1.716796431,
+      "sd": 0.6,
+      "sources": 1
+    },
+    "haiku:medium>fable:low": {
+      "mu": -0.699836169,
+      "sd": 0.6,
+      "sources": 1
+    },
+    "haiku:medium>fable:medium": {
+      "mu": -0.481626469,
+      "sd": 0.6,
+      "sources": 1
+    },
+    "haiku:medium>fable:high": {
+      "mu": -0.177002395,
+      "sd": 0.6,
+      "sources": 1
+    },
+    "haiku:medium>fable:xhigh": {
+      "mu": 0.186940503,
+      "sd": 0.6,
+      "sources": 1
+    },
+    "haiku:medium>fable:max": {
+      "mu": 0.366955253,
+      "sd": 0.6,
+      "sources": 1
+    },
+    "haiku:high>opus:low": {
+      "mu": -1.7250033,
+      "sd": 0.6,
+      "sources": 2
+    },
+    "haiku:high>opus:medium": {
+      "mu": -1.074026694,
+      "sd": 0.6,
+      "sources": 2
+    },
+    "haiku:high>opus:high": {
+      "mu": -0.733200294,
+      "sd": 0.6,
+      "sources": 2
+    },
+    "haiku:high>opus:xhigh": {
+      "mu": -0.028119859,
+      "sd": 0.6,
+      "sources": 2
+    },
+    "haiku:high>opus:max": {
+      "mu": 1.16104065,
+      "sd": 1.00516859,
+      "sources": 2
+    },
+    "haiku:high>sonnet:low": {
+      "mu": -1.836495363,
+      "sd": 0.6,
+      "sources": 1
+    },
+    "haiku:high>sonnet:medium": {
+      "mu": -1.426529175,
+      "sd": 0.6,
+      "sources": 2
+    },
+    "haiku:high>sonnet:high": {
+      "mu": -0.961218896,
+      "sd": 0.6,
+      "sources": 2
+    },
+    "haiku:high>sonnet:xhigh": {
+      "mu": 0.24539416,
+      "sd": 0.6,
+      "sources": 1
+    },
+    "haiku:high>sonnet:max": {
+      "mu": 1.141432286,
+      "sd": 0.6,
+      "sources": 1
+    },
+    "haiku:high>fable:low": {
+      "mu": -1.275200314,
+      "sd": 0.6,
+      "sources": 1
+    },
+    "haiku:high>fable:medium": {
+      "mu": -1.056990614,
+      "sd": 0.6,
+      "sources": 1
+    },
+    "haiku:high>fable:high": {
+      "mu": -0.75236654,
+      "sd": 0.6,
+      "sources": 1
+    },
+    "haiku:high>fable:xhigh": {
+      "mu": -0.388423642,
+      "sd": 0.6,
+      "sources": 1
+    },
+    "haiku:high>fable:max": {
+      "mu": -0.208408892,
+      "sd": 0.6,
+      "sources": 1
+    },
+    "haiku:xhigh>opus:low": {
+      "mu": -2.267144532,
+      "sd": 0.6,
+      "sources": 2
+    },
+    "haiku:xhigh>opus:medium": {
+      "mu": -1.616167926,
+      "sd": 0.6,
+      "sources": 2
+    },
+    "haiku:xhigh>opus:high": {
+      "mu": -1.275341525,
+      "sd": 0.6,
+      "sources": 2
+    },
+    "haiku:xhigh>opus:xhigh": {
+      "mu": -0.570261091,
+      "sd": 0.6,
+      "sources": 2
+    },
+    "haiku:xhigh>opus:max": {
+      "mu": 0.618899419,
+      "sd": 0.869610381,
+      "sources": 2
+    },
+    "haiku:xhigh>sonnet:low": {
+      "mu": -2.282782466,
+      "sd": 0.6,
+      "sources": 1
+    },
+    "haiku:xhigh>sonnet:medium": {
+      "mu": -1.968670407,
+      "sd": 0.6,
+      "sources": 2
+    },
+    "haiku:xhigh>sonnet:high": {
+      "mu": -1.503360128,
+      "sd": 0.6,
+      "sources": 2
+    },
+    "haiku:xhigh>sonnet:xhigh": {
+      "mu": -0.200892942,
+      "sd": 0.6,
+      "sources": 1
+    },
+    "haiku:xhigh>sonnet:max": {
+      "mu": 0.695145183,
+      "sd": 0.6,
+      "sources": 1
+    },
+    "haiku:xhigh>fable:low": {
+      "mu": -1.721487416,
+      "sd": 0.6,
+      "sources": 1
+    },
+    "haiku:xhigh>fable:medium": {
+      "mu": -1.503277717,
+      "sd": 0.6,
+      "sources": 1
+    },
+    "haiku:xhigh>fable:high": {
+      "mu": -1.198653643,
+      "sd": 0.6,
+      "sources": 1
+    },
+    "haiku:xhigh>fable:xhigh": {
+      "mu": -0.834710745,
+      "sd": 0.6,
+      "sources": 1
+    },
+    "haiku:xhigh>fable:max": {
+      "mu": -0.654695994,
+      "sd": 0.6,
+      "sources": 1
+    }
+  }
+}

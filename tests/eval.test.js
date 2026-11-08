@@ -2,6 +2,9 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { sha256Hex } from '../src/fingerprint.mjs'
 import { recordPath } from '../src/record.mjs'
+import { readFileSync } from 'node:fs'
+import { loadPrices } from '../src/prices.mjs'
+import { agentPieces, finishedRuns, hideFinished, noteMainStep, noteMeterReading, noteSaved, noteStored, noteUsage } from '../src/eval.mjs'
 import {
   activeRuns,
   bandText,
@@ -32,8 +35,8 @@ import {
 const SCRIPT = "await agent('x', { label: 'synth: research legal', model: 'opus', effort: 'xhigh' })\n"
 const TU = 'toolu_01A'
 const RUN = 'wf_abc123def'
-const OPUS = 'claude-opus-4-7'
-const SONNET = 'claude-sonnet-4-6'
+const OPUS = 'claude-opus-5-5'
+const SONNET = 'claude-sonnet-5-5'
 
 const stage = (index, label, model, effort) => ({ index, line: index + 1, label, class: label.split(':')[0], model, effort, inFanout: false, bigFanout: false, verdict: false })
 const gate = (over = {}) => ({
@@ -54,8 +57,8 @@ const gate = (over = {}) => ({
 
 const UNREAD = Symbol('unread')
 
-function launched({ record = gate(), fingerprint = sha256Hex(SCRIPT), name = 'research' } = {}) {
-  let s = createState()
+function launched({ record = gate(), fingerprint = sha256Hex(SCRIPT), name = 'research', from = createState() } = {}) {
+  let s = from
   s = noteLaunch(s, { toolUseId: TU, fingerprint, at: 1000 })
   if (record !== UNREAD) s = noteGateRecord(s, TU, record)
   return noteLaunchResult(s, { toolUseId: TU, isError: false, taskId: 'w1', runId: RUN, name, at: 1001 })
@@ -579,4 +582,162 @@ test('runView explains a red agent and a red run', () => {
   assert.equal(v.checks.map((c) => c.title).join('|'), 'Approved by the gate|Every agent matches the plan|Every request as approved|At most 3 Opus at once')
   assert.equal(v.agents[0].reason, 'no approved plan to compare against')
   assert.equal(v.agents[0].approved, null)
+})
+
+const HAIKU = 'claude-haiku-5-5'
+const PRICES = loadPrices(JSON.parse(readFileSync(new URL('../data/prices.json', import.meta.url), 'utf8')))
+const use = (model, input, output, cacheRead, cacheWrite) => ({ input_tokens: input, output_tokens: output, cache_read_input_tokens: cacheRead, cache_creation_input_tokens: cacheWrite, model })
+const usage = (s, n, effort, u, prices) => noteUsage(s, { agentId: `a${n}`, effort, usage: u, prices })
+const lastRun = (s) => Object.values(s.runs)[0]
+
+test('usage is summed per agent and configuration', () => {
+  let s = compliant()
+  s = usage(s, 2, 'high', use(SONNET, 10, 20, 30, 40))
+  s = usage(s, 2, 'high', use(SONNET, 1, 2, 3, 4))
+  s = usage(s, 2, 'xhigh', use(SONNET, 5, 5, 5, 5))
+  const u = lastRun(s).agents[1].usage
+  assert.deepEqual(Object.keys(u).sort(), ['sonnet:high', 'sonnet:xhigh'])
+  assert.deepEqual(u['sonnet:high'], { family: 'sonnet', effort: 'high', input: 11, output: 22, cacheRead: 33, cacheWrite: 44, requests: 2 })
+  assert.deepEqual(lastRun(s).agents[0].usage, {})
+})
+
+test('a request with no response or an unknown model is handled', () => {
+  let s = compliant()
+  assert.equal(noteUsage(s, { agentId: 'a2', effort: 'high', usage: null }), s)
+  s = usage(s, 2, 'high', use('claude-mythos-5-1', 1, 1, 1, 1))
+  s = noteUsage(s, { agentId: 'a2', effort: null, usage: { input_tokens: 3, model: SONNET } })
+  const u = lastRun(s).agents[1].usage
+  assert.deepEqual(Object.keys(u).sort(), ['?:high', 'sonnet:?'])
+  assert.equal(u['?:high'].family, null)
+  assert.equal(u['sonnet:?'].effort, null)
+  assert.equal(u['sonnet:?'].output, 0)
+})
+
+test('early usage is kept when the spawn arrives later', () => {
+  let s = launched()
+  s = usage(s, 1, 'high', use(SONNET, 7, 8, 9, 10))
+  assert.equal(s.early.a1.usage['sonnet:high'].output, 8)
+  s = spawn(s, 1, 'investigate: map', SONNET)
+  assert.deepEqual(s.early, {})
+  assert.equal(lastRun(s).agents[0].usage['sonnet:high'].input, 7)
+  s = usage(s, 1, 'high', use(SONNET, 1, 1, 1, 1))
+  assert.equal(lastRun(s).agents[0].usage['sonnet:high'].input, 8)
+})
+
+test('baseline effort is frozen at launch', () => {
+  let s = noteMainStep(createState(), { model: OPUS, effort: 'high' })
+  s = launched({ from: s })
+  s = noteMainStep(s, { model: OPUS, effort: 'xhigh' })
+  s = spawn(s, 1, 'investigate: map', SONNET)
+  assert.deepEqual(lastRun(s).baseline, { model: OPUS, effort: 'high' })
+  assert.deepEqual(s.main, { model: OPUS, effort: 'xhigh' })
+})
+
+test('parentModel sets the baseline model once, on the first spawn', () => {
+  let s = launched()
+  assert.deepEqual(lastRun(s).baseline, { model: null, effort: null })
+  s = spawn(s, 1, 'investigate: map', SONNET, { parentModel: OPUS })
+  assert.equal(lastRun(s).baseline.model, OPUS)
+  s = spawn(s, 2, 'investigate: map', SONNET, { parentModel: SONNET })
+  assert.equal(lastRun(s).baseline.model, OPUS)
+})
+
+test('main-loop usage reaches the meter but no agent', () => {
+  let s = compliant()
+  s = noteUsage(s, { effort: 'high', usage: use(OPUS, 100, 50, 10, 5) })
+  assert.deepEqual(s.meter.acc.five_hour.opus, { input: 100, output: 50, cacheRead: 10, cacheWrite: 5 })
+  assert.ok(lastRun(s).agents.every((a) => Object.keys(a.usage).length === 0))
+  assert.deepEqual(s.early, {})
+  s = usage(s, 2, 'high', use(SONNET, 1, 1, 1, 1))
+  assert.equal(s.meter.acc.seven_day.sonnet.input, 1)
+})
+
+test('a meter reading is kept in the eval state', () => {
+  const s = noteMeterReading(createState(), [{ kind: 'five_hour', percentUsed: 4, resetsAt: 'r' }], 5, PRICES)
+  assert.equal(s.meter.subscription, true)
+  assert.equal(s.meter.last.five_hour.pct, 4)
+})
+
+test('haiku requests above the long-prompt threshold are kept apart', () => {
+  let s = compliant()
+  s = usage(s, 2, 'xhigh', use(HAIKU, 50000, 10, 0, 0), PRICES)
+  s = usage(s, 2, 'xhigh', use(HAIKU, 120000, 10, 0, 0), PRICES)
+  const pieces = agentPieces(lastRun(s)).find((a) => a.agentId === 'a2').pieces
+  assert.deepEqual(pieces.map((p) => [p.family, p.effort, p.input, p.long === true]).sort(), [
+    ['haiku', 'xhigh', 120000, true],
+    ['haiku', 'xhigh', 50000, false]
+  ])
+})
+
+test('agentPieces lists every agent, with no pieces for an agent that sent nothing', () => {
+  let s = usage(compliant(), 2, 'high', use(SONNET, 1, 2, 3, 4))
+  const all = agentPieces(lastRun(s))
+  assert.deepEqual(all.map((a) => a.agentId), ['a1', 'a2'])
+  assert.deepEqual(all[0].pieces, [])
+  assert.deepEqual(all[1].pieces, [{ family: 'sonnet', effort: 'high', input: 1, output: 2, cacheRead: 3, cacheWrite: 4 }])
+})
+
+function twoEnded() {
+  let s = createState()
+  const add = (n, name) => {
+    s = noteLaunch(s, { toolUseId: `toolu_0${n}`, fingerprint: 'f', at: 100 * n })
+    s = noteLaunchResult(s, { toolUseId: `toolu_0${n}`, taskId: `w${n}`, runId: `wf_run${n}`, name, at: 100 * n })
+  }
+  add(1, 'one')
+  add(2, 'two')
+  add(3, 'three')
+  s = noteRunEnd(s, { toolUseId: 'toolu_01', status: 'completed', at: 5000 })
+  s = noteRunEnd(s, { toolUseId: 'toolu_02', status: 'failed', at: 9000 })
+  return endAllRuns(s, 'cleared', 12000)
+}
+
+test('finished runs are listed newest first and cleared runs are not', () => {
+  const s = twoEnded()
+  assert.deepEqual(finishedRuns(s).map((r) => r.name), ['two', 'one'])
+  assert.deepEqual(activeRuns(s), [])
+})
+
+test('runView carries the saved estimate and the clock a run ended', () => {
+  let s = twoEnded()
+  assert.equal(runView(s.runs.toolu_01).saved, null)
+  assert.match(runView(s.runs.toolu_01).endedClock, /^\d\d:\d\d$/)
+  const d = new Date(5000)
+  assert.equal(runView(s.runs.toolu_01).endedClock, `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`)
+  s = noteSaved(s, 'toolu_01', { status: 'none' })
+  assert.deepEqual(runView(s.runs.toolu_01).saved, { status: 'none' })
+  assert.equal(noteSaved(s, 'nope', {}), s)
+  assert.equal(runView(only(compliant())).endedClock, null)
+})
+
+test('the eval record carries the savings block', () => {
+  let s = noteMainStep(createState(), { model: OPUS, effort: 'high' })
+  s = launched({ from: s })
+  s = spawn(s, 1, 'investigate: map', SONNET, { parentModel: OPUS })
+  s = usage(s, 1, 'high', use(SONNET, 1, 2, 3, 4))
+  s = noteSaved(s, TU, { status: 'estimated' })
+  const rec = evalRecord(s, lastRun(s))
+  assert.deepEqual(rec.savings.baseline, { model: OPUS, effort: 'high' })
+  assert.deepEqual(rec.savings.saved, { status: 'estimated' })
+  assert.equal(typeof rec.savings.seed, 'number')
+  assert.deepEqual(rec.savings.usage, [{ agent_id: 'a1', usage: [{ family: 'sonnet', effort: 'high', input: 1, output: 2, cacheRead: 3, cacheWrite: 4, requests: 1 }] }])
+})
+
+test('stored meter values are merged into the eval state', () => {
+  const value = { v: 1, five_hour: [{ d: 1, u: 1, c: 0, at: 5 }], seven_day: [] }
+  const s = noteStored(createState(), { 'meter:other': value, 'meter:mine': value }, 'meter:mine')
+  assert.equal(s.meter.others.five_hour.length, 1)
+  assert.equal(s.meter.mine.five_hour.length, 1)
+})
+
+test('usage of an unpriced model reaches the meter under an unknown family', () => {
+  const s = noteUsage(compliant(), { effort: 'high', usage: use('claude-mythos-5-1', 1, 2, 3, 4) })
+  assert.deepEqual(Object.keys(s.meter.acc.five_hour), ['?'])
+})
+
+test('a clear hides the finished runs too', () => {
+  const s = hideFinished(twoEnded())
+  assert.deepEqual(finishedRuns(s), [])
+  assert.equal(finishedRuns(twoEnded()).length, 2)
+  const live = compliant()
+  assert.equal(hideFinished(live), live)
 })
