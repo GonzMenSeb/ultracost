@@ -1,3 +1,7 @@
+import { priceFamily } from './prices.mjs'
+import { createMeter, noteRequest, noteReading } from './meter.mjs'
+import { seedOf } from './stats.mjs'
+
 export const EVAL_VERSION = 1
 export const DEFAULT_MAX_OPUS = 3
 
@@ -46,7 +50,7 @@ export function labelMatches(pattern, label) {
 }
 
 export function createState() {
-  return { v: EVAL_VERSION, limit: DEFAULT_MAX_OPUS, launches: {}, runs: {}, early: {}, ui: { run: null } }
+  return { v: EVAL_VERSION, limit: DEFAULT_MAX_OPUS, launches: {}, runs: {}, early: {}, ui: { run: null }, main: { model: null, effort: null }, meter: createMeter() }
 }
 
 export function noteLimit(state, limit) {
@@ -75,12 +79,12 @@ function prune(state) {
   return runs === state.runs && launches === state.launches ? state : { ...state, runs, launches }
 }
 
-const blankLaunch = (toolUseId, at) => ({ toolUseId, fingerprint: null, at, refused: false, pending: true, gate: null, gateTries: 0 })
+const blankLaunch = (toolUseId, at, main) => ({ toolUseId, fingerprint: null, at, refused: false, pending: true, gate: null, gateTries: 0, baseline: { ...main } })
 
 export function noteLaunch(state, { toolUseId, fingerprint, at = 0 }) {
   if (!isId(toolUseId)) return state
   const prev = get(state.launches, toolUseId)
-  const launch = prev ? { ...prev, fingerprint: text(fingerprint) || prev.fingerprint } : { ...blankLaunch(toolUseId, at), fingerprint: text(fingerprint) }
+  const launch = prev ? { ...prev, fingerprint: text(fingerprint) || prev.fingerprint } : { ...blankLaunch(toolUseId, at, state.main), fingerprint: text(fingerprint) }
   return prune({ ...state, launches: { ...state.launches, [toolUseId]: launch } })
 }
 
@@ -99,13 +103,15 @@ function newRun(state, key, launch, at) {
     gate: launch ? launch.gate : null,
     agents: [],
     peakOpus: 0,
-    limit: state.limit
+    limit: state.limit,
+    baseline: { ...((launch && launch.baseline) || state.main) },
+    saved: null
   }
 }
 
 export function noteLaunchResult(state, { toolUseId, isError = false, taskId, runId, name, at = 0 }) {
   if (!isId(toolUseId)) return state
-  const known = get(state.launches, toolUseId) || blankLaunch(toolUseId, at)
+  const known = get(state.launches, toolUseId) || blankLaunch(toolUseId, at, state.main)
   if (isError) {
     const runs = { ...state.runs }
     const run = get(runs, toolUseId)
@@ -212,7 +218,7 @@ function runForSpawn(state, { toolUseId, runId }, at) {
   return orphan && isId(toolUseId) ? { ...orphan, toolUseId } : orphan
 }
 
-export function noteSpawn(state, { toolUseId, runId, agentId, label, askedModel, resolvedModel, at = 0 }) {
+export function noteSpawn(state, { toolUseId, runId, agentId, label, askedModel, resolvedModel, parentModel, at = 0 }) {
   if (!isId(agentId)) return state
   const run = runForSpawn(state, { toolUseId, runId }, at)
   if (!run) return state
@@ -224,14 +230,16 @@ export function noteSpawn(state, { toolUseId, runId, agentId, label, askedModel,
     ranModel: text(resolvedModel),
     at,
     done: Boolean(early && early.done),
-    sent: early ? early.sent : []
+    sent: early ? early.sent : [],
+    usage: (early && early.usage) || {}
   }
   const agents = run.agents.some((a) => a.agentId === agentId)
     ? run.agents.map((a) => (a.agentId === agentId ? { ...a, label: agent.label, askedModel: agent.askedModel, ranModel: agent.ranModel } : a))
     : [...run.agents, agent]
   const rest = { ...state.early }
   delete rest[agentId]
-  return setRun({ ...state, early: rest }, { ...run, agents, peakOpus: Math.max(run.peakOpus, opusRunning(agents)) })
+  const baseline = run.agents.length === 0 && text(parentModel) ? { ...run.baseline, model: parentModel } : run.baseline
+  return setRun({ ...state, early: rest }, { ...run, agents, baseline, peakOpus: Math.max(run.peakOpus, opusRunning(agents)) })
 }
 
 function locateAgent(state, agentId) {
@@ -246,6 +254,8 @@ export function runOfAgent(state, agentId) {
   const at = isId(agentId) ? locateAgent(state, agentId) : null
   return at ? at.run.key : null
 }
+
+const blankEarly = () => ({ sent: [], done: false, usage: {} })
 
 function setEarly(state, agentId, entry) {
   const early = { ...state.early, [agentId]: entry }
@@ -267,16 +277,68 @@ export function noteStep(state, { agentId, model, effort }) {
     const sent = add(at.run.agents[at.index].sent)
     return sent === at.run.agents[at.index].sent ? state : withAgent(state, at, (a) => ({ ...a, sent }))
   }
-  const entry = get(state.early, agentId) || { sent: [], done: false }
+  const entry = get(state.early, agentId) || blankEarly()
   const sent = add(entry.sent)
   return sent === entry.sent && hasOwn(state.early, agentId) ? state : setEarly(state, agentId, { ...entry, sent })
+}
+
+export function noteMainStep(state, { model, effort }) {
+  if (typeof model !== 'string') return state
+  const main = { model, effort: effortOf(effort) }
+  return state.main.model === main.model && state.main.effort === main.effort ? state : { ...state, main }
+}
+
+const count = (v) => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : 0)
+
+function addUsage(map, family, effort, tokens, long) {
+  const key = `${family || '?'}:${effort || '?'}${long ? ':long' : ''}`
+  const old = map[key] || { family, effort, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, requests: 0 }
+  const next = {
+    ...old,
+    input: old.input + tokens.input,
+    output: old.output + tokens.output,
+    cacheRead: old.cacheRead + tokens.cacheRead,
+    cacheWrite: old.cacheWrite + tokens.cacheWrite,
+    requests: old.requests + 1
+  }
+  if (long) next.long = true
+  return { ...map, [key]: next }
+}
+
+export function noteUsage(state, { agentId, effort, usage, prices }) {
+  if (usage === null || typeof usage !== 'object') return state
+  const tokens = {
+    input: count(usage.input_tokens),
+    output: count(usage.output_tokens),
+    cacheRead: count(usage.cache_read_input_tokens),
+    cacheWrite: count(usage.cache_creation_input_tokens)
+  }
+  const family = priceFamily(usage.model)
+  const next = { ...state, meter: noteRequest(state.meter, family, tokens) }
+  if (!isId(agentId)) return next
+  const row = family && prices ? prices.families[family] : undefined
+  const long = Boolean(row && row.longPrompt && tokens.input + tokens.cacheRead + tokens.cacheWrite > row.longPrompt.above)
+  const add = (map) => addUsage(map, family, effortOf(effort), tokens, long)
+  const at = locateAgent(next, agentId)
+  if (at) return withAgent(next, at, (a) => ({ ...a, usage: add(a.usage) }))
+  const entry = get(next.early, agentId) || blankEarly()
+  return setEarly(next, agentId, { ...entry, usage: add(entry.usage) })
+}
+
+export function noteMeterReading(state, rateLimits, at, prices) {
+  return { ...state, meter: noteReading(state.meter, rateLimits, at, prices) }
+}
+
+export function noteSaved(state, key, saved) {
+  const run = get(state.runs, key)
+  return run ? setRun(state, { ...run, saved }) : state
 }
 
 export function noteAgentDone(state, { agentId }) {
   if (!isId(agentId)) return state
   const at = locateAgent(state, agentId)
   if (at) return at.run.agents[at.index].done ? state : withAgent(state, at, (a) => ({ ...a, done: true }))
-  const entry = get(state.early, agentId) || { sent: [], done: false }
+  const entry = get(state.early, agentId) || blankEarly()
   return entry.done ? state : setEarly(state, agentId, { ...entry, done: true })
 }
 
@@ -377,6 +439,27 @@ export function activeRuns(state) {
     .sort((a, b) => a.at - b.at || (a.key < b.key ? -1 : 1))
 }
 
+export function finishedRuns(state) {
+  return runsOf(state)
+    .filter((r) => r.status !== 'running' && r.status !== 'cleared')
+    .sort((a, b) => (b.endedAt || 0) - (a.endedAt || 0) || (a.key < b.key ? -1 : 1))
+}
+
+export function agentPieces(run) {
+  return run.agents.map((a) => ({
+    agentId: a.agentId,
+    pieces: Object.values(a.usage || {}).map(({ family, effort, input, output, cacheRead, cacheWrite, long }) => ({
+      family,
+      effort,
+      input,
+      output,
+      cacheRead,
+      cacheWrite,
+      ...(long ? { long: true } : {})
+    }))
+  }))
+}
+
 export function bandView(state) {
   const live = activeRuns(state)
   if (live.length === 0) return null
@@ -410,6 +493,11 @@ const CHECK_DETAILS = {
     return `${n} request${n === 1 ? '' : 's'}`
   },
   opus: (run) => `peak ${run.peakOpus}`
+}
+
+const hhmm = (ms) => {
+  const d = new Date(ms)
+  return [d.getHours(), d.getMinutes()].map((n) => String(n).padStart(2, '0')).join(':')
 }
 
 const pairText = (model, effort) => `${model || '?'} · ${effort || '—'}`
@@ -454,6 +542,8 @@ export function runView(run) {
     shortId: id.replace(/^wf_/, '').slice(0, 6),
     status: run.status,
     counts,
+    saved: run.saved || null,
+    endedClock: run.endedAt ? hhmm(run.endedAt) : null,
     countsText: [`${counts.opus} opus`, `${counts.sonnet} sonnet`, ...(counts.haiku > 0 ? [`${counts.haiku} haiku`] : [])].join(' · '),
     checks: checks.map((c) => ({ ...c, title: CHECK_TITLES[c.id](run), detail: c.ok ? CHECK_DETAILS[c.id](run) : null })),
     agents: run.agents.map((a) => agentView(plan, a))
@@ -482,6 +572,12 @@ export function evalRecord(state, run) {
     peakOpus: run.peakOpus,
     checks: view.checks.map(({ id, ok, reason }) => ({ id, ok, reason })),
     failures: unique([...view.checks.filter((c) => !c.ok).map((c) => c.reason), ...view.agents.filter((a) => !a.ok).map((a) => a.reason)]),
+    savings: {
+      baseline: run.baseline,
+      seed: seedOf(run.key),
+      saved: run.saved || null,
+      usage: run.agents.map((a) => ({ agent_id: a.agentId, usage: Object.values(a.usage || {}) }))
+    },
     agents: run.agents.map((a, i) => ({
       agent_id: a.agentId,
       label: a.label,

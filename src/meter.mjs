@@ -54,7 +54,7 @@ export function noteReading(meter, rateLimits, at, prices) {
   for (const kind of KINDS) {
     const entry = rateLimits.find((r) => r && r.kind === kind)
     if (!entry || !finite(entry.percentUsed)) continue
-    const reading = { pct: entry.percentUsed, resetsAt: entry.resetsAt }
+    const reading = { pct: entry.percentUsed, resetsAt: entry.resetsAt ?? null }
     const last = meter.last[kind]
     next.last[kind] = reading
     if (!last || last.resetsAt !== reading.resetsAt || reading.pct < last.pct) {

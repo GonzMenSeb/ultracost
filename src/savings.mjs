@@ -82,6 +82,7 @@ function emptySaved(base) {
     agents: base.agents.map((a) => ({ agentId: a.agentId, dollars: null, five_hour: null })),
     coverage: base.coverage,
     sources: { measuredPairs: 0, chained: [], priors: [] },
+    transitions: [],
   }
 }
 
@@ -257,5 +258,9 @@ export function estimateRun({ agents, baseline, ratios, prices, meter, seed, dra
     }),
     coverage: base.coverage,
     sources,
+    transitions: keys.map((from) => {
+      const { source, via, pairs, tau, output, fresh, read } = transitions.get(from)
+      return { from, to, source, ...(via ? { via } : {}), pairs, tau, output, fresh, read }
+    }),
   }
 }

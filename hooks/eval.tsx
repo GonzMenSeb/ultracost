@@ -31,7 +31,7 @@ const PANE = 'tierguard'
 const TITLE = 'tierguard-eval'
 const KEPT = 20
 
-const ev = atom({ plugin: 'tierguard', key: 'eval' } as const, createState() as EvalState, { shape: 'eval-1' })
+const ev = atom({ plugin: 'tierguard', key: 'eval' } as const, createState() as EvalState, { shape: 'eval-2' })
 
 type Ids = { toolUseId: string; runId: string }
 type Notice = { toolUseId: string | null | undefined; taskId: string | null | undefined; status: string }

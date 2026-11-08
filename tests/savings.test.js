@@ -125,6 +125,16 @@ test('a fable session falls back to the published prior', () => {
   assert.equal(ratioFor(ratios, 'sonnet:high', 'opus:high').source, 'measured')
 })
 
+test('transitions record each source and ratio', () => {
+  const [t] = run().transitions
+  assert.equal(t.from, 'sonnet:high')
+  assert.equal(t.to, 'opus:high')
+  assert.equal(t.source, 'measured')
+  assert.equal(t.pairs, 4)
+  assert.ok(Math.abs(Math.exp(t.read.mu) - 2.29) < 0.01)
+  assert.deepEqual(run({ baseline: null }).transitions, [])
+})
+
 test('configOf is null unless the family is priced and the effort is a label', () => {
   assert.equal(configOf('opus', 'high'), 'opus:high')
   assert.equal(configOf('opus', 16000), null)
