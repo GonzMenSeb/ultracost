@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { createMeter, noteRequest, noteReading, intervalsOf, mergeStored, storedValue } from '../src/meter.mjs'
+import { createMeter, noteRequest, noteReading, intervalsOf, mergeStored, staleKeys, storedValue } from '../src/meter.mjs'
 import { loadPrices } from '../src/prices.mjs'
 
 const prices = loadPrices(JSON.parse(readFileSync(new URL('../data/prices.json', import.meta.url), 'utf8')))
@@ -122,4 +122,33 @@ test('the same interval stored under two session keys counts once', () => {
   let m = mergeStored(createMeter(), { 'meter:a': same, 'meter:b': same }, 'meter:own')
   m = { ...m, mine: { five_hour: [iv(10)], seven_day: [] } }
   assert.deepEqual(intervalsOf(m, 'five_hour', SOON).map((i) => i.at), [11, 10])
+})
+
+test('a request on an unpriced model voids the interval', () => {
+  let m = noteReading(createMeter(), limits(10), 1, prices)
+  m = noteRequest(noteRequest(m, 'sonnet', each), '?', each)
+  m = noteReading(m, limits(10.5), 2, prices)
+  assert.deepEqual(m.mine.five_hour, [])
+  assert.deepEqual(m.acc.five_hour, {})
+  assert.equal(m.last.five_hour.pct, 10.5)
+})
+
+test('merging at a given time drops what is older than 30 days from this session and the others', () => {
+  const old = { v: 1, five_hour: [iv(NOW - 31 * DAY), iv(NOW - 1 * DAY)], seven_day: [] }
+  const m = mergeStored(createMeter(), { 'meter:own': old, 'meter:a': old }, 'meter:own', NOW)
+  assert.deepEqual(m.mine.five_hour, [iv(NOW - 1 * DAY)])
+  assert.deepEqual(m.others.five_hour, [iv(NOW - 1 * DAY)])
+})
+
+test('a stored key with nothing newer than 30 days is stale, this session never is', () => {
+  const value = (at) => ({ v: 1, five_hour: [iv(at)], seven_day: [] })
+  const stored = {
+    'meter:fresh': value(NOW - DAY),
+    'meter:old': value(NOW - 40 * DAY),
+    'meter:empty': { v: 1, five_hour: [], seven_day: [] },
+    'meter:junk': 'x',
+    'meter:own': value(NOW - 40 * DAY),
+    'other:key': value(NOW - 40 * DAY),
+  }
+  assert.deepEqual(staleKeys(stored, 'meter:own', NOW).sort(), ['meter:empty', 'meter:junk', 'meter:old'])
 })

@@ -124,6 +124,7 @@ export type EvalRun = {
   limit: number
   baseline: EvalBaseline
   saved: Saved | null
+  hidden?: boolean
 }
 
 export type EvalAgentView = {

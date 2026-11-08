@@ -314,7 +314,7 @@ export function noteUsage(state, { agentId, effort, usage, prices }) {
     cacheWrite: count(usage.cache_creation_input_tokens)
   }
   const family = priceFamily(usage.model)
-  const next = { ...state, meter: noteRequest(state.meter, family, tokens) }
+  const next = { ...state, meter: noteRequest(state.meter, family || '?', tokens) }
   if (!isId(agentId)) return next
   const row = family && prices ? prices.families[family] : undefined
   const long = Boolean(row && row.longPrompt && tokens.input + tokens.cacheRead + tokens.cacheWrite > row.longPrompt.above)
@@ -329,8 +329,13 @@ export function noteMeterReading(state, rateLimits, at, prices) {
   return { ...state, meter: noteReading(state.meter, rateLimits, at, prices) }
 }
 
-export function noteStored(state, stored, sessionKey) {
-  return { ...state, meter: mergeStored(state.meter, stored, sessionKey) }
+export function noteStored(state, stored, sessionKey, now) {
+  return { ...state, meter: mergeStored(state.meter, stored, sessionKey, now) }
+}
+
+export function hideFinished(state) {
+  const finished = runsOf(state).filter((r) => r.status !== 'running' && !r.hidden)
+  return finished.length === 0 ? state : finished.reduce((s, r) => setRun(s, { ...r, hidden: true }), state)
 }
 
 export function noteSaved(state, key, saved) {
@@ -445,7 +450,7 @@ export function activeRuns(state) {
 
 export function finishedRuns(state) {
   return runsOf(state)
-    .filter((r) => r.status !== 'running' && r.status !== 'cleared')
+    .filter((r) => r.status !== 'running' && r.status !== 'cleared' && !r.hidden)
     .sort((a, b) => (b.endedAt || 0) - (a.endedAt || 0) || (a.key < b.key ? -1 : 1))
 }
 

@@ -46,6 +46,12 @@ export function ratioFor(ratios, from, to) {
     const bucket = { mu: prior.mu, sigma: prior.sd }
     return { source: 'prior', output: bucket, fresh: bucket, read: bucket, agentSd: { ...ratios.pooledAgentSd }, tau: 0, pairs: 0 }
   }
+  const [fromFamily, fromEffort] = from.split(':')
+  const step = fromFamily === family ? ratios.steps[family]?.[`${fromEffort}>${effort}`] : null
+  if (step) {
+    const bucket = { mu: step.mu, sigma: step.sd }
+    return { source: 'prior', output: bucket, fresh: bucket, read: bucket, agentSd: { ...ratios.pooledAgentSd }, tau: 0, pairs: 0 }
+  }
   return null
 }
 
@@ -238,7 +244,7 @@ export function estimateRun({ agents, baseline, ratios, prices, meter, seed, dra
     : null
   const byId = new Map(used.map((a, i) => [a.agentId, i]))
   return {
-    status: allIdentical ? 'none' : 'estimated',
+    status: allIdentical && base.coverage.unpriced === 0 && noRatio.size === 0 ? 'none' : 'estimated',
     why: null,
     running,
     subscription: base.subscription,

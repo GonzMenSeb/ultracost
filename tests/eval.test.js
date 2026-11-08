@@ -4,7 +4,7 @@ import { sha256Hex } from '../src/fingerprint.mjs'
 import { recordPath } from '../src/record.mjs'
 import { readFileSync } from 'node:fs'
 import { loadPrices } from '../src/prices.mjs'
-import { agentPieces, finishedRuns, noteMainStep, noteMeterReading, noteSaved, noteStored, noteUsage } from '../src/eval.mjs'
+import { agentPieces, finishedRuns, hideFinished, noteMainStep, noteMeterReading, noteSaved, noteStored, noteUsage } from '../src/eval.mjs'
 import {
   activeRuns,
   bandText,
@@ -35,8 +35,8 @@ import {
 const SCRIPT = "await agent('x', { label: 'synth: research legal', model: 'opus', effort: 'xhigh' })\n"
 const TU = 'toolu_01A'
 const RUN = 'wf_abc123def'
-const OPUS = 'claude-opus-4-7'
-const SONNET = 'claude-sonnet-4-6'
+const OPUS = 'claude-opus-5-5'
+const SONNET = 'claude-sonnet-5-5'
 
 const stage = (index, label, model, effort) => ({ index, line: index + 1, label, class: label.split(':')[0], model, effort, inFanout: false, bigFanout: false, verdict: false })
 const gate = (over = {}) => ({
@@ -584,7 +584,7 @@ test('runView explains a red agent and a red run', () => {
   assert.equal(v.agents[0].approved, null)
 })
 
-const HAIKU = 'claude-haiku-4-5'
+const HAIKU = 'claude-haiku-5-5'
 const PRICES = loadPrices(JSON.parse(readFileSync(new URL('../data/prices.json', import.meta.url), 'utf8')))
 const use = (model, input, output, cacheRead, cacheWrite) => ({ input_tokens: input, output_tokens: output, cache_read_input_tokens: cacheRead, cache_creation_input_tokens: cacheWrite, model })
 const usage = (s, n, effort, u, prices) => noteUsage(s, { agentId: `a${n}`, effort, usage: u, prices })
@@ -727,4 +727,17 @@ test('stored meter values are merged into the eval state', () => {
   const s = noteStored(createState(), { 'meter:other': value, 'meter:mine': value }, 'meter:mine')
   assert.equal(s.meter.others.five_hour.length, 1)
   assert.equal(s.meter.mine.five_hour.length, 1)
+})
+
+test('usage of an unpriced model reaches the meter under an unknown family', () => {
+  const s = noteUsage(compliant(), { effort: 'high', usage: use('claude-mythos-5-1', 1, 2, 3, 4) })
+  assert.deepEqual(Object.keys(s.meter.acc.five_hour), ['?'])
+})
+
+test('a clear hides the finished runs too', () => {
+  const s = hideFinished(twoEnded())
+  assert.deepEqual(finishedRuns(s), [])
+  assert.equal(finishedRuns(twoEnded()).length, 2)
+  const live = compliant()
+  assert.equal(hideFinished(live), live)
 })

@@ -15,6 +15,7 @@ import {
   evalRecord,
   finishedRuns,
   gateWanted,
+  hideFinished,
   noteAgentDone,
   noteGateRecord,
   noteLaunch,
@@ -33,7 +34,7 @@ import {
   runOfAgent,
   runView
 } from '../src/eval.mjs'
-import { intervalsOf, storedValue } from '../src/meter.mjs'
+import { intervalsOf, staleKeys, storedValue } from '../src/meter.mjs'
 import { loadPrices, priceFamily } from '../src/prices.mjs'
 import { agentColumn, listCell, listHeader, savedBlock, toastText } from '../src/savedText.mjs'
 import { estimateRun } from '../src/savings.mjs'
@@ -63,8 +64,8 @@ const MODEL_COLORS: Record<string, string> = { opus: '#c084fc', sonnet: '#60a5fa
 const modelColor = (model: string | null) => (model && MODEL_COLORS[model]) || undefined
 
 
-const lineOf = (Text: any) => (line: Segment[]) => (
-  <Text wrap="truncate-end">
+const lineOf = (Text: any, wrap: 'truncate-end' | 'wrap' = 'truncate-end') => (line: Segment[]) => (
+  <Text wrap={wrap}>
     {line.map(g => (
       <Text weight={g.style === 'bold' ? 'bold' : undefined} dimColor={g.style === 'dim' ? true : undefined} color={MODEL_COLORS[g.style]}>
         {g.text}
@@ -139,7 +140,12 @@ async function loadMeter($: EngineInterface) {
   const stored: Record<string, unknown> = {}
   for (const key of await $.store.keys()) if (key.startsWith('meter:')) stored[key] = await $.store.get(key)
   const own = `meter:${await $.session.id()}`
-  await update($, ev, s => noteStored(s, stored, own))
+  const now = await $.clock.now()
+  for (const key of staleKeys(stored, own, now)) {
+    await $.store.delete(key)
+    delete stored[key]
+  }
+  await update($, ev, s => noteStored(s, stored, own, now))
   await recordReading($, (await $.session.usage()).rateLimits)
 }
 
@@ -281,7 +287,7 @@ export const register: Register = on => {
       await guard($, 'clear', async () => {
         const live = Object.values((await read($, ev)).runs).filter(r => r.status === 'running')
         const at = await $.clock.now()
-        await update($, ev, s => endAllRuns(s, 'cleared', at))
+        await update($, ev, s => hideFinished(endAllRuns(s, 'cleared', at)))
         for (const run of live) await persist($, run.key)
       })
     }
@@ -415,6 +421,7 @@ export const register: Register = on => {
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const { Box, Button, Text } = $.ui.resolve(e)
     const line = lineOf(Text)
+    const wrapped = lineOf(Text, 'wrap')
     const state = await read($, ev)
     const runs = activeRuns(state).map(r => runView(r))
     const finished = finishedRuns(state).map(r => runView(r))
@@ -448,6 +455,7 @@ export const register: Register = on => {
     if (open) {
       const labelWidth = Math.min(34, Math.max(12, ...open.agents.map((a: EvalAgentView) => a.label.length + 4)))
       const column = open.saved ? agentColumn(open.saved) : null
+      const roomy = column !== null && labelWidth + 36 + column.header.length <= e.props.bodyColumns
       return (
         <Box flexDirection="column">
           <Text wrap="truncate-end">
@@ -465,15 +473,15 @@ export const register: Register = on => {
             </Text>
           ))}
           <Text> </Text>
-          {open.saved && savedBlock(open.saved).map(line)}
+          {open.saved && savedBlock(open.saved).map(wrapped)}
           {open.saved && <Text> </Text>}
-          <Text dimColor wrap="truncate-end">{`${fit('  agent', labelWidth)}${fit('approved', 18)}${column ? fit('ran on', 18) : 'ran on'}${column ? column.header : ''}`}</Text>
+          <Text dimColor wrap="truncate-end">{`${fit('  agent', labelWidth)}${fit('approved', 18)}${column ? fit('ran on', 18) : 'ran on'}${column ? (roomy ? column.header : 'saved') : ''}`}</Text>
           {open.agents.map((a: EvalAgentView) => (
             <Text wrap="truncate-end">
               <Text color={tone(a.ok)}>■</Text>
               {` ${fit(a.label, labelWidth - 2)}`}
               {pair(a.approvedModel, a.approvedEffort, 18)}
-              {pair(a.ranModel, a.ranEffort, column ? 18 : 0)}
+              {pair(a.ranModel, a.ranEffort, 18)}
               {column && <Text>{column.cell(a.agentId)}</Text>}
               {a.reason && <Text color="error">{`  ${a.reason}`}</Text>}
             </Text>

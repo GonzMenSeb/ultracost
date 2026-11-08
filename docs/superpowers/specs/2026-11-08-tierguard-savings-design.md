@@ -10,7 +10,7 @@ tierguard moves workflow agents off the session model: investigation to Sonnet, 
 
 All of it is measured against one counterfactual: every agent of the workflow running on the session's model at the session's effort. That is what Claude Code does when a stage pins nothing; 306 of 306 unpinned workflow agents in this machine's transcripts ran on the session model at the session effort.
 
-Anti-goals: no model call in tierguard, no dependency, nothing that slows a workflow. A number tierguard cannot back is shown as unknown, never as zero, and never without its margin of error.
+Anti-goals: no model call in tierguard, no dependency, nothing that slows a workflow. A number tierguard cannot back is shown as unknown, never as zero, and percentages and dollars are never shown without their margin of error (tokens are the median).
 
 ## What we can and cannot observe
 
@@ -39,7 +39,7 @@ In this order, first match wins:
 
 1. **Measured**, from the paired replays below.
 2. **Chained:** a measured ratio into the same baseline family at another effort, times a published effort step within that family. Effort steps within one model agree across sources (Opus 5.5 xhigh ÷ high: 1.75, 2.55, 2.98, 2.34 across four sources, log sd 0.22), unlike steps between models.
-3. **Prior:** published cost per task for both configurations, converted to a token ratio by dividing by the input-price ratio, applied to all three buckets, log sd = max(0.6, spread between sources).
+3. **Prior:** published cost per task for both configurations, converted to a token ratio by dividing by the input-price ratio, applied to all three buckets, log sd = max(0.6, spread between sources). The same model at another effort uses the published effort step for that pair the same way (log sd = spread between sources, 0.4 with one; no between-run τ).
 
 `data/published.json` holds the published figures with their sources; `data/replays.json` holds the measured pairs as numbers only (anonymized task kinds, no prompts, labels or paths). `scripts/calibrate.mjs` turns both into `data/ratios.json`, which ships.
 
@@ -80,7 +80,7 @@ List prices per million tokens, `data/prices.json` (platform.claude.com pricing,
 | Haiku 5.5 (prompt > 100k) | 0.50 | 2.50 | 0.05 | 0.625 |
 | Fable 5.1 | 10 | 50 | 0.25 | 12.50 |
 
-Cache writes are priced at the 5-minute rate (`usage` does not split them by TTL). Haiku's long-prompt rule applies per request on input plus cache read plus cache write. A model with no row is unknown; it never falls back to Opus.
+Cache writes are priced at the 5-minute rate (`usage` does not split them by TTL). Haiku's long-prompt rule applies per request on input plus cache read plus cache write. A model with no row is unknown; it never falls back to Opus. The rows cover the 5 generation (Opus 5.5, Sonnet 5.5, Haiku 5.5, Fable 5.1); an older model id is unknown.
 
 ## Limit percentages
 
@@ -148,7 +148,7 @@ A user's own ratios file, a replay-building script, a session or weekly total, p
 - Smékal's estimator is unproven across models; the replays are the only evidence for this workload, and they measure two transitions directly.
 - With 3 replayed workflows the per-workflow ± is wide (τ = 0.30), close to Smékal's ×1.9.
 - Effort labels have cost about 2× more from one Claude Code version to the next (anthropics/claude-code#78320); `data/ratios.json` records the version it was measured on.
-- Limit figures carry the meter's unknowns: other usage on the account, the cache-read weight and server-side changes.
+- Limit figures carry the meter's unknowns: other usage on the account, the cache-read weight and server-side changes. A change of plan or account leaves old readings in use for up to 30 days; a request on a model with no price voids the reading it falls in.
 
 ## Version
 

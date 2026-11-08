@@ -5,8 +5,8 @@ import { sha256Hex } from '../src/fingerprint.mjs'
 const SCRIPT = "export const meta = { name: 'map', description: 'x', phases: [] }\nawait agent('p', { label: 'investigate: map', model: 'sonnet', effort: 'high' })\n"
 const CONFIG = '/cfg'
 const SESSION = 'sess-1'
-const OPUS = 'claude-opus-4-7'
-const SONNET = 'claude-sonnet-4-6'
+const OPUS = 'claude-opus-5-5'
+const SONNET = 'claude-sonnet-5-5'
 
 const PANE = {
   plugin: 'tierguard',
@@ -60,20 +60,20 @@ const drain = async (stream: AsyncGenerator<unknown, unknown>) => {
   return r.value
 }
 
-type Options = { subscription: boolean; gate?: boolean; agents?: number; readings?: number; finish?: boolean }
+type Options = { subscription: boolean; gate?: boolean; agents?: number; readings?: number; finish?: boolean; complete?: boolean; preload?: Record<string, unknown>; now?: number }
 
 async function flow($: any, on: any, options: Options) {
-  const { subscription, gate = true, agents = 1, readings = 6, finish = true } = options
+  const { subscription, gate = true, agents = 1, readings = 6, finish = true, complete = true, preload = {}, now = 5000 } = options
   const writes: Record<string, string> = {}
   const toasts: string[] = []
-  const store: Record<string, unknown> = {}
+  const store: Record<string, unknown> = { ...preload }
   const notices: unknown[] = []
   let toolUseId = ''
   let percent = 10
   let spawned = 0
   let index = 0
   mock.env(on, { CLAUDE_CONFIG_DIR: CONFIG })
-  const clock = mock.clock(on, { now: 5000 })
+  const clock = mock.clock(on, { now })
   on('session.id', () => ({ value: SESSION }))
   on('session.end', () => ({ sessionId: SESSION }))
   on('session.start', (_: any, e: any) => ({ cwd: e.cwd }))
@@ -87,6 +87,7 @@ async function flow($: any, on: any, options: Options) {
   on('fs.write', (_: any, e: any) => ((writes[e.path] = e.text), { value: undefined }))
   on('store.keys', () => ({ value: Object.keys(store) }))
   on('store.get', (_: any, e: any) => ({ value: store[e.key] }))
+  on('store.delete', (_: any, e: any) => (delete store[e.key], { value: undefined }))
   on('store.set', (_: any, e: any) => ((store[e.key] = e.value), { value: undefined }))
   on('fs.read', (_: any, e: any) => {
     const path = String(e.path)
@@ -142,7 +143,7 @@ async function flow($: any, on: any, options: Options) {
     await clock.advance(60000)
     await measure()
   }
-  await $.turn.complete({ answer: '', durationMs: 1, isAborted: false, turnId: 't1', reason: 'answer', agentId: 'a1' })
+  if (complete) await $.turn.complete({ answer: '', durationMs: 1, isAborted: false, turnId: 't1', reason: 'answer', agentId: 'a1' })
   if (finish) {
     await $.session.append({
       message: {
@@ -249,4 +250,43 @@ test('an agent with no usage leaves the coverage line at "from 1 of 2 agents"', 
   const ui = await detail($, w.id())
   expect(await ui.find({ type: 'Text', text: /from 1 of 2 agents/ })).toBeDefined()
   await ui.unmount()
+})
+
+test('a run with no estimate yet still shows the effort an agent ran at', async ($, on) => {
+  const w = await flow($, on, { subscription: true, readings: 1, finish: false, complete: false })
+  const ui = await detail($, w.id())
+  expect(await ui.find({ type: 'Text', text: /sonnet · high/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /sonnet…/ })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: /tierguard saved/ })).toBeUndefined()
+  await ui.unmount()
+})
+
+test('a clear takes the finished runs out of the pane', async ($, on) => {
+  const w = await flow($, on, { subscription: true })
+  await $.session.end({ reason: 'clear', sessionId: SESSION, resume: { id: SESSION } })
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  expect(await ui.find({ type: 'Text', text: /finished this session/ })).toBeUndefined()
+  expect(await ui.find({ type: 'Button', key: `run:${w.id()}` })).toBeUndefined()
+  await ui.unmount()
+})
+
+test('a session start removes the stored meter readings that are all older than 30 days', async ($, on) => {
+  const now = 100 * 24 * 3600 * 1000
+  const old = { v: 1, five_hour: [{ d: 1, u: 1, c: 0, at: 1000 }], seven_day: [] }
+  const fresh = { v: 1, five_hour: [{ d: 1, u: 1, c: 0, at: now - 3600 * 1000 }], seven_day: [] }
+  const w = await flow($, on, { subscription: true, now, preload: { 'meter:ancient': old, 'meter:recent': fresh } })
+  expect(Object.keys(w.store).sort()).toEqual(['meter:recent', `meter:${SESSION}`].sort())
+})
+
+test('the saved block wraps instead of cutting, and a narrow pane shortens the saved column title', async ($, on) => {
+  const w = await flow($, on, { subscription: false })
+  const narrow = await $.ui.mount({ ...PANE, props: { ...PANE.props, bodyColumns: 60 }, surface: 'terminal' })
+  await narrow.press({ key: `run:${w.id()}` })
+  expect((await narrow.find({ type: 'Text', text: /compared with running every agent/ }))?.props.wrap).toBe('wrap')
+  const head = await narrow.find({ type: 'Text', text: /^\s*agent\s/ })
+  expect(head?.text).toMatch(/saved\s*$/)
+  await narrow.unmount()
+  const wide = await $.ui.mount({ ...PANE, props: { ...PANE.props, bodyColumns: 140 }, surface: 'terminal' })
+  expect((await wide.find({ type: 'Text', text: /^\s*agent\s/ }))?.text).toContain('saved at API prices')
+  await wide.unmount()
 })

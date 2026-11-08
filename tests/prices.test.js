@@ -11,6 +11,11 @@ const each = { input: 1e6, output: 1e6, cacheRead: 1e6, cacheWrite: 1e6 }
 test('priceFamily maps model ids and refuses unknowns', () => {
   assert.equal(priceFamily('claude-opus-5-5'), 'opus')
   assert.equal(priceFamily('claude-fable-5-1'), 'fable')
+  assert.equal(priceFamily('claude-sonnet-5-5-20261001'), 'sonnet')
+  assert.equal(priceFamily('claude-opus-5-5[1m]'), 'opus')
+  assert.equal(priceFamily('claude-opus-4-1'), null)
+  assert.equal(priceFamily('claude-haiku-4-5'), null)
+  assert.equal(priceFamily('opus'), null)
   assert.equal(priceFamily('claude-mythos-5-1'), null)
   assert.equal(priceFamily(null), null)
   assert.equal(priceFamily('opus-sonnet'), null)

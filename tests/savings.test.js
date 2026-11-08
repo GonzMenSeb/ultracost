@@ -95,6 +95,24 @@ test('an agent with no usage is not used and not an error', () => {
   assert.deepEqual(s.coverage, { used: 1, total: 2, unpriced: 0, noRatio: [] })
 })
 
+test('an opus agent at another effort is estimated from the published effort step', () => {
+  const s = run({ agents: [agent('a1', piece(sum('w1'), 'opus', 'medium'))] })
+  assert.equal(s.status, 'estimated')
+  assert.ok(s.dollars.mid > 0)
+  assert.deepEqual(s.sources.priors, [{ from: 'opus:medium', to: 'opus:high' }])
+  assert.equal(s.coverage.used, 1)
+})
+
+test('none means nothing was left out: an excluded agent makes it an estimate', () => {
+  const same = agent('a1', piece(sum('w1'), 'opus', 'high'))
+  const unreadable = agent('a2', { ...piece(sum('w1'), 'sonnet'), effort: 16000 })
+  const left = run({ agents: [same, unreadable] })
+  assert.equal(left.status, 'estimated')
+  assert.deepEqual(left.coverage, { used: 1, total: 2, unpriced: 0, noRatio: ['sonnet:?>opus:high'] })
+  assert.equal(run({ agents: [same, agent('a2')] }).status, 'none')
+  assert.equal(run({ agents: [same, agent('a2', piece(sum('w1'), null, 'high'))] }).status, 'estimated')
+})
+
 test('no baseline is unknown', () => {
   const s = run({ baseline: null })
   assert.equal(s.status, 'unknown')
@@ -121,7 +139,12 @@ test('a fable session falls back to the published prior', () => {
   assert.equal(r.source, 'prior')
   assert.equal(r.tau, 0)
   assert.equal(ratioFor(ratios, 'sonnet:high', 'sonnet:high').source, 'identical')
-  assert.equal(ratioFor(ratios, 'sonnet:high', 'sonnet:xhigh'), null)
+  const step = ratioFor(ratios, 'opus:medium', 'opus:high')
+  assert.equal(step.source, 'prior')
+  assert.equal(step.tau, 0)
+  assert.ok(Math.abs(step.output.mu - ratios.steps.opus['medium>high'].mu) < 1e-9)
+  assert.equal(step.output.sigma, ratios.steps.opus['medium>high'].sd)
+  assert.equal(ratioFor(ratios, 'sonnet:high', 'sonnet:xhigh').source, 'prior')
   assert.equal(ratioFor(ratios, 'sonnet:high', 'opus:high').source, 'measured')
 })
 

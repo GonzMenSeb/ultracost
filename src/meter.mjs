@@ -41,7 +41,7 @@ function unitsOf(acc, prices) {
   let c = 0
   for (const [family, tokens] of Object.entries(acc)) {
     const m = meterUnits(prices, family, tokens)
-    if (!m) continue
+    if (!m) return null
     u += m.u
     c += m.c
   }
@@ -63,8 +63,12 @@ export function noteReading(meter, rateLimits, at, prices) {
     }
     const d = round1(reading.pct - last.pct)
     if (d < MIN_RISE) continue
-    const { u, c } = unitsOf(meter.acc[kind], prices)
-    if (!(u > 0)) continue
+    const units = unitsOf(meter.acc[kind], prices)
+    if (!units || !(units.u > 0)) {
+      next.acc[kind] = {}
+      continue
+    }
+    const { u, c } = units
     next.mine[kind] = [...meter.mine[kind], { d, u, c, at }].slice(-MAX_INTERVALS)
     next.acc[kind] = {}
   }
@@ -91,13 +95,21 @@ function intervalsIn(value, kind) {
   return value[kind].filter(validInterval).map(({ d, u, c, at }) => ({ d, u, c, at }))
 }
 
-export function mergeStored(meter, stored, sessionKey) {
+const recent = (list, now) => (now === undefined ? list : list.filter((i) => i.at >= now - MAX_AGE_MS))
+
+export function staleKeys(stored, sessionKey, now) {
+  return Object.entries(stored ?? {})
+    .filter(([key, value]) => key.startsWith('meter:') && key !== sessionKey && !KINDS.some((kind) => recent(intervalsIn(value, kind), now).length > 0))
+    .map(([key]) => key)
+}
+
+export function mergeStored(meter, stored, sessionKey, now) {
   const others = both(() => [])
-  const mine = both((k) => [...meter.mine[k]])
+  const mine = both((k) => recent(meter.mine[k], now))
   for (const [key, value] of Object.entries(stored ?? {})) {
     if (!key.startsWith('meter:')) continue
     for (const kind of KINDS) {
-      const list = intervalsIn(value, kind)
+      const list = recent(intervalsIn(value, kind), now)
       if (key === sessionKey) {
         const seen = new Set(mine[kind].map((i) => i.at))
         mine[kind] = [...mine[kind], ...list.filter((i) => !seen.has(i.at))]
