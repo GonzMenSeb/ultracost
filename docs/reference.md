@@ -1,6 +1,6 @@
 # ultraguard reference
 
-This is the complete reference for ultraguard 0.4.10. The [README](../README.md) explains what ultraguard is for and why the rules exist. This page lists every rule, code, file and limit, and it is written to match the code in `src/`, `hooks/` and `policy/`.
+This is the complete reference for ultraguard 0.4.12. The [README](../README.md) explains what ultraguard is for and why the rules exist. This page lists every rule, code, file and limit, and it is written to match the code in `src/`, `hooks/` and `policy/`.
 
 ## Contents
 
@@ -10,6 +10,7 @@ This is the complete reference for ultraguard 0.4.10. The [README](../README.md)
    - [Classes](#classes)
    - [Models and efforts](#models-and-efforts)
    - [Sonnet exceptions for Opus classes](#sonnet-exceptions-for-opus-classes)
+   - [Haiku evidence](#haiku-evidence)
    - [Label check](#label-check)
    - [Script shape](#script-shape)
    - [The policy file](#the-policy-file)
@@ -90,11 +91,11 @@ The policy is in `policy/default.json`, and it is the only policy. The guidance 
 
 ### Classes
 
-Every `agent()` label starts with a class prefix such as `build:`. The class says who owns the decision, and it decides which (model, effort) pairs are allowed. The table shows the pairs on an Opus session. Every listed model allows the efforts `medium`, `high` and `xhigh`, except Haiku, which allows only `xhigh`.
+Every `agent()` label starts with a class prefix such as `build:`. The class says who owns the decision, and it decides which (model, effort) pairs are allowed. The table shows the pairs on an Opus session. Every listed model allows the efforts `medium`, `high` and `xhigh`.
 
 | Class | Owns | Opus session allows |
 |---|---|---|
-| `investigate:` | Web research, code mapping, and any reading that reports findings | `sonnet` |
+| `investigate:` | Web research, code mapping, and any reading where the agent decides what the evidence means | `sonnet` |
 | `decide:` | Open decisions: any choice, approach, software design, design of complex functionality, taste, diagnosing unclear or cross-cutting bugs | `opus`; `sonnet` only in a big fan-out |
 | `judge:` | Adversarial review, verification and verdicts | `opus`; `sonnet` only with the verdict schema |
 | `synth:` | Synthesizing complex, distributed, multi-faceted or conflicting work | `opus`; `sonnet` only in a big fan-out |
@@ -102,10 +103,10 @@ Every `agent()` label starts with a class prefix such as `build:`. The class say
 | `build:` | Decided implementation: well-defined modules, scoped UI implementation, "like this" examples, long build-test-debug loops | `sonnet` or `opus` |
 | `fix:` | Fixes whose cause or repro is known | `sonnet` or `opus` |
 | `combine:` | Merging groundwork toward one stated goal | `sonnet` or `opus` |
-| `code:` | Very simple, fully specified, mechanically checkable code; blind, well-specified UI implementation | `haiku` at `xhigh` only, or `sonnet` |
-| `grunt:` | Non-code, zero-decision work: search, extraction, summaries, compaction, repetitive separable groundwork | `haiku` at `xhigh` only, or `sonnet` |
+| `code:` | Very simple, fully specified, mechanically checkable code; blind, well-specified UI implementation | `haiku` or `sonnet` |
+| `grunt:` | Fixed-shape, zero-decision work: tabulate, count or extract named fields from named inputs, run a given command, checks, summaries, compaction | `haiku` or `sonnet` |
 
-The Opus classes are `decide:`, `judge:`, `synth:` and `design:`. Opus is for design, decisions, synthesis and complex reviews. Haiku is for work where two agents would produce the same output and the result is mechanically checkable.
+The Opus classes are `decide:`, `judge:`, `synth:` and `design:`. Opus is for design, decisions, synthesis and complex reviews. Haiku is for fixed-shape work where two agents would produce the same output and a script can check the result: the spec names the inputs, the output fields and how to compute them. Discovery, open-ended review, multi-source web extraction and anything that weighs evidence stay on `investigate:` or above. See [Haiku evidence](#haiku-evidence).
 
 A label that does not start with a known class prefix is denied (`PAIR`, "Unknown class") with the list of valid classes. A label with no usable prefix at all is denied as `SHAPE`.
 
@@ -113,7 +114,7 @@ A label that does not start with a known class prefix is denied (`PAIR`, "Unknow
 
 - Models are the aliases `opus`, `sonnet` and `haiku` only. Full ids, Fable and Mythos are denied (`PAIR`).
 - Efforts are `medium`, `high` or `xhigh`. `low` and `max` are denied (`PAIR`).
-- `haiku` is allowed only at `xhigh`, and on an Opus or Sonnet session only for classes whose pairs list it. Under the Haiku session cap, a class without its own Haiku pair also gets it; see [Session cap](#session-cap).
+- `haiku` is allowed at the efforts a class lists for it (`medium`, `high` and `xhigh` for `code:` and `grunt:`), and on an Opus or Sonnet session only for classes whose pairs list it. A class that lists `haiku` must also list `sonnet`. Under the Haiku session cap, a class without its own Haiku pair also gets Haiku at every effort any class lists for it; see [Session cap](#session-cap).
 - Every `agent()` names both a model and an effort, as quoted string literals.
 - Every Sonnet and Haiku stage needs an inline `schema` with a `blocked_on` property, so the agent reports an open question instead of deciding it. This applies to any stage whose literal model is not `opus`, including the Opus classes when they run on Sonnet. See [Script shape](#script-shape).
 - No stage may use a model above the session model. See [Session cap](#session-cap).
@@ -148,6 +149,27 @@ schema: {
 
 When a stage misses one of these conditions, the `PAIR` message says which condition would allow Sonnet for that class.
 
+### Haiku evidence
+
+The Haiku pairs for `code:` and `grunt:` come from a replay of the 10 latest real workflows on Haiku 5.5. The answers were computed by script from the same inputs, then compared with each agent's output.
+
+| Test | Haiku `xhigh` | Haiku `medium` | Sonnet `high` |
+|---|---|---|---|
+| 5 fixed-shape tasks (tabulate, extract, catalogue, check), 3 runs each, exact match | 15/15 | 15/15 | 15/15 |
+| Mean cost per run | $0.015 | $0.008 | $0.092 |
+| Verifier, 3 true findings | 9/9 | 6/6 | 9/9 |
+| Verifier, 5 plainly false findings, 3 runs each | 15/15 | 15/15 | 15/15 |
+| Verifier, 3 findings with the right place but wrong details | 3/9 strict-correct | not run | 9/9 |
+
+On the last row Haiku passed the finding by correcting the wrong details itself instead of failing it. That is why `judge:` has no Haiku pair.
+
+What the replay does not show:
+
+- Each cell is 3 runs, so a ceiling of 100% says little about rare failures.
+- The specs named inputs, fields and the way to compute them. Open-ended work was not replayed and should not be expected to match.
+- The agents read snapshots of the inputs, not live tools. Production-host probes, gate runs and web extraction were not replayed.
+- The `medium` arm ran through the Agent tool, not through the gate.
+
 ### Label check
 
 A `decide:`, `judge:` or `design:` label whose name contains any of these words is denied with `LABEL`, on any session model:
@@ -160,7 +182,7 @@ How the check reads a label:
 
 - It takes the text after the first `:`, replaces each `${…}` with a space, lowercases it, and splits it on anything that is not a letter.
 - Words match as whole words. `finding` does not match `find`, and `mapping` does not match `map`.
-- The message names the word it found and tells Claude to run that work as `investigate:` on Sonnet and to name a kept Opus stage by the decision, review, synthesis or design it owns.
+- The message names the word it found and tells Claude to run that work as `investigate:` on Sonnet and to name a kept Opus stage by the decision, review, synthesis or design it owns. When `labelCheck.fixed` is set it adds that a fixed list, table or count over named inputs is `grunt:`, with that class's pairs.
 
 The word list, the checked classes and the class to move to live in `labelCheck` in `policy/default.json`.
 
@@ -195,9 +217,9 @@ If `blocked_on` is set in a stage's result, the guidance tells Claude to re-run 
 |---|---|
 | `classes` | One entry per class. `owns` is text for the guidance table. `pairs` maps a model to a list of efforts. Optional `fanoutPairs` and `verdictPairs` have the same shape and add pairs under the two conditions above. |
 | `limits` | `maxConcurrentOpus` (3) and `bigFanout` (3). Positive integers. Missing keys default to 3. |
-| `labelCheck` | `words` (lowercase letters only), `classes` (checked everywhere), `fanoutClasses` (checked only inside a fan-out), `use` (the class that investigation moves to). |
+| `labelCheck` | `words` (lowercase letters only), `classes` (checked everywhere), `fanoutClasses` (checked only inside a fan-out), `use` (the class that investigation moves to), `fixed` (optional: the class the message names for a fixed list, table or count over named inputs). |
 
-`loadPolicy` validates the file. Models must be `haiku`, `sonnet` or `opus`. Efforts must be `medium`, `high` or `xhigh`, with no duplicates and no empty lists. `limits` accepts only the two known keys. Every class named in `labelCheck` must exist. A policy that fails validation is an internal error and blocks every launch.
+`loadPolicy` validates the file. Models must be `haiku`, `sonnet` or `opus`. Efforts must be `medium`, `high` or `xhigh`, with no duplicates and no empty lists. `limits` accepts only the two known keys. A class that lists `haiku` in `pairs` must also list `sonnet`, because on a Sonnet session the pairs above the session model are dropped and a Haiku-only class would be left with no pair. Every class named in `labelCheck` must exist. A policy that fails validation is an internal error and blocks every launch.
 
 On an Opus session, a stage's allowed pairs are its class's `pairs`, plus `fanoutPairs` if the stage is in a big fan-out, plus `verdictPairs` if its schema is a verdict schema. On other sessions, see [Session cap](#session-cap).
 
@@ -301,7 +323,7 @@ An unreadable session model counts as Sonnet. That covers an empty or missing `t
 |---|---|
 | Opus | The policy table applies as written. |
 | Sonnet | Opus pairs are denied. A class left with no pair after that runs on `sonnet` at all three efforts, so `decide:`, `judge:`, `synth:` and `design:` run on Sonnet with no verdict schema or fan-out needed. `build:`, `fix:` and `combine:` run on Sonnet. `code:` and `grunt:` keep their Haiku and Sonnet pairs. `FANOUT` is not checked, because it counts only Opus agents. |
-| Haiku | Only Haiku pairs are allowed. A class without its own Haiku pair uses `haiku` at `xhigh`, as long as the policy lists a Haiku pair anywhere. If the policy lists none, every launch that has an `agent()` call is denied with one `PAIR` line that only the user can clear: "This session runs Haiku and no Haiku pair is allowed; switch with /model sonnet or /model opus." `FANOUT` is not checked. |
+| Haiku | Only Haiku pairs are allowed. A class without its own Haiku pair uses `haiku` at every effort that any class lists for it, as long as the policy lists a Haiku pair anywhere. If the policy lists none, every launch that has an `agent()` call is denied with one `PAIR` line that only the user can clear: "This session runs Haiku and no Haiku pair is allowed; switch with /model sonnet or /model opus." `FANOUT` is not checked. |
 
 A `model` above the session model is denied as `PAIR`: `model "opus" is above the session model (sonnet).` The reason also says what the session runs, and when the model could not be read it says it is treated as Sonnet.
 
@@ -312,7 +334,7 @@ A `model` above the session model is denied as `PAIR`: `model "opus" is above th
 | `SOURCE` | The script cannot be resolved or seen: no source, mixed sources, launch by name, `workflow` referenced, a source that is not a string, or a `scriptPath` that cannot be read. |
 | `PARSE` | Parse error. The message is the parser's, with the line. |
 | `SHAPE` | Misused `agent`, `globalThis`, `eval`, `Function` or `this`. Bad `agent()` arguments, options, literals, label, `agentType`, `schema` or `blocked_on`. |
-| `PAIR` | Unknown class, model not allowed, effort `low`, `max` or not allowed for the class, `haiku` at a lower effort than `xhigh`, model above the session model, or no pair allowed for the class on this session. |
+| `PAIR` | Unknown class, model not allowed, effort `low`, `max` or not allowed for the class, `haiku` at an effort no class lists for it, model above the session model, or no pair allowed for the class on this session. |
 | `LABEL` | An Opus-class label reads like investigation (see [Label check](#label-check)). |
 | `FANOUT` | More than 3 Opus agents can run at once, or the gate cannot count them: unknown list size, `args`, an agent promise that is never awaited, an agent pushed into an array, recursion. |
 | `ENV` | A runtime env value overrides the pinned model or effort. See [Environment checks](#environment-checks). |
@@ -432,7 +454,7 @@ A run is green only while all four hold. Otherwise it is red and names the first
 |---|---|---|
 | 1 | Approved by the gate | A `pass` gate record exists for the launch and its fingerprint equals the one the mod computed from the script that ran. |
 | 2 | Every agent matches the plan | Each agent's label matches an approved stage's label (each `${…}` matches any text), and the model family the agent resolved to (`opus`, `sonnet` or `haiku` in the model id) is that stage's model. |
-| 3 | Every request as approved | Each distinct request the agent sends has the approved model family and exactly the approved effort. An effort lowered by Claude Code itself (Haiku `xhigh` sent as `high`) counts as a failure. |
+| 3 | Every request as approved | Each distinct request the agent sends has the approved model family and exactly the approved effort. An effort lowered by Claude Code itself (for example Haiku sent at a lower effort than approved) counts as a failure. |
 | 4 | At most 3 Opus at once | The Opus agents running in the run never exceed `limits.maxConcurrentOpus` from the policy (3 by default). |
 
 If check 1 fails, checks 2 and 3 have no plan to compare against and report that. The reasons check 1 gives are "not approved by the gate" (no gate record, or the launch was not seen), "the gate denied this script", and "the script that ran is not the one the gate approved".
@@ -641,7 +663,7 @@ Replays run 2026-11-08: 22 agents from 3 past all-Opus workflows, replayed with 
 
 ### Savings limits
 
-- Smékal's estimator is unproven across models. The replays are the only evidence for this workload, and they measure two transitions directly.
+- Smékal's estimator is unproven across models. The replays are the only evidence for this workload, and they measure two transitions directly. No Haiku transition was replay-measured, so Haiku savings use published figures and their ± is wide.
 - With 3 replayed workflows the per-workflow ± is wide (τ = 0.30), close to Smékal's ×1.9.
 - Effort labels have cost about 2× more from one Claude Code version to the next (anthropics/claude-code#78320). `data/ratios.json` records the version it was measured on.
 - Limit figures carry the meter's unknowns: other usage on the account, the cache-read weight and server-side changes. A change of plan or account leaves readings from the old limit in use for up to 30 days. A request on a model with no price voids the reading it falls in.
@@ -684,9 +706,9 @@ These clamp an explicit effort downward, so the agent can run lower than declare
 - the automatic downgrade after an API 400 "Invalid effort level"
 - skill or ultrathink effort layers inside an agent's own turns
 
-### Haiku and `xhigh`
+### Haiku efforts
 
-On first-party Anthropic, `haiku` resolves to `claude-haiku-5-5`, which supports `xhigh`. On Bedrock, Vertex, Foundry, Mantle, `anthropic_aws`, `anthropic_google_cloud` and gateway providers, or with `ANTHROPIC_DEFAULT_HAIKU_MODEL` set, `haiku` can resolve to `claude-haiku-4-5`, which has no `xhigh`. Claude Code then sends `high`. The gate does not check this. ultraguard-eval does: a request sent at a lower effort than approved turns the run red.
+On first-party Anthropic, `haiku` resolves to `claude-haiku-5-5`, which supports `medium`, `high` and `xhigh`. On Bedrock, Vertex, Foundry, Mantle, `anthropic_aws`, `anthropic_google_cloud` and gateway providers, or with `ANTHROPIC_DEFAULT_HAIKU_MODEL` set, `haiku` can resolve to `claude-haiku-4-5`, which has no `xhigh`, and a stage approved at `xhigh` is then sent as `high`. What Claude Code sends there for `medium` and `high` is not verified. The gate does not check any of this. ultraguard-eval does: a request sent at a different effort than approved turns the run red.
 
 To see the effort an agent actually ran at, read `params.output_config.effort` on the `api-request` rows in its `agent-*.jsonl` transcript. `agent-*.meta.json` does not record effort.
 

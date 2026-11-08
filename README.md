@@ -67,7 +67,7 @@ Claude Code shows only one plugin row above the prompt. If another plugin draws 
 ### Who owns the decision picks the model
 
 <p align="center">
-  <img src="assets/tiers.svg" alt="Who owns the decision maps to the model: open decisions, reviews, synthesis and design go to Opus; investigation, decided implementation and fixes with a known cause go to Sonnet; fully specified, mechanically checkable work goes to Haiku or Sonnet.">
+  <img src="assets/tiers.svg" alt="Who owns the decision maps to the model: open decisions, reviews, synthesis and design go to Opus; investigation, decided implementation and fixes with a known cause go to Sonnet; fixed-shape, mechanically checkable work goes to Haiku or Sonnet.">
 </p>
 
 Every `agent()` call carries a label that starts with a class, such as `decide:` or `build:`, and pins a model and an effort. The class says who owns the decision, and the class decides which models are allowed:
@@ -75,7 +75,7 @@ Every `agent()` call carries a label that starts with a class, such as `decide:`
 - `decide:`, `judge:`, `synth:` and `design:` own open choices, reviews, synthesis and design. They run on Opus.
 - `investigate:` reads and reports findings. It runs on Sonnet only.
 - `build:`, `fix:` and `combine:` carry out work whose design is already decided. They run on Sonnet or Opus.
-- `code:` and `grunt:` do fully specified work with nothing to decide. They run on Sonnet, or on Haiku at `xhigh`.
+- `code:` and `grunt:` do fully specified, fixed-shape work with nothing to decide: a table, a count, an extraction or a check over named inputs. They run on Sonnet, or on Haiku at any effort, and Haiku `medium` is the default.
 
 Opus is spent where a wrong call is expensive. Everything else goes to the cheapest model that does the job as well.
 
@@ -88,7 +88,7 @@ Opus is spent where a wrong call is expensive. Everything else goes to the cheap
 | Investigation is `investigate:`, on Sonnet only. A `decide:`, `judge:` or `design:` label, or a fanned-out `synth:` label, that contains a word like research, map, explore, search, find or audit is denied. | Research dressed up as `decide:` or `synth:` to get Opus. |
 | `judge:` may run on Sonnet for one yes/no review, with a `pass`, `evidence`, `blocked_on` schema. | Opus spent on checks a cheaper model answers just as well. Findings lists and scores stay on Opus. |
 | `decide:`, `synth:` and `design:` may run on Sonnet for the simpler agents of a fan-out of more than 3. | Paying Opus for the long tail of a big fan-out, while the hardest items stay on Opus. |
-| Haiku only for `code:` and `grunt:`, and only at `xhigh`. | Cheap output that has to be redone. Haiku gets work where two agents would produce the same result and a check can confirm it. |
+| Haiku only for `code:` and `grunt:`, at `medium`, `high` or `xhigh`. | Cheap output that has to be redone. Haiku gets work where two agents would produce the same result and a script can check it. Discovery, review and anything that weighs evidence stay on Sonnet or Opus. |
 | Every Sonnet and Haiku agent has a `blocked_on` field in its output schema. | A cheaper agent making a decision it does not own. It reports the open question instead, and Claude re-runs that stage as `decide:`. |
 | Efforts are `medium`, `high` or `xhigh`: never `low`, never `max`. Models are `opus`, `sonnet` and `haiku`: never Fable or Mythos as an agent model. | `max` burning tokens on stages that do not need it, `low` producing work that gets redone, and workers on the most expensive models. |
 | No agent uses a model above the session's. A Fable session counts as Opus. | A workflow reaching past the model you chose for the session. |

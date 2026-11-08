@@ -86,7 +86,7 @@ test('the pairs table lists investigate and marks the conditional pairs', () => 
       );
     }
     assert.equal(rows.build, 'sonnet × {medium, high, xhigh}; opus × {medium, high, xhigh}');
-    assert.equal(rows.grunt, 'haiku × {xhigh}; sonnet × {medium, high, xhigh}');
+    for (const cls of ['code', 'grunt']) assert.equal(rows[cls], 'haiku × {medium, high, xhigh}; sonnet × {medium, high, xhigh}', cls);
   } finally {
     sb.cleanup();
   }
@@ -113,7 +113,7 @@ test('additionalContext fits 8000 characters and 200 lines', () => {
   const sb = sandbox();
   try {
     const { additionalContext } = runSession(sb).hookSpecificOutput;
-    assert.ok(additionalContext.length < 8000, `${additionalContext.length} characters reaches the 8000 clamp, which cuts the table`);
+    assert.ok(additionalContext.length <= 7600, `${additionalContext.length} characters leaves under 400 before the 8000 clamp, which cuts the table`);
     assert.ok(additionalContext.split('\n').length < 200);
     const lastClass = Object.keys(loadPolicy().classes).at(-1);
     assert.match(additionalContext.split('\n').at(-1), new RegExp(`^\\| \`${lastClass}:\` \\|.*\\|$`), 'the context ends with the whole last table row');

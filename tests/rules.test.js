@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { loadPolicy, effectivePairs, formatPairs, formatClassPairs, rules } from '../src/rules.mjs'
+import { loadPolicy, effectivePairs, formatPairs, formatClassPairs, haikuEfforts, rules } from '../src/rules.mjs'
 import { analyze } from '../src/analyze.mjs'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
@@ -12,6 +12,14 @@ const shipped = loadPolicy()
 const ALL = ['medium', 'high', 'xhigh']
 
 const withHaiku = {
+  classes: {
+    ...shipped.classes,
+    code: { owns: 'x', pairs: { haiku: ALL, sonnet: ALL } },
+    grunt: { owns: 'x', pairs: { haiku: ALL, sonnet: ALL } }
+  }
+}
+
+const xhighOnly = {
   classes: {
     ...shipped.classes,
     code: { owns: 'x', pairs: { haiku: ['xhigh'], sonnet: ALL } },
@@ -74,7 +82,7 @@ test('haiku session with shipped policy follows whether it lists haiku', () => {
     const got = effectivePairs(shipped, cls, 'haiku')
     if (shippedHasHaiku) {
       const own = shipped.classes[cls].pairs.haiku
-      assert.deepEqual(got, { haiku: own || ['xhigh'] }, cls)
+      assert.deepEqual(got, { haiku: own || haikuEfforts(shipped) }, cls)
     } else {
       assert.deepEqual(got, {}, cls)
     }
@@ -82,15 +90,30 @@ test('haiku session with shipped policy follows whether it lists haiku', () => {
 })
 
 test('haiku session with a haiku-listing policy', () => {
-  assert.deepEqual(effectivePairs(withHaiku, 'code', 'haiku'), { haiku: ['xhigh'] })
-  assert.deepEqual(effectivePairs(withHaiku, 'grunt', 'haiku'), { haiku: ['xhigh'] })
-  assert.deepEqual(effectivePairs(withHaiku, 'decide', 'haiku'), { haiku: ['xhigh'] })
-  assert.deepEqual(effectivePairs(withHaiku, 'build', 'haiku'), { haiku: ['xhigh'] })
+  for (const cls of ['code', 'grunt', 'decide', 'build']) {
+    assert.deepEqual(effectivePairs(withHaiku, cls, 'haiku'), { haiku: ALL }, cls)
+  }
+  assert.deepEqual(effectivePairs(xhighOnly, 'decide', 'haiku'), { haiku: ['xhigh'] })
+  assert.deepEqual(effectivePairs(xhighOnly, 'build', 'haiku'), { haiku: ['xhigh'] })
 })
 
 test('haiku-listing policy on sonnet and opus sessions', () => {
-  assert.deepEqual(effectivePairs(withHaiku, 'code', 'sonnet'), { haiku: ['xhigh'], sonnet: ALL })
-  assert.deepEqual(effectivePairs(withHaiku, 'code', 'opus'), { haiku: ['xhigh'], sonnet: ALL })
+  assert.deepEqual(effectivePairs(withHaiku, 'code', 'sonnet'), { haiku: ALL, sonnet: ALL })
+  assert.deepEqual(effectivePairs(withHaiku, 'code', 'opus'), { haiku: ALL, sonnet: ALL })
+  assert.deepEqual(effectivePairs(xhighOnly, 'code', 'sonnet'), { haiku: ['xhigh'], sonnet: ALL })
+})
+
+test('haikuEfforts is the union over classes in effort order', () => {
+  assert.deepEqual(haikuEfforts(shipped), ALL)
+  assert.deepEqual(haikuEfforts(xhighOnly), ['xhigh'])
+  assert.deepEqual(haikuEfforts(noHaiku), [])
+  const mixed = {
+    classes: {
+      a: { owns: 'x', pairs: { haiku: ['xhigh', 'medium'], sonnet: ALL } },
+      b: { owns: 'x', pairs: { haiku: ['high'], sonnet: ALL } }
+    }
+  }
+  assert.deepEqual(haikuEfforts(mixed), ALL)
 })
 
 test('haiku session with a policy that lists no haiku pair is empty', () => {
@@ -195,19 +218,28 @@ test('haiku session on the shipped policy', () => {
   }
 })
 
-test('haiku session with a haiku-listing policy allows haiku xhigh only', () => {
+test('haiku session with a haiku-listing policy allows haiku at the listed efforts only', () => {
   const ctx = { sessionModel: 'haiku' }
-  assert.deepEqual(rules([stage('code', 'haiku', 'xhigh')], withHaiku, ctx), [])
-  assert.deepEqual(rules([stage('decide', 'haiku', 'xhigh')], withHaiku, ctx), [])
-  assert.equal(rules([stage('code', 'haiku', 'high')], withHaiku, ctx).length, 1)
+  for (const effort of ALL) {
+    assert.deepEqual(rules([stage('code', 'haiku', effort)], withHaiku, ctx), [], effort)
+    assert.deepEqual(rules([stage('decide', 'haiku', effort)], withHaiku, ctx), [], effort)
+  }
+  assert.equal(rules([stage('code', 'haiku', 'high')], xhighOnly, ctx).length, 1)
   assert.equal(rules([stage('code', 'sonnet', 'xhigh')], withHaiku, ctx).length, 1)
   assert.equal(rules([stage('decide', 'opus', 'xhigh')], withHaiku, ctx).length, 1)
+  assert.equal(rules([stage('code', 'haiku', 'low')], withHaiku, ctx).length, 1)
 })
 
 test('haiku pairs on code and grunt for opus and sonnet sessions', () => {
   for (const s of ['opus', 'sonnet']) {
-    assert.deepEqual(rules([stage('code', 'haiku', 'xhigh'), stage('grunt', 'haiku', 'xhigh')], withHaiku, { sessionModel: s }), [], s)
-    assert.equal(rules([stage('code', 'haiku', 'high')], withHaiku, { sessionModel: s }).length, 1, s)
+    for (const effort of ALL) {
+      assert.deepEqual(rules([stage('code', 'haiku', effort), stage('grunt', 'haiku', effort)], withHaiku, { sessionModel: s }), [], `${s} ${effort}`)
+    }
+    assert.equal(rules([stage('code', 'haiku', 'low')], withHaiku, { sessionModel: s }).length, 1, s)
+    assert.equal(rules([stage('code', 'haiku', 'high')], xhighOnly, { sessionModel: s }).length, 1, s)
+    for (const cls of ['build', 'investigate', 'decide', 'judge', 'fix']) {
+      assert.equal(rules([stage(cls, 'haiku', 'medium')], withHaiku, { sessionModel: s }).length, 1, `${s} ${cls}`)
+    }
   }
 })
 
@@ -217,10 +249,10 @@ test('class null emits nothing', () => {
   assert.deepEqual(rules([stage(null, 'haiku', null)], shipped, { sessionModel: 'opus' }), [])
 })
 
-test('classless or unknown-class haiku below xhigh is a PAIR error', () => {
+test('classless or unknown-class haiku outside the listed efforts is a PAIR error', () => {
   for (const cls of [null, 'review']) {
     for (const effort of ['medium', 'high']) {
-      const errs = rules([stage(cls, 'haiku', effort)], shipped, { sessionModel: 'opus' })
+      const errs = rules([stage(cls, 'haiku', effort)], xhighOnly, { sessionModel: 'opus' })
       assert.ok(errs.some((e) => e.code === 'PAIR' && e.message.includes('haiku')), `${cls} ${effort}`)
     }
     assert.deepEqual(rules([stage(cls, 'haiku', 'xhigh')], withHaiku, { sessionModel: 'opus' }).filter((e) => !e.message.startsWith('Unknown class')), [], String(cls))
@@ -365,8 +397,11 @@ test('classless haiku stage: haiku-xhigh instruction only when some class allows
     assert.equal(none.length, 1, s)
     assert.ok(!none[0].message.includes('xhigh'), `${s}: ${none[0].message}`)
     assert.ok(none[0].message.includes('haiku'), s)
-    const listed = rules([stage(null, 'haiku', 'high')], withHaiku, ctx)
+    const listed = rules([stage(null, 'haiku', 'high')], xhighOnly, ctx)
     assert.ok(listed.some((e) => e.message.includes('only allowed with effort "xhigh"')), s)
+    assert.deepEqual(rules([stage(null, 'haiku', 'high')], withHaiku, ctx), [], s)
+    const medium = rules([stage(null, 'haiku', 'high')], { classes: { a: { owns: 'x', pairs: { haiku: ['medium', 'xhigh'], sonnet: ALL } } } }, ctx)
+    assert.ok(medium.some((e) => e.message.includes('only allowed with effort "medium", "xhigh", not "high"')), s)
   }
 })
 
@@ -374,7 +409,7 @@ test('unknown-class haiku stage: haiku-xhigh instruction only when some class al
   const none = rules([stage('nope', 'haiku', 'high')], noHaiku, { sessionModel: 'opus' })
   assert.ok(none.every((e) => !e.message.includes('only allowed with effort')))
   assert.ok(none.some((e) => e.message.includes('haiku')))
-  const listed = rules([stage('nope', 'haiku', 'high')], withHaiku, { sessionModel: 'opus' })
+  const listed = rules([stage('nope', 'haiku', 'high')], xhighOnly, { sessionModel: 'opus' })
   assert.ok(listed.some((e) => e.message.includes('only allowed with effort "xhigh"')))
 })
 
@@ -395,7 +430,7 @@ test('classless or unknown-class haiku xhigh is denied when no class allows haik
   }
 })
 
-test('shipped policy allows haiku xhigh for every class that lists haiku, and nothing else', () => {
+test('shipped policy allows haiku at the listed efforts for every class that lists haiku, and nothing else', () => {
   const listing = Object.entries(shipped.classes).filter(([, c]) => 'haiku' in c.pairs)
   assert.ok(listing.length > 0)
   for (const sessionModel of ['opus', 'sonnet']) {
@@ -405,8 +440,11 @@ test('shipped policy allows haiku xhigh for every class that lists haiku, and no
       }
       assert.equal(rules([stage(cls, 'haiku', 'high')], shipped, { sessionModel }).length, c.pairs.haiku.includes('high') ? 0 : 1, `${cls} high ${sessionModel}`)
     }
-    const nonListing = Object.keys(shipped.classes).find((k) => !('haiku' in shipped.classes[k].pairs))
-    assert.equal(rules([stage(nonListing, 'haiku', 'xhigh')], shipped, { sessionModel }).length, 1, nonListing)
+    for (const nonListing of Object.keys(shipped.classes).filter((k) => !('haiku' in shipped.classes[k].pairs))) {
+      for (const effort of ALL) {
+        assert.equal(rules([stage(nonListing, 'haiku', effort)], shipped, { sessionModel }).length, 1, `${nonListing} ${effort}`)
+      }
+    }
   }
 })
 
@@ -563,6 +601,15 @@ test('label check: investigation words in decide, judge and design labels are LA
   assert.equal(run(s('judge: verify finding ${…}', 'judge')).length, 0)
   assert.equal(run(s('investigate: research legal', 'investigate', 'sonnet')).length, 0)
   assert.equal(run(s('build: search index', 'build', 'sonnet')).length, 0)
+})
+
+test('label check: the message points fixed-shape work at the fixed class when the policy names one', () => {
+  const st = { line: 1, label: 'decide: find links', class: 'decide', model: 'opus', effort: 'high' }
+  const msg = (policy) => rules([st], policy, { sessionModel: 'opus' }).find((e) => e.code === 'LABEL').message
+  assert.match(msg(shipped), /A fixed list, table or count over named inputs is grunt: on haiku × \{medium, high, xhigh\}; sonnet × \{medium, high, xhigh\}\./)
+  const { fixed, ...rest } = shipped.labelCheck
+  assert.equal(fixed, 'grunt')
+  assert.doesNotMatch(msg({ ...shipped, labelCheck: rest }), /fixed list/)
 })
 
 test('label check: synth is checked only inside a fan-out', () => {

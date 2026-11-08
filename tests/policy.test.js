@@ -67,6 +67,11 @@ test('build, fix, combine, code and grunt have no conditional pairs', () => {
   }
 })
 
+test('code and grunt allow haiku and sonnet at every effort', () => {
+  const { classes } = loadPolicy()
+  for (const cls of ['code', 'grunt']) assert.deepEqual(classes[cls].pairs, { haiku: ALL, sonnet: ALL }, cls)
+})
+
 test('shipped limits cap opus at 3 at once and call a fan-out big above 3', () => {
   assert.deepEqual(loadPolicy().limits, { maxConcurrentOpus: 3, bigFanout: 3 })
 })
@@ -116,7 +121,9 @@ const bad = {
   'limits string value': { classes: ok.classes, limits: { maxConcurrentOpus: '3', bigFanout: 3 } },
   'limits zero': { classes: ok.classes, limits: { maxConcurrentOpus: 0, bigFanout: 3 } },
   'limits negative': { classes: ok.classes, limits: { maxConcurrentOpus: 3, bigFanout: -1 } },
-  'limits unknown key': { classes: ok.classes, limits: { maxConcurrentOpus: 3, bigFanout: 3, maxOpus: 3 } }
+  'limits unknown key': { classes: ok.classes, limits: { maxConcurrentOpus: 3, bigFanout: 3, maxOpus: 3 } },
+  'haiku without sonnet': { classes: { code: { owns: 'x', pairs: { haiku: ['medium'] } } } },
+  'haiku with opus but no sonnet': { classes: { code: { owns: 'x', pairs: { haiku: ['medium'], opus: ['high'] } } } }
 }
 
 for (const [name, content] of Object.entries(bad)) {
@@ -124,6 +131,13 @@ for (const [name, content] of Object.entries(bad)) {
     assert.throws(() => loadPolicy(write(`${name.replace(/\W+/g, '-')}.json`, content)), Error)
   })
 }
+
+test('loadPolicy accepts haiku next to sonnet, and haiku alone in conditional pairs', () => {
+  const both = { classes: { code: { owns: 'x', pairs: { haiku: ['medium'], sonnet: ['high'] } } } }
+  assert.deepEqual(loadPolicy(write('haiku-both.json', both)), both)
+  const cond = { classes: { judge: { owns: 'x', pairs: { opus: ['high'] }, verdictPairs: { haiku: ['high'] } } } }
+  assert.deepEqual(loadPolicy(write('haiku-cond.json', cond)), cond)
+})
 
 test('loadPolicy accepts conditional pairs and limits', () => {
   const full = {
@@ -152,6 +166,7 @@ test('shipped labelCheck covers the agreed words and classes', () => {
   assert.deepEqual(labelCheck.classes, ['decide', 'judge', 'design'])
   assert.deepEqual(labelCheck.fanoutClasses, ['synth'])
   assert.equal(labelCheck.use, 'investigate')
+  assert.equal(labelCheck.fixed, 'grunt')
 })
 
 test('loadPolicy rejects a bad labelCheck', () => {
@@ -162,7 +177,9 @@ test('loadPolicy rejects a bad labelCheck', () => {
     { words: ['Research'], classes: ['decide'], use: 'investigate' },
     { words: ['research'], classes: ['nope'], use: 'investigate' },
     { words: ['research'], classes: ['decide'], use: 'nope' },
-    { words: ['research'], classes: ['decide'], use: 'investigate', extra: 1 }
+    { words: ['research'], classes: ['decide'], use: 'investigate', extra: 1 },
+    { words: ['research'], classes: ['decide'], use: 'investigate', fixed: 'nope' },
+    { words: ['research'], classes: ['decide'], use: 'investigate', fixed: 3 }
   ]
   try {
     for (const [i, labelCheck] of bad.entries()) {
@@ -173,6 +190,9 @@ test('loadPolicy rejects a bad labelCheck', () => {
     const ok = path.join(dir, 'ok.json')
     fs.writeFileSync(ok, JSON.stringify({ ...base, labelCheck: { words: ['research'], classes: ['decide'], use: 'investigate' } }))
     assert.doesNotThrow(() => loadPolicy(ok))
+    const withFixed = path.join(dir, 'fixed.json')
+    fs.writeFileSync(withFixed, JSON.stringify({ ...base, labelCheck: { words: ['research'], classes: ['decide'], use: 'investigate', fixed: 'decide' } }))
+    assert.doesNotThrow(() => loadPolicy(withFixed))
   } finally {
     fs.rmSync(dir, { recursive: true, force: true })
   }

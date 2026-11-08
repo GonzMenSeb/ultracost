@@ -929,7 +929,7 @@ test('those fixtures need no verdict schema or fan-out on a sonnet session', () 
 });
 
 test('every good fixture passes on an opus session and its record agrees with the fan-out analysis', () => {
-  const bounds = { 'fanout-slice.js': 3, 'judge-verdict.js': 1, 'loops.js': 1, 'mixed-tiers.js': 1, 'parallel.js': 3, 'pipeline.js': 0 };
+  const bounds = { 'fanout-slice.js': 3, 'haiku-fixed-shape.js': 0, 'judge-verdict.js': 1, 'loops.js': 1, 'mixed-tiers.js': 1, 'parallel.js': 3, 'pipeline.js': 0 };
   const files = readdirSync(join(FIXTURES, 'good')).filter((f) => f.endsWith('.js')).sort();
   assert.deepEqual(files, Object.keys(bounds).sort());
   for (const f of files) {
@@ -957,6 +957,31 @@ test('the slice fixture marks its sonnet designers as a big fan-out and passes',
   assert.ok(designers.every((st) => st.inFanout));
   assert.equal(designers[1].bigFanout, true);
   assert.equal(rec.stages.find((st) => st.class === 'investigate').inFanout, false);
+});
+
+test('the haiku fixture records the haiku stages at medium and high', () => {
+  const rec = gateRecordOf(run(launch(fixtureScript('good', 'haiku-fixed-shape.js'))));
+  assert.deepEqual(rec.stages.map((st) => [st.class, st.model, st.effort]), [
+    ['grunt', 'haiku', 'medium'],
+    ['code', 'haiku', 'high'],
+    ['build', 'sonnet', 'high'],
+  ]);
+});
+
+test('haiku below the classes that own fixed-shape work is denied at every effort', () => {
+  for (const effort of ['medium', 'high', 'xhigh']) {
+    for (const cls of ['build', 'fix', 'combine', 'investigate', 'decide', 'judge', 'synth', 'design']) {
+      const reason = denied(run(launch(stageScript(cls, 'haiku', effort))));
+      assert.match(reason, /PAIR/, `${cls} ${effort}`);
+      assert.ok(reason.includes(`Class "${cls}:" does not allow model "haiku" with effort "${effort}"`), `${cls} ${effort}: ${reason}`);
+    }
+  }
+});
+
+test('a LABEL deny on a find stage points fixed-shape work at grunt on haiku', () => {
+  const reason = denied(run(launch(`await ${agentCall('decide: find broken links', 'opus')}\n`)));
+  assert.match(reason, /LABEL/);
+  assert.match(reason, /A fixed list, table or count over named inputs is grunt: on haiku × \{medium, high, xhigh\}; sonnet × \{medium, high, xhigh\}\./);
 });
 
 test('the verdict fixture records verdict true for the sonnet judge only', () => {

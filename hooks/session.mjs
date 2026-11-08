@@ -20,7 +20,7 @@ function pairsTable(policy, { formatClassPairs }) {
   return [
     '## Allowed (model, effort) pairs',
     '',
-    'This table is the authoritative list of allowed (model, effort) pairs per class, as enforced on an Opus session. On a Sonnet or Haiku session the session cap applies and stages may not use a model above the session model.',
+    'This table is the authoritative list of allowed (model, effort) pairs per class, as enforced on an Opus session. On a Sonnet or Haiku session the session cap applies.',
     '',
     '| Class | Owns | Allowed pairs |',
     '|---|---|---|',
