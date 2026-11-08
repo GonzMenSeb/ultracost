@@ -1,6 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { fmtPct, fmtUsd, fmtTokens, savedBlock, agentColumn, listHeader, listCell, toastText } from '../src/savedText.mjs'
+import { fmtPct, fmtUsd, fmtTokens, phaseLayout, savedBlock, agentColumn, listHeader, listCell, toastText } from '../src/savedText.mjs'
+import { savedColor } from '../src/palette.mjs'
 
 const range = (mid, pm, lo = mid - pm) => ({ mid, lo, hi: mid + pm, pm })
 const text = (line) => line.map((s) => s.text).join('')
@@ -90,7 +91,7 @@ test('headline, family and figures carry their styles', () => {
   const versus = block[1]
   assert.ok(versus.every((s) => ['dim', 'opus'].includes(s.style)))
   assert.deepEqual(versus.find((s) => s.style === 'opus'), { text: 'Opus', style: 'opus' })
-  assert.ok(block[2].some((s) => s.style === 'bold' && s.text.trim() === '1.4%'))
+  assert.ok(block[2].some((s) => s.style === 'saved' && s.pct === 1.4 && s.text.trim() === '1.4%'))
   assert.ok(block[2].some((s) => s.style === 'dim' && s.text === '± 0.6'))
   assert.ok(block[6].every((s) => s.style === 'dim'))
 })
@@ -239,6 +240,56 @@ test('the agent column follows the figure that shows', () => {
   assert.equal(agentColumn(null).cell('a1'), '—')
 })
 
+test('a phase subtotal comes from its group and a finished agent without a figure hides it', () => {
+  const groups = [{ key: 'P', dollars: 0.63, five_hour: 0.4, used: 1, total: 2 }]
+  const limit = agentColumn(saved({ groups }))
+  const phase = (...agents) => ({ key: 'P', agents: agents.map(([agentId, done]) => ({ agentId, done })) })
+  assert.equal(limit.group(phase(['a1', true])), '0.4%')
+  assert.equal(limit.group(phase(['a1', true], ['a2', false])), '0.4%')
+  assert.equal(limit.group(phase(['a1', true], ['a2', true])), '—')
+  assert.equal(limit.group({ key: 'other', agents: [] }), '—')
+  const dollars = agentColumn(saved({ groups, limits: null, subscription: false }))
+  assert.equal(dollars.group(phase(['a1', true])), '$0.63')
+  assert.equal(agentColumn(saved()).group(phase(['a1', true])), '—')
+  assert.equal(agentColumn(null).group(phase()), '—')
+})
+
+test('column colors follow the percentage, dollars and dashes have none', () => {
+  const groups = [{ key: 'P', dollars: 0.63, five_hour: 0.4, used: 1, total: 2 }]
+  const limit = agentColumn(saved({ groups }))
+  assert.equal(limit.color('a1'), savedColor(0.4))
+  assert.equal(limit.color('a2'), undefined)
+  assert.equal(limit.color('nope'), undefined)
+  const phase = (...agents) => ({ key: 'P', agents: agents.map(([agentId, done]) => ({ agentId, done })) })
+  assert.equal(limit.groupColor(phase(['a1', true])), savedColor(0.4))
+  assert.equal(limit.groupColor(phase(['a1', true], ['a2', true])), undefined)
+  const dollars = agentColumn(saved({ groups, limits: null, subscription: false }))
+  assert.equal(dollars.color('a1'), undefined)
+  assert.equal(dollars.groupColor(phase(['a1', true])), undefined)
+  assert.equal(agentColumn(null).color('a1'), undefined)
+})
+
+test('the tokens line joins the families with commas and a last "and"', () => {
+  const transition = (family) => ({ from: `${family}:high`, to: 'fable:high', source: 'prior' })
+  const line = (...families) => text(savedBlock(saved({ tokens: { saved: -46_000, outputSaved: -1 }, transitions: families.map(transition) }))[5])
+  assert.equal(line('haiku'), '  46k more tokens: Haiku read and wrote more, at a lower price per token')
+  assert.equal(line('haiku', 'opus'), '  46k more tokens: Haiku and Opus read and wrote more, at a lower price per token')
+  assert.equal(line('haiku', 'opus', 'sonnet'), '  46k more tokens: Haiku, Opus and Sonnet read and wrote more, at a lower price per token')
+})
+
+test('the phase table gives the saved value room before it gives the label room', () => {
+  const column = agentColumn(saved())
+  const labels = ['grunt: merged PRs', 'investigate: deprecations']
+  assert.deepEqual(phaseLayout(labels, 120, column), { field: 29, savedAt: 71, roomy: true })
+  assert.deepEqual(phaseLayout(labels, 76, column), { field: 27, savedAt: 69, roomy: false })
+  assert.deepEqual(phaseLayout(labels, 70, column), { field: 21, savedAt: 63, roomy: false })
+  assert.equal(phaseLayout(labels, 60, column).field, 12)
+  assert.equal(phaseLayout(labels, 40, column).field, 12)
+  assert.deepEqual(phaseLayout(labels, 70, null), { field: 29, savedAt: 71, roomy: false })
+  assert.equal(phaseLayout([], 120, null).field, 12)
+  assert.equal(phaseLayout(['x'.repeat(60)], 200, column).field, 34)
+})
+
 test('the list header picks the unit any view can show', () => {
   assert.deepEqual(listHeader([view()]), [{ text: 'saved of 5-hour limit', style: 'dim' }])
   const dollars = view({ saved: saved({ limits: null }) })
@@ -250,7 +301,7 @@ test('the list header picks the unit any view can show', () => {
 test('list cells show the figure, so far, dollars or a dash', () => {
   assert.equal(text(listCell(view())), '1.4% ± 0.6')
   assert.deepEqual(listCell(view()), [
-    { text: '1.4%', style: 'bold' },
+    { text: '1.4%', style: 'saved', pct: 1.4 },
     { text: ' ± 0.6', style: 'dim' }
   ])
   assert.equal(text(listCell(view({ saved: saved({ running: true, limits: { five_hour: range(0.6, 0.3), seven_day: null, readings: { five_hour: 6, seven_day: 6 } } }) }))), '0.6% so far')

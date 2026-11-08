@@ -54,12 +54,12 @@ The gate needs Claude Code 2.1.295 or later. ultraguard is pinned to and live-te
 
 1. Turn on ultracode: `/effort ultracode`.
 2. Give Claude a multi-step task, or ask it outright to use a workflow.
-3. When Claude launches the workflow, a `■ ultraguard-eval` row appears above the prompt. Green means the run matches what the gate approved.
+3. When Claude launches the workflow, a `□ ultraguard-eval` row appears above the prompt. Green means the run matches what the gate approved.
 
 Claude Code shows only one plugin row above the prompt. If another plugin draws there (Cognee's memory row does), ultraguard's row is hidden: turn that plugin's row off, or run `/ultraguard` to open the pane directly.
 
 <p align="center">
-  <img src="assets/eval-green.svg" alt="The Claude Code prompt while a workflow runs, with a row above it: a green square, the title ultraguard-eval and the summary 1 running.">
+  <img src="assets/eval-green.svg" alt="The Claude Code prompt while a workflow runs, with a row above it: a green hollow square, the title ultraguard-eval and the summary 1 running.">
 </p>
 
 ## The rules
@@ -139,10 +139,10 @@ A run is green while all four hold. Otherwise it turns red and names the first f
   <img src="assets/eval-red.svg" alt="The same row when a run breaks the plan: a red square, the title ultraguard-eval and the summary 1 running, 1 red.">
 </p>
 
-Select the row, or run `/ultraguard`, to open the pane: one row per workflow, running ones first and ended ones under "finished this session", and on Enter the four checks with ✓ or ✗ and one line per agent with the model and effort the gate approved and what it actually ran on.
+Select the row, or run `/ultraguard`, to open the pane: one row per workflow, running ones first and ended ones under "finished this session". Enter opens a workflow: the four checks with ✓ or ✗, then its phases, each a row you can fold (Enter, or `a` for all) with the agents that ran in it indented below, a ✓ or ✗ per agent, the model and effort the gate approved and what it actually ran on, and what each saved. A workflow without phases shows the agents in one flat table.
 
 <p align="center">
-  <img src="assets/eval-pane.svg" alt="The ultraguard-eval pane. Above, the run list: one finished workflow under 'finished this session' with the dollars it saved and their margin of error. Below, its detail after Enter: the four checks all passing, then the 'ultraguard saved' block (the limit lines still learning, the dollars saved with a plus-minus, the tokens, how many agents the figure covers and where the ratio comes from), then a table of three grunt agents approved for sonnet at medium that ran on sonnet at medium, each with what it saved.">
+  <img src="assets/eval-pane.svg" alt="The ultraguard-eval pane. Above, the run list: one finished workflow, release-notes, under 'finished this session' with the dollars it saved and their margin of error. Below, its detail after Enter: the four checks all passing, then the workflow's three phases, each open with a green circle and its agents below with a green check mark: Collect with two grunt agents approved for haiku at xhigh that ran on haiku at xhigh, Investigate with two investigate agents on sonnet at high, and Decide with a decide agent on opus at high, each with what it saved. Last, the start of the 'ultraguard saved' block, compared with running every agent on Fable at xhigh effort.">
 </p>
 
 Both parts leave a record in `~/.claude/ultraguard/sessions/<session_id>/` (or under `CLAUDE_CONFIG_DIR`): `<tool_use_id>.gate.json` for each gate decision, pass or deny, and `<tool_use_id>.eval.json` for each run ultraguard-eval saw.

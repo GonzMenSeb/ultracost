@@ -32,9 +32,10 @@ function assertContract(result) {
     else assert.equal(e.label, null)
   }
   for (const s of result.stages) {
-    assert.deepEqual(Object.keys(s), ['line', 'label', 'class', 'model', 'effort', 'hasBlockedOn', 'verdict'])
+    assert.deepEqual(Object.keys(s), ['line', 'label', 'class', 'model', 'effort', 'hasBlockedOn', 'verdict', 'phase'])
     assert.equal(typeof s.hasBlockedOn, 'boolean')
     assert.equal(typeof s.verdict, 'boolean')
+    assert.ok(s.phase === null || typeof s.phase === 'string')
     assert.ok(Number.isInteger(s.line) && s.line >= 1)
   }
 }
@@ -219,9 +220,9 @@ const c = ${call("label: 'code: rename', model: 'haiku', effort: 'xhigh', schema
 `)
   assert.deepEqual(r.errors, [])
   assert.deepEqual(r.stages, [
-    { line: 2, label: 'decide: pick', class: 'decide', model: 'opus', effort: 'high', hasBlockedOn: false, verdict: false },
-    { line: 3, label: 'build: parse ${…}', class: 'build', model: 'sonnet', effort: 'xhigh', hasBlockedOn: true, verdict: false },
-    { line: 9, label: 'code: rename', class: 'code', model: 'haiku', effort: 'xhigh', hasBlockedOn: true, verdict: false }
+    { line: 2, label: 'decide: pick', class: 'decide', model: 'opus', effort: 'high', hasBlockedOn: false, verdict: false, phase: null },
+    { line: 3, label: 'build: parse ${…}', class: 'build', model: 'sonnet', effort: 'xhigh', hasBlockedOn: true, verdict: false, phase: null },
+    { line: 9, label: 'code: rename', class: 'code', model: 'haiku', effort: 'xhigh', hasBlockedOn: true, verdict: false, phase: null }
   ])
 })
 
@@ -243,7 +244,7 @@ test('a no-substitution template label is accepted and its class captured', () =
 test('quoted option keys are read like identifier keys', () => {
   const r = analyze(call("'label': 'decide: pick', 'model': 'opus', 'effort': 'high'"))
   assert.deepEqual(r.errors, [])
-  assert.deepEqual(r.stages[0], { line: 1, label: 'decide: pick', class: 'decide', model: 'opus', effort: 'high', hasBlockedOn: false, verdict: false })
+  assert.deepEqual(r.stages[0], { line: 1, label: 'decide: pick', class: 'decide', model: 'opus', effort: 'high', hasBlockedOn: false, verdict: false, phase: null })
 })
 
 test('label class is the lowercase-letters-then-colon capture, case-sensitive and untrimmed', () => {
@@ -848,4 +849,52 @@ test('calls are the agent() call nodes in stage order', () => {
   assert.equal(r.calls.length, 2)
   assert.deepEqual(r.calls.map((c) => c.loc.start.line), r.stages.map((s) => s.line))
   assert.equal(analyze('const =').calls.length, 0)
+})
+
+const PHASE_OPTS = "model: 'haiku', effort: 'xhigh'"
+const META = "export const meta = { name: 'x', description: 'y', phases: [{ title: 'Collect' }, { title: 'Decide' }] }\n"
+const grunt = (name, extra = '') => `await agent('p', { label: 'grunt: ${name}', ${PHASE_OPTS}${extra} })\n`
+const phasesOf = (source) => analyze(source).stages.map((s) => s.phase)
+
+test('meta.phases gives the declared titles in order, skipping what is not a literal title', () => {
+  assert.deepEqual(analyze(META + grunt('a')).phases, ['Collect', 'Decide'])
+  assert.deepEqual(analyze("export const meta = { phases: [{ title: 'A' }, { title: t }, { title: 'A' }, 'B', { title: `C` }] }\n").phases, ['A', 'C'])
+  assert.deepEqual(analyze(grunt('a')).phases, [])
+  assert.deepEqual(analyze('const meta = { phases: [{ title: "A" }] }\n').phases, [])
+  assert.deepEqual(analyze('export const meta = { phases: [ ').phases, [])
+})
+
+test('a literal phase option places the agent in that phase', () => {
+  assert.deepEqual(phasesOf(META + grunt('a', ", phase: 'Collect'") + grunt('b', ', phase: `Decide`')), ['Collect', 'Decide'])
+})
+
+test('an agent without a phase option takes the nearest earlier phase() call in source order', () => {
+  const source = `${META}phase('Collect')\n${grunt('a')}${grunt('b')}phase('Decide')\n${grunt('c')}`
+  assert.deepEqual(phasesOf(source), ['Collect', 'Collect', 'Decide'])
+})
+
+test('the phase option wins over an earlier phase() call', () => {
+  assert.deepEqual(phasesOf(`phase('Collect')\n${grunt('a', ", phase: 'Decide'")}${grunt('b')}`), ['Decide', 'Collect'])
+})
+
+test('an agent before any phase() call and with no option has no phase', () => {
+  assert.deepEqual(phasesOf(`${grunt('a')}phase('Collect')\n${grunt('b')}`), [null, 'Collect'])
+})
+
+test('a phase that is not literal text leaves the agent without a phase', () => {
+  assert.deepEqual(phasesOf(`phase('Collect')\n${grunt('a', ', phase: name')}${grunt('b', ', phase: `x${n}`')}${grunt('c', ", phase: 'A', phase: 'B'")}`), [null, null, null])
+  assert.deepEqual(phasesOf(`phase(name)\n${grunt('a')}`), [null])
+  assert.deepEqual(phasesOf(`phase('A')\nphase(name)\n${grunt('a')}`), [null])
+  assert.deepEqual(phasesOf(`phase('A')\nphase()\n${grunt('a')}`), [null])
+})
+
+test('phase handling adds no errors and does not touch the other stage fields', () => {
+  const plain = analyze(`\n${grunt('a')}`)
+  const phased = analyze(`phase('Collect')\n${grunt('a', ", phase: 'Collect'")}`)
+  assert.deepEqual(phased.errors, plain.errors)
+  const { phase, ...rest } = phased.stages[0]
+  const { phase: none, ...plainRest } = plain.stages[0]
+  assert.equal(phase, 'Collect')
+  assert.equal(none, null)
+  assert.deepEqual(rest, plainRest)
 })

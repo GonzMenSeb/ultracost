@@ -389,10 +389,11 @@ Written for every decision, pass or deny, including launches denied before the s
 | `scriptPath` | the launch's `scriptPath`, or `null` |
 | `sessionModel` | the session model the cap used: `opus`, `sonnet`, `haiku` or `null` when it could not be read |
 | `maxOpus` | the computed Opus bound. `null` when unknown or when the script could not be analysed. `0` when there are no agents |
-| `stages` | one entry per `agent()` in source order, with `index`, `line`, `label`, `class`, `model`, `effort`, `inFanout`, `bigFanout` and `verdict` |
+| `phases` | the titles in the script's `export const meta = { phases: [{ title }] }`, in order; only literal text titles, without duplicates. `[]` when there are none |
+| `stages` | one entry per `agent()` in source order, with `index`, `line`, `label`, `class`, `model`, `effort`, `inFanout`, `bigFanout`, `verdict` and `phase` |
 | `errors` | one entry per problem, with `code`, `line` and `message` |
 
-`label` keeps each `${…}` of a template label as that literal text. `verdict` is true when the stage has a valid verdict schema. The fingerprint is computed by a pure-JS SHA-256 in `src/fingerprint.mjs`, so the mod computes the same value, and a test checks it against `node:crypto`.
+`label` keeps each `${…}` of a template label as that literal text. `verdict` is true when the stage has a valid verdict schema. `phase` is the stage's phase: its literal `phase: '…'` option, else the title of the nearest earlier `phase('…')` call in source order, else `null`. A `phase` option or `phase()` argument that is not literal text gives `null`, because the title is only known when the script runs. The fingerprint is computed by a pure-JS SHA-256 in `src/fingerprint.mjs`, so the mod computes the same value, and a test checks it against `node:crypto`.
 
 If the record of a clean launch cannot be written, the gate fails closed (see [Failure behavior](#failure-behavior)). On a deny, a write error is ignored.
 
@@ -415,7 +416,8 @@ ultraguard-eval writes this file for each workflow run it saw, next to the gate'
 | `limit`, `peakOpus` | the Opus limit used and the most Opus agents seen running at once |
 | `checks` | the four checks, each with `id` (`gate`, `plan`, `requests`, `opus`), `ok` and `reason` |
 | `failures` | the distinct failure reasons, check and agent |
-| `agents` | one entry per agent, with `agent_id`, `label`, `askedModel`, `ranModel`, `approved` (the matched stage's model and effort), `sent` (each distinct model and effort the agent's requests used), `done`, `ok` and `reason` |
+| `agents` | one entry per agent, with `agent_id`, `label`, `askedModel`, `ranModel`, `approved` (the matched stage's model and effort), `sent` (each distinct model and effort the agent's requests used), `done`, `phase` (the agent's phase title, or `null`), `ok` and `reason` |
+| `phases` | one entry per phase shown in the detail, with `title` (`null` for the "phase unknown" group), `state` and the `agents` ids in it. `null` when the run has no phases |
 | `savings` | per-agent usage by configuration, the baseline configuration, each transition's source and ratio, the seed, and the results (see [Savings](#savings)) |
 
 ## ultraguard-eval
@@ -453,7 +455,7 @@ An agent spawned for a run with no known launch is red with "not approved by the
 ### What it shows
 
 - A band above the prompt, only while at least one workflow run is active: a square (red if any active run is red, else green), the bold title `ultraguard-eval` and a dim summary such as `2 running · 1 red`. Selecting it opens the pane. `/ultraguard` opens it too. The band yields to a survey.
-- A pane with one row per active run, in aligned columns: a square, the workflow's name, a short run id, the Opus, Sonnet and Haiku counts in their tier colors, and either `as approved` or the first failure. Enter on a row shows the four checks with ✓ or ✗ (a passing check adds its detail: the gate's approval time, the agent and request counts, the peak Opus count), then a table of agents with the approved model and effort, what it ran on, and the reason when red. Esc goes back, then closes.
+- A pane with one row per active run, in aligned columns: a hollow square, the workflow's name, a short run id, the Opus, Sonnet and Haiku counts (the model in bold, in its color), and either the saved figure or the first failure. The focused row is drawn inside a rounded outline with a bold name; every row keeps the room of that outline, so nothing moves when the focus does. Enter on a row shows the four checks with ✓ or ✗ (a passing check adds its detail: the gate's approval time, the agent and request counts, the peak Opus count), then the workflow's phases with their agents (see [Phases in the detail](#phases-in-the-detail)), then the saved block. Esc goes back, then closes.
 
 ### Limits
 
@@ -549,9 +551,42 @@ The best public reverse-engineering of the meter fits input and output at list-p
 
 Usage from other sessions and claude.ai moves the meter without adding units here, so the figure reads high. Fable's separate weekly limit is not exposed and not shown.
 
+### Phases in the detail
+
+Enter on a run shows the four checks, then the run's phases like Claude Code's own workflow view: each phase is a row you can fold, and the agents that ran in it sit indented below.
+
+```
+      agent                        approved          ran on            saved
+▾ ○ Collect  done · 2 agents · haiku 2                                 $0.34
+    ✓ grunt: merged PRs            haiku · xhigh     haiku · xhigh     $0.05
+    ✓ grunt: changelog entries     haiku · xhigh     haiku · xhigh     $0.06
+▸ ○ Investigate  done · 2 agents · sonnet 2                            $1.09
+▾ ○ Decide  running · 0 of 1 done · opus 1                             —
+    ✓ decide: release version      opus · high       opus · high       —
+  · Review  not started
+```
+
+- **Where phases come from:** the gate reads them from the script (see the gate record's `phases` and each stage's `phase`), and the mod joins each agent to its stage by label, the way it already checks the plan. The running workflow does not expose its phases to plugins, so a script whose phase is only known at run time (a `phase:` value that is not literal text) puts the agent under "phase unknown". So does an agent whose label matches stages that sit in different phases.
+- **No phases:** a script with no phases, a run the gate did not approve or an older gate record shows the flat agent table.
+- **Phase row:** a caret (▾ open, ▸ folded), a hollow circle (green while every agent in the phase is as approved, red when one is not), the bold title, `running · 1 of 2 done` or `done · 2 agents`, the Opus, Sonnet and Haiku counts, `1 red` when an agent broke the plan, and the saved figure of the phase's agents. A phase with no agents yet reads `not started`, and `did not run` once the run ended. Those rows are dim and cannot be folded.
+- **Agent row:** a green ✓ when the agent is as approved, a red ✗ when not, then the label, the approved and ran-on model and effort, and what it saved. A red agent's reason is on its own line below the row.
+- **A phase is done** when the run ended, or when every agent in it is done and a later phase has an agent. Until then it reads `running`, so a loop that runs one agent at a time does not flicker.
+- **Folding:** every phase starts open, except that on a run of more than 12 agents a finished phase with nothing red starts folded. Enter on a phase row folds or opens it, `a` opens all or folds all, `b` or Esc goes back. Your choices stay while you look at the run, also when it ends, and reset when you open another run. Focus starts on the first running or red phase.
+- **Saved figure of a phase:** the median of the sum of its agents' savings, not the sum of the agents' medians, so the figures of the agents can add up to a little less or more. It shows a dash when a finished agent in the phase has no figure. On a pane too narrow for the saved column title it follows the phase title after a dot. When the pane is narrow, the label column gives room to the saved figure first.
+
+### Colors
+
+What a run costs runs warm, what it saved runs cool. Colors sit in the characters, never in a fill.
+
+- **Models and efforts:** the model name is bold in its color and the effort word stays dim. Haiku is gold, Sonnet orange and Opus red, each deepening from `low` to `xhigh` (Opus at `xhigh` is the deep crimson, `#d63150`). A count such as `sonnet 32` and a family name in the saved block use the usual shade of the family: Haiku at `xhigh`, Sonnet and Opus at `high`. Fable takes the Opus colors.
+- **Saved:** a percentage of the 5-hour limit is bold and runs from aqua at 1% through azure at 10% to violet at 20% and above, between those points in even steps of perceived color. The same color marks the saved figure of an agent and of a phase. Dollars and tokens stay plain.
+- **Status:** green and red stay for the hollow squares, the hollow circles and the check marks, and mean only as approved or not.
+
+The colors are tuned for a dark terminal: each one keeps at least 3:1 contrast on a `#262626` background.
+
 ### What the pane shows
 
-The row above the prompt is unchanged: green and red still mean only enforced or evaded.
+The row above the prompt keeps its meaning, with a hollow square: green and red still mean only enforced or evaded.
 
 Workflow detail (Enter on a run), after the four checks:
 
@@ -566,12 +601,12 @@ compared with running every agent on Opus at high effort, your session's setting
   from 4 of 4 agents · ratio measured on 4 replayed agents
 ```
 
-The agent table gets one more column, "saved of 5-hour limit" (or "saved at API prices" when no limit figure shows), with each agent's median.
+The agent table gets one more column, "saved of 5-hour limit" (or "saved at API prices" when no limit figure shows), with each agent's median, and each phase row shows the figure of its agents.
 
 - **Running:** the heading reads "ultraguard saved so far".
 - **API key:** the first line is "$2.32 off your API bill", with no limit lines.
 - **Limit not calibrated:** "5-hour limit: learning how fast your limit fills, 3 of 5 readings so far".
-- **More tokens:** "8.8M more tokens: sonnet read and wrote more, at a lower price per token".
+- **More tokens:** "8.8M more tokens: Sonnet read and wrote more, at a lower price per token". With two or more families it reads "Haiku, Opus and Sonnet read and wrote more…".
 - **Range below zero:** the first figure line ends with "this run may have saved nothing".
 - **Sources:** "ratio measured on N replayed agents"; "ratio measured at high effort, adjusted with published figures for xhigh"; "no replay measured sonnet · medium against opus · high; using published figures, so ± is wide".
 - **Coverage:** "from 5 of 6 agents: ultraguard has no price for the model one agent ran on".

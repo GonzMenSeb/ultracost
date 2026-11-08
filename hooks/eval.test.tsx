@@ -37,7 +37,7 @@ const gateRecord = (toolUseId: string, over: Record<string, unknown> = {}) =>
     ...over,
   })
 
-async function world($: any, on: any, options: { gate: boolean; launch?: Record<string, unknown> }) {
+async function world($: any, on: any, options: { gate: boolean; launch?: Record<string, unknown>; record?: Record<string, unknown> }) {
   const writes: Record<string, string> = {}
   const logs: string[] = []
   const notices: unknown[] = []
@@ -52,7 +52,7 @@ async function world($: any, on: any, options: { gate: boolean; launch?: Record<
   on('fs.write', (_: any, e: any) => ((writes[e.path] = e.text), { value: undefined }))
   on('fs.read', (_: any, e: any) =>
     options.gate && e.path === `${CONFIG}/ultraguard/sessions/${SESSION}/${toolUseId}.gate.json`
-      ? { value: gateRecord(toolUseId) }
+      ? { value: gateRecord(toolUseId, options.record) }
       : String(e.path).endsWith('/saved/map.js')
         ? { value: SCRIPT }
         : { deny: `ENOENT ${e.path}` },
@@ -90,7 +90,7 @@ test('a compliant workflow draws a green band and writes its eval record', async
     const ui = await $.ui.mount({ ...BAND, surface })
     expect((await ui.find({ type: 'Button' }))?.text).toContain('ultraguard-eval')
     expect((await ui.find({ type: 'Button' }))?.text).toContain('1 running');
-    expect((await ui.find({ type: 'Text', text: '■' }))?.props.color).toBe('success')
+    expect((await ui.find({ type: 'Text', text: '□' }))?.props.color).toBe('success')
     await ui.unmount()
   }
 
@@ -108,7 +108,7 @@ test('a run with no gate record draws a red band', async ($, on) => {
     const ui = await $.ui.mount({ ...BAND, surface })
     expect((await ui.find({ type: 'Button' }))?.text).toContain('ultraguard-eval')
     expect((await ui.find({ type: 'Button' }))?.text).toContain('1 running · 1 red')
-    expect((await ui.find({ type: 'Text', text: '■' }))?.props.color).toBe('error')
+    expect((await ui.find({ type: 'Text', text: '□' }))?.props.color).toBe('error')
     await ui.unmount()
   }
 
@@ -121,7 +121,7 @@ test('the pane lists the run and drills into its checks and agents', async ($, o
 
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ ...PANE, surface })
-    const row = await ui.find({ type: 'Button', key: `run:${w.id()}` })
+    const row = await ui.find({ type: 'Box', key: `box:${w.id()}` })
     expect(row?.text).toContain('map')
     expect(row?.text).toContain('not approved by the gate')
     await ui.press({ key: `run:${w.id()}` })
@@ -190,7 +190,7 @@ test('a launch by scriptPath is fingerprinted from the file and stays green', as
   expect(JSON.parse(w.writes[`${CONFIG}/ultraguard/sessions/${SESSION}/${w.id()}.eval.json`] ?? '{}').reason).toBe(null)
   const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
   expect((await ui.find({ type: 'Button' }))?.text).toContain('1 running')
-  expect((await ui.find({ type: 'Text', text: '■' }))?.props.color).toBe('success')
+  expect((await ui.find({ type: 'Text', text: '□' }))?.props.color).toBe('success')
   await ui.unmount()
 })
 
@@ -269,4 +269,92 @@ test('a completion notice the append hook never saw still ends the run at the ne
   await ui.unmount()
   const record = JSON.parse(w.writes[`${CONFIG}/ultraguard/sessions/${SESSION}/${w.id()}.eval.json`] ?? '{}')
   expect(record.status).toBe('killed')
+})
+
+const PHASED = {
+  phases: ['Collect', 'Decide'],
+  stages: [
+    { index: 0, line: 2, label: 'investigate: map', class: 'investigate', model: 'sonnet', effort: 'high', inFanout: false, bigFanout: false, verdict: false, phase: 'Collect' },
+    { index: 1, line: 3, label: 'decide: pick', class: 'decide', model: 'opus', effort: 'high', inFanout: false, bigFanout: false, verdict: false, phase: 'Decide' },
+  ],
+}
+
+test('the detail groups agents under phases that fold with enter', async ($, on) => {
+  const w = await world($, on, { gate: true, record: PHASED })
+
+  for (const surface of ['terminal', 'desktop'] as const) {
+    const ui = await $.ui.mount({ ...PANE, surface })
+    await ui.press({ key: `run:${w.id()}` })
+
+    const header = await ui.find({ type: 'Button', key: 'phase:Collect' })
+    expect(header?.text).toContain('▾')
+    expect(header?.text).toContain('Collect')
+    expect(header?.text).toContain('running · 0 of 1 done')
+    expect(header?.text).toContain('sonnet 1')
+    expect((await ui.findAll({ type: 'Text', text: '○' })).at(-1)?.props.color).toBe('success')
+    expect(await ui.find({ type: 'Text', text: /^ {4}✓ investigate: map/ })).toBeDefined()
+    expect((await ui.find({ type: 'Text', text: /Decide/ }))?.text).toContain('not started')
+    expect(await ui.find({ type: 'Button', key: 'phase:Decide' })).toBeUndefined()
+
+    await ui.press({ key: 'phase:Collect' })
+    expect((await ui.find({ type: 'Button', key: 'phase:Collect' }))?.text).toContain('▸')
+    expect(await ui.find({ type: 'Text', text: /^ {4}✓ investigate: map/ })).toBeUndefined()
+    expect((await ui.find({ type: 'Button', key: 'all' }))?.text).toContain('expand all')
+
+    await ui.press({ key: 'all' })
+    expect((await ui.find({ type: 'Button', key: 'phase:Collect' }))?.text).toContain('▾')
+    expect(await ui.find({ type: 'Text', text: /^ {4}✓ investigate: map/ })).toBeDefined()
+    expect((await ui.find({ type: 'Button', key: 'all' }))?.text).toContain('collapse all')
+
+    await ui.press({ key: 'back' })
+    await ui.press({ key: `run:${w.id()}` })
+    expect((await ui.find({ type: 'Button', key: 'phase:Collect' }))?.text).toContain('▾')
+    await ui.press({ key: 'back' })
+    await ui.unmount()
+  }
+})
+
+test('an agent that broke the plan turns its phase red and says why on its own line', async ($, on) => {
+  const w = await world($, on, { gate: true, record: { ...PHASED, stages: PHASED.stages.map((st, i) => (i === 0 ? { ...st, model: 'opus' } : st)) } })
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  await ui.press({ key: `run:${w.id()}` })
+
+  expect((await ui.find({ type: 'Button', key: 'phase:Collect' }))?.text).toContain('1 red')
+  expect((await ui.findAll({ type: 'Text', text: '○' })).at(-1)?.props.color).toBe('error')
+  expect(await ui.find({ type: 'Text', text: /^ {4}✗ investigate: map/ })).toBeDefined()
+  const reason = await ui.find({ type: 'Text', text: /^ {6}agent "investigate: map" ran on sonnet, the gate approved opus/ })
+  expect(reason?.props.color).toBe('error')
+  await ui.unmount()
+})
+
+test('a gate with no phases keeps the flat agent table', async ($, on) => {
+  const w = await world($, on, { gate: true })
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  await ui.press({ key: `run:${w.id()}` })
+  expect(await ui.find({ type: 'Button', key: 'all' })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: /^□ investigate: map/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^ {2}agent/ })).toBeDefined()
+  await ui.unmount()
+})
+
+test('a run no one has focused only reserves the room of the outline, and its button is just the circle', async ($, on) => {
+  const w = await world($, on, { gate: true })
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  const rest = await ui.find({ type: 'Box', key: `box:${w.id()}` })
+  expect(rest?.props.borderStyle).toBeUndefined()
+  expect(rest?.props.paddingX).toBe(1)
+  expect(rest?.props.paddingY).toBe(1)
+  expect(rest?.props.backgroundColor).toBeUndefined()
+  expect((await ui.find({ type: 'Button', key: `run:${w.id()}` }))?.text).toBe('□')
+  await ui.unmount()
+})
+
+test('the model in a row is bold in its family color and the count stays dim', async ($, on) => {
+  await world($, on, { gate: true })
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  const name = await ui.find({ type: 'Text', text: /^sonnet$/ })
+  expect(name?.props.weight).toBe('bold')
+  expect(name?.props.color).toBe('#f48815')
+  expect((await ui.find({ type: 'Text', text: /^ 1$/ }))?.props.dimColor).toBe(true)
+  await ui.unmount()
 })

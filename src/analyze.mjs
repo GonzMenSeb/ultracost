@@ -60,6 +60,14 @@ export function identifiers(ast) {
 const lineOf = (node) => (node.loc ? node.loc.start.line : null)
 const isString = (node) => node.type === 'Literal' && typeof node.value === 'string'
 
+function plainText(node) {
+  if (!node) return null
+  if (isString(node)) return node.value
+  if (node.type !== 'TemplateLiteral' || node.expressions.length > 0) return null
+  const cooked = node.quasis[0].value.cooked
+  return cooked === null || cooked === undefined ? null : cooked
+}
+
 function keyName(prop) {
   if (prop.key.type === 'Identifier') return prop.key.name
   if (prop.key.type === 'Literal') return String(prop.key.value)
@@ -198,7 +206,7 @@ function isVerdictSchema(schema) {
 }
 
 function analyzeCall(call, index, errors) {
-  const stage = { line: lineOf(call), label: null, class: null, model: null, effort: null, hasBlockedOn: false, verdict: false }
+  const stage = { line: lineOf(call), label: null, class: null, model: null, effort: null, hasBlockedOn: false, verdict: false, phase: null, phaseSet: false }
   const found = []
   const fail = (node, message, extra) => found.push({ node, message, extra })
   const failLabel = (node, message) => found.push({ node, message, classless: true })
@@ -265,6 +273,12 @@ function analyzeCall(call, index, errors) {
     }
     if (by.has('agentType')) fail(by.get('agentType')[0], 'agentType is not allowed')
 
+    const phaseProps = opts.properties.filter((p) => isPlainProp(p) && keyName(p) === 'phase')
+    if (phaseProps.length > 0) {
+      stage.phaseSet = true
+      if (phaseProps.length === 1 && isReadable(phaseProps[0])) stage.phase = plainText(phaseProps[0].value)
+    }
+
     if (!isDuplicated('schema')) {
       const schemaProps = by.get('schema')
       const schema = !schemaProps
@@ -306,6 +320,27 @@ function analyzeCall(call, index, errors) {
   return stage
 }
 
+function metaPhases(ast) {
+  for (const node of ast.body) {
+    const decl = node.type === 'ExportNamedDeclaration' ? node.declaration : null
+    if (!decl || decl.type !== 'VariableDeclaration') continue
+    for (const d of decl.declarations) {
+      if (d.id.type !== 'Identifier' || d.id.name !== 'meta' || !d.init || d.init.type !== 'ObjectExpression') continue
+      const list = d.init.properties.find((p) => isPlainProp(p) && keyName(p) === 'phases')
+      if (!list || list.value.type !== 'ArrayExpression') return []
+      const titles = []
+      for (const el of list.value.elements) {
+        if (!el || el.type !== 'ObjectExpression') continue
+        const title = el.properties.find((p) => isPlainProp(p) && keyName(p) === 'title')
+        const text = title ? plainText(title.value) : null
+        if (text !== null && text !== '' && !titles.includes(text)) titles.push(text)
+      }
+      return titles
+    }
+  }
+  return []
+}
+
 export function analyze(source) {
   if (typeof source !== 'string') throw new TypeError('analyze() needs the script source as a string')
   let ast
@@ -314,13 +349,14 @@ export function analyze(source) {
   } catch (e) {
     if (!(e instanceof SyntaxError)) throw e
     const line = e.loc && typeof e.loc.line === 'number' ? e.loc.line : null
-    return { ast: null, stages: [], calls: [], errors: [{ code: 'PARSE', line, label: null, message: e.message, stage: null }] }
+    return { ast: null, stages: [], calls: [], errors: [{ code: 'PARSE', line, label: null, message: e.message, stage: null }], phases: [] }
   }
 
   const errors = []
   const bindings = new Set()
   const callees = new Set()
   const calls = []
+  const phaseCalls = []
   const workflowRefs = []
   const report = (code, node, message, extra) => errors.push({ code, line: lineOf(node), label: null, message, stage: null, ...extra })
 
@@ -349,6 +385,7 @@ export function analyze(source) {
         if (!node.optional && node.callee.type === 'Identifier') {
           callees.add(node.callee)
           if (node.callee.name === 'agent') calls.push(node)
+          else if (node.callee.name === 'phase') phaseCalls.push(node)
         }
         break
       case 'Identifier':
@@ -384,7 +421,16 @@ export function analyze(source) {
   }
 
   calls.sort((a, b) => a.start - b.start)
+  phaseCalls.sort((a, b) => a.start - b.start)
   const stages = calls.map((call, index) => analyzeCall(call, index, errors))
+  calls.forEach((call, index) => {
+    const stage = stages[index]
+    if (!stage.phaseSet) {
+      const before = phaseCalls.filter((c) => c.start < call.start).pop()
+      stage.phase = before ? plainText(before.arguments[0]) : null
+    }
+    delete stage.phaseSet
+  })
 
   const seen = new Set()
   const unique = errors.filter((e) => {
@@ -395,5 +441,5 @@ export function analyze(source) {
   })
   const order = new Map(unique.map((e, i) => [e, i]))
   unique.sort((a, b) => (a.line ?? Infinity) - (b.line ?? Infinity) || order.get(a) - order.get(b))
-  return { ast, stages, calls, errors: unique }
+  return { ast, stages, calls, errors: unique, phases: metaPhases(ast) }
 }

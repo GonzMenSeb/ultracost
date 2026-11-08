@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { EvalAgentView, EvalState } from '../types'
+import type { EvalAgentView, EvalPhaseView, EvalState } from '../types'
 import { sha256Hex } from '../src/fingerprint.mjs'
 import { recordPath } from '../src/record.mjs'
 import {
@@ -22,6 +22,7 @@ import {
   noteLaunchResult,
   noteLimit,
   noteMainStep,
+  noteFocus,
   noteMeterReading,
   noteRunEnd,
   noteSaved,
@@ -31,12 +32,15 @@ import {
   noteUsage,
   openRun,
   parseTaskNotifications,
+  phaseOpen,
   runOfAgent,
-  runView
+  runView,
+  setFolds
 } from '../src/eval.mjs'
 import { intervalsOf, staleKeys, storedValue } from '../src/meter.mjs'
+import { familyColor, modelColor, savedColor } from '../src/palette.mjs'
 import { loadPrices, priceFamily } from '../src/prices.mjs'
-import { agentColumn, listCell, listHeader, savedBlock, toastText } from '../src/savedText.mjs'
+import { agentColumn, listCell, listHeader, phaseLayout, savedBlock, toastText } from '../src/savedText.mjs'
 import { estimateRun } from '../src/savings.mjs'
 import { seedOf } from '../src/stats.mjs'
 
@@ -50,7 +54,7 @@ const ev = atom({ plugin: 'ultraguard', key: 'eval' } as const, createState() as
 
 type Ids = { toolUseId: string; runId: string }
 type Notice = { toolUseId: string | null | undefined; taskId: string | null | undefined; status: string }
-type Segment = { text: string; style: string }
+type Segment = { text: string; style: string; pct?: number }
 type Data = { prices: any; ratios: any }
 type WorkflowOutput = { taskId?: string; runId?: string; workflowName?: string; summary?: string; error?: string }
 
@@ -60,19 +64,24 @@ const countsWidth = (c: { opus: number; sonnet: number; haiku: number }) => {
   const parts = (['opus', 'sonnet', 'haiku'] as const).filter(m => c[m] > 0).map(m => `${m} ${c[m]}`)
   return parts.length === 0 ? 'no agents yet'.length : parts.join(' · ').length
 }
-const MODEL_COLORS: Record<string, string> = { opus: '#c084fc', sonnet: '#60a5fa', haiku: '#2dd4bf', fable: '#fbbf24' }
-const modelColor = (model: string | null) => (model && MODEL_COLORS[model]) || undefined
 
+const segmentLook = (g: Segment) => {
+  if (g.style === 'saved') return { weight: 'bold' as const, color: savedColor(g.pct ?? 0) }
+  const family = familyColor(g.style)
+  if (family) return { weight: 'bold' as const, color: family }
+  return { weight: g.style === 'bold' ? ('bold' as const) : undefined, dimColor: g.style === 'dim' ? true : undefined }
+}
 
 const lineOf = (Text: any, wrap: 'truncate-end' | 'wrap' = 'truncate-end') => (line: Segment[]) => (
   <Text wrap={wrap}>
     {line.map(g => (
-      <Text weight={g.style === 'bold' ? 'bold' : undefined} dimColor={g.style === 'dim' ? true : undefined} color={MODEL_COLORS[g.style]}>
-        {g.text}
-      </Text>
+      <Text {...segmentLook(g)}>{g.text}</Text>
     ))}
   </Text>
 )
+
+const tinted = (Text: any, text: string, color: string | undefined) =>
+  color ? <Text weight="bold" color={color}>{text}</Text> : <Text dimColor={text === '—' ? true : undefined}>{text}</Text>
 
 function cap<V>(map: Map<string, V>) {
   while (map.size > KEPT) map.delete(map.keys().next().value as string)
@@ -165,6 +174,7 @@ async function estimate($: EngineInterface, key: string) {
   const running = run.status === 'running'
   const saved = estimateRun({
     agents: agentPieces(run),
+    groups: (runView(run).phases ?? []).map((p: EvalPhaseView) => ({ key: p.key, agentIds: p.agentIds })),
     baseline: family && run.baseline.effort ? { family, effort: run.baseline.effort } : null,
     ratios: data.ratios,
     prices: data.prices,
@@ -404,6 +414,11 @@ export const register: Register = on => {
     return next(e)
   })
 
+  on('ui.focus', { component: 'Pane', requestId: PANE }, async ($, e, next) => {
+    await guard($, 'focus', () => update($, ev, s => noteFocus(s, e.element ?? null)))
+    return next(e)
+  })
+
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     if (e.props.hasSurvey) return next(e)
     const view = bandView(await read($, ev))
@@ -412,7 +427,7 @@ export const register: Register = on => {
     return (
       <Box>
         <Button key="open" plain onPress={() => openPane($)}>
-          <Text color={tone(view.color === 'green')}>■</Text> <Text weight="bold">{TITLE}</Text> <Text dimColor>{bandText(view)}</Text>
+          <Text color={tone(view.color === 'green')}>□</Text> <Text weight="bold">{TITLE}</Text> <Text dimColor>{bandText(view)}</Text>
         </Button>
       </Box>
     )
@@ -431,7 +446,7 @@ export const register: Register = on => {
       const rest = ` · ${effort ?? '—'}`
       return (
         <Text>
-          <Text color={modelColor(model)}>{m}</Text>
+          <Text weight="bold" color={modelColor(model, effort)}>{m}</Text>
           <Text dimColor>{fit(rest, Math.max(0, width - m.length))}</Text>
         </Text>
       )
@@ -445,7 +460,8 @@ export const register: Register = on => {
           {parts.map((m, i) => (
             <Text>
               {i > 0 && <Text dimColor>{' · '}</Text>}
-              <Text color={MODEL_COLORS[m]}>{`${m} ${c[m]}`}</Text>
+              <Text weight="bold" color={familyColor(m)}>{m}</Text>
+              <Text dimColor>{` ${c[m]}`}</Text>
             </Text>
           ))}
         </Text>
@@ -453,36 +469,117 @@ export const register: Register = on => {
     }
 
     if (open) {
-      const labelWidth = Math.min(34, Math.max(12, ...open.agents.map((a: EvalAgentView) => a.label.length + 4)))
+      const phases: EvalPhaseView[] | null = open.phases
       const column = open.saved ? agentColumn(open.saved) : null
+      const crumb = (
+        <Text wrap="truncate-end">
+          <Text weight="bold">{TITLE}</Text>
+          <Text dimColor>{' › '}</Text>
+          <Text weight="bold">{open.title}</Text>
+          <Text dimColor>{` · ${open.shortId}`}</Text>
+        </Text>
+      )
+      const checks = open.checks.map((c: { id: string; ok: boolean; title: string; reason: string | null; detail: string | null }) => (
+        <Text wrap="truncate-end">
+          <Text color={tone(c.ok)}>{c.ok ? '✓' : '✗'}</Text>
+          {` ${c.title}`}
+          {c.ok ? c.detail && <Text dimColor>{`  ${c.detail}`}</Text> : <Text color="error">{`  ${c.reason}`}</Text>}
+        </Text>
+      ))
+      const saved = open.saved && (
+        <Box flexDirection="column">
+          {savedBlock(open.saved).map(wrapped)}
+          <Text> </Text>
+        </Box>
+      )
+
+      if (phases) {
+        const { field, savedAt, roomy } = phaseLayout(open.agents.map((a: EvalAgentView) => a.label), e.props.bodyColumns, column)
+        const openOf = (p: EvalPhaseView) => phaseOpen(p, state.ui.folds)
+        const foldable = phases.filter(p => p.total > 0)
+        const anyFolded = foldable.some(p => !openOf(p))
+        const focusKey = (foldable.find(p => p.state === 'running' || p.red > 0) ?? foldable[0])?.key
+        const stateText = (p: EvalPhaseView) => (p.state === 'running' ? `running · ${p.done} of ${p.total} done` : `done · ${p.total} agent${p.total === 1 ? '' : 's'}`)
+        const headLength = (p: EvalPhaseView) =>
+          4 + p.title.length + 2 + stateText(p).length + 3 + countsWidth(p.counts) + (p.red > 0 ? ` · ${p.red} red`.length : 0)
+        const phaseRow = (p: EvalPhaseView) => {
+          const subtotal = column ? column.group(p) : null
+          const gap = roomy ? Math.max(1, savedAt - headLength(p)) : 0
+          return (
+            <Button key={`phase:${p.key}`} plain autoFocus={p.key === focusKey ? true : undefined} onPress={() => update($, ev, s => setFolds(s, [p.key], openOf(p)))}>
+              <Text wrap="truncate-end">
+                <Text dimColor>{openOf(p) ? '▾' : '▸'}</Text>
+                {' '}
+                <Text color={tone(p.ok)}>○</Text>
+                {' '}
+                <Text weight="bold">{p.title}</Text>
+                {subtotal !== null && !roomy && <Text>{'  '}{tinted(Text, subtotal, column?.groupColor(p))}</Text>}
+                <Text dimColor>{`  ${stateText(p)} · `}</Text>
+                {counts(p.counts)}
+                {p.red > 0 && <Text color="error">{` · ${p.red} red`}</Text>}
+                {subtotal !== null && roomy && <Text>{' '.repeat(gap)}{tinted(Text, subtotal, column?.groupColor(p))}</Text>}
+              </Text>
+            </Button>
+          )
+        }
+        const agentRow = (a: EvalAgentView) => (
+          <Box flexDirection="column">
+            <Text wrap="truncate-end">
+              {'    '}
+              <Text color={tone(a.ok)}>{a.ok ? '✓' : '✗'}</Text>
+              {` ${fit(a.label, field)}`}
+              {pair(a.approvedModel, a.approvedEffort, 18)}
+              {pair(a.ranModel, a.ranEffort, 18)}
+              {column && tinted(Text, column.cell(a.agentId), column.color(a.agentId))}
+            </Text>
+            {a.reason && <Text color="error" wrap="wrap">{`      ${a.reason}`}</Text>}
+          </Box>
+        )
+        return (
+          <Box flexDirection="column">
+            {crumb}
+            <Text> </Text>
+            {checks}
+            <Text> </Text>
+            <Text dimColor wrap="truncate-end">{`${' '.repeat(6)}${fit('agent', field)}${fit('approved', 18)}${column ? fit('ran on', 18) : 'ran on'}${column ? (roomy ? column.header : 'saved') : ''}`}</Text>
+            {phases.map(p =>
+              p.total === 0 ? (
+                <Text dimColor wrap="truncate-end">{`  · ${p.title}  ${p.state}`}</Text>
+              ) : (
+                <Box flexDirection="column">
+                  {phaseRow(p)}
+                  {openOf(p) && p.agents.map(agentRow)}
+                </Box>
+              ),
+            )}
+            <Text> </Text>
+            {saved}
+            <Text dimColor>↑↓ choose · enter opens or folds a phase</Text>
+            {foldable.length > 0 && (
+              <Button key="all" label={anyFolded ? 'expand all' : 'collapse all'} plain hotkey="a" onPress={() => update($, ev, s => setFolds(s, foldable.map(p => p.key), !anyFolded))} />
+            )}
+            <Button key="back" label="back to the list" plain hotkey="b" autoFocus={foldable.length === 0 ? true : undefined} onPress={() => update($, ev, closeRun)} />
+          </Box>
+        )
+      }
+
+      const labelWidth = Math.min(34, Math.max(12, ...open.agents.map((a: EvalAgentView) => a.label.length + 4)))
       const roomy = column !== null && labelWidth + 36 + column.header.length <= e.props.bodyColumns
       return (
         <Box flexDirection="column">
-          <Text wrap="truncate-end">
-            <Text weight="bold">{TITLE}</Text>
-            <Text dimColor>{' › '}</Text>
-            <Text weight="bold">{open.title}</Text>
-            <Text dimColor>{` · ${open.shortId}`}</Text>
-          </Text>
+          {crumb}
           <Text> </Text>
-          {open.checks.map((c: { id: string; ok: boolean; title: string; reason: string | null; detail: string | null }) => (
-            <Text wrap="truncate-end">
-              <Text color={tone(c.ok)}>{c.ok ? '✓' : '✗'}</Text>
-              {` ${c.title}`}
-              {c.ok ? c.detail && <Text dimColor>{`  ${c.detail}`}</Text> : <Text color="error">{`  ${c.reason}`}</Text>}
-            </Text>
-          ))}
+          {checks}
           <Text> </Text>
-          {open.saved && savedBlock(open.saved).map(wrapped)}
-          {open.saved && <Text> </Text>}
+          {saved}
           <Text dimColor wrap="truncate-end">{`${fit('  agent', labelWidth)}${fit('approved', 18)}${column ? fit('ran on', 18) : 'ran on'}${column ? (roomy ? column.header : 'saved') : ''}`}</Text>
           {open.agents.map((a: EvalAgentView) => (
             <Text wrap="truncate-end">
-              <Text color={tone(a.ok)}>■</Text>
+              <Text color={tone(a.ok)}>□</Text>
               {` ${fit(a.label, labelWidth - 2)}`}
               {pair(a.approvedModel, a.approvedEffort, 18)}
               {pair(a.ranModel, a.ranEffort, 18)}
-              {column && <Text>{column.cell(a.agentId)}</Text>}
+              {column && tinted(Text, column.cell(a.agentId), column.color(a.agentId))}
               {a.reason && <Text color="error">{`  ${a.reason}`}</Text>}
             </Text>
           ))}
@@ -496,15 +593,24 @@ export const register: Register = on => {
     const all = [...runs, ...finished]
     const nameWidth = Math.min(30, Math.max(12, 12, ...all.map(v => v.title.length + 4)))
     const agentsWidth = Math.max(12, ...runs.map(v => countsWidth(v.counts) + 2))
-    const row = (v: (typeof all)[number], i: number, ended: boolean) => (
-      <Button key={`run:${v.key}`} plain autoFocus={i === 0 && !ended ? true : undefined} onPress={() => update($, ev, s => openRun(s, v.key))}>
-        <Text color={tone(v.ok)}>■</Text>
-        {` ${fit(v.title, nameWidth - 2)}`}
-        <Text dimColor>{fit(v.shortId, 9)}</Text>
-        {ended ? <Text dimColor>{fit(`done ${v.endedClock ?? ''}`.trim(), agentsWidth)}</Text> : <Text>{counts(v.counts)}{' '.repeat(Math.max(1, agentsWidth - countsWidth(v.counts)))}</Text>}
-        {v.ok ? line(listCell(v)) : <Text color="error">{v.reason}</Text>}
-      </Button>
-    )
+    const row = (v: (typeof all)[number], i: number, ended: boolean) => {
+      const rowKey = `run:${v.key}`
+      const picked = e.props.isFocused && state.ui.focus === rowKey
+      return (
+        <Box key={`box:${v.key}`} borderStyle={picked ? 'round' : undefined} borderColor={picked ? 'text' : undefined} paddingX={picked ? 0 : 1} paddingY={picked ? 0 : 1}>
+          <Button key={rowKey} plain autoFocus={i === 0 && !ended ? true : undefined} onPress={() => update($, ev, s => openRun(s, v.key))}>
+            <Text color={tone(v.ok)}>□</Text>
+          </Button>
+          <Text wrap="truncate-end">
+            {' '}
+            <Text weight={picked ? 'bold' : undefined}>{fit(v.title, nameWidth - 2)}</Text>
+            <Text dimColor>{fit(v.shortId, 9)}</Text>
+            {ended ? <Text dimColor>{fit(`done ${v.endedClock ?? ''}`.trim(), agentsWidth)}</Text> : <Text>{counts(v.counts)}{' '.repeat(Math.max(1, agentsWidth - countsWidth(v.counts)))}</Text>}
+            {v.ok ? line(listCell(v)) : <Text color="error">{v.reason}</Text>}
+          </Text>
+        </Box>
+      )
+    }
     return (
       <Box flexDirection="column">
         <Text wrap="truncate-end">
@@ -515,7 +621,7 @@ export const register: Register = on => {
         {runs.length === 0 && <Text dimColor>No workflow is running.</Text>}
         {all.length > 0 && (
           <Text wrap="truncate-end">
-            <Text dimColor>{`${fit('  workflow', nameWidth)}${fit('id', 9)}${fit('agents', agentsWidth)}`}</Text>
+            <Text dimColor>{` ${fit('  workflow', nameWidth)}${fit('id', 9)}${fit('agents', agentsWidth)}`}</Text>
             {line(listHeader(all))}
           </Text>
         )}

@@ -14,6 +14,9 @@ const MAX_SENT = 16
 const GATE_TRIES = 5
 const NO_GATE = 'not approved by the gate'
 const NO_PLAN = 'no approved plan to compare against'
+const MAX_PHASES = 64
+const FOLD_ABOVE = 12
+export const UNKNOWN_PHASE = '\u0000unknown'
 
 const hasOwn = (o, k) => Object.prototype.hasOwnProperty.call(o, k)
 const get = (o, k) => (typeof k === 'string' && hasOwn(o, k) ? o[k] : undefined)
@@ -50,7 +53,7 @@ export function labelMatches(pattern, label) {
 }
 
 export function createState() {
-  return { v: EVAL_VERSION, limit: DEFAULT_MAX_OPUS, launches: {}, runs: {}, early: {}, ui: { run: null }, main: { model: null, effort: null }, meter: createMeter() }
+  return { v: EVAL_VERSION, limit: DEFAULT_MAX_OPUS, launches: {}, runs: {}, early: {}, ui: { run: null, folds: {} }, main: { model: null, effort: null }, meter: createMeter() }
 }
 
 export function noteLimit(state, limit) {
@@ -154,14 +157,17 @@ function trimGate(record, toolUseId) {
       label: text(s.label),
       class: text(s.class),
       model: typeof s.model === 'string' ? s.model.toLowerCase() : null,
-      effort: effortOf(s.effort)
+      effort: effortOf(s.effort),
+      phase: isId(s.phase) ? s.phase : null
     }))
+  const phases = unique((Array.isArray(record.phases) ? record.phases : []).filter(isId)).slice(0, MAX_PHASES)
   return {
     decision: record.decision,
     fingerprint: text(record.fingerprint),
     maxOpus: Number.isInteger(record.maxOpus) ? record.maxOpus : null,
     sessionModel: text(record.sessionModel),
     at: text(record.at),
+    phases,
     stages
   }
 }
@@ -371,11 +377,26 @@ export function endAllRuns(state, status = 'cleared', at = 0) {
 }
 
 export function openRun(state, key) {
-  return state.ui.run === key ? state : { ...state, ui: { ...state.ui, run: key } }
+  return state.ui.run === key ? state : { ...state, ui: { ...state.ui, run: key, folds: {} } }
 }
 
 export function closeRun(state) {
-  return state.ui.run === null ? state : { ...state, ui: { ...state.ui, run: null } }
+  return state.ui.run === null ? state : { ...state, ui: { ...state.ui, run: null, folds: {} } }
+}
+
+export function noteFocus(state, key) {
+  return (state.ui.focus ?? null) === key ? state : { ...state, ui: { ...state.ui, focus: key } }
+}
+
+export function setFolds(state, keys, folded) {
+  const current = state.ui.folds || {}
+  if (keys.every((k) => current[k] === folded)) return state
+  return { ...state, ui: { ...state.ui, folds: { ...current, ...Object.fromEntries(keys.map((k) => [k, folded])) } } }
+}
+
+export function phaseOpen(phase, folds) {
+  const set = folds ? folds[phase.key] : undefined
+  return typeof set === 'boolean' ? !set : phase.open
 }
 
 export function parseTaskNotifications(source) {
@@ -403,6 +424,19 @@ const gateReason = (run) => {
 }
 
 const planOf = (run) => (gateReason(run) === null ? run.gate.stages : null)
+
+function candidateStages(plan, agent) {
+  if (!plan) return []
+  const byLabel = plan.filter((s) => s.label !== null && labelMatches(s.label, agent.label))
+  const ran = agentFamily(agent)
+  const byModel = byLabel.filter((s) => s.model === ran)
+  return byModel.length > 0 ? byModel : byLabel
+}
+
+function phaseOf(plan, agent) {
+  const titles = unique(candidateStages(plan, agent).map((s) => s.phase ?? null))
+  return titles.length === 1 ? titles[0] : null
+}
 
 function judge(plan, agent) {
   if (!plan) return { stage: null, planReason: NO_PLAN, requestReason: NO_PLAN }
@@ -528,8 +562,45 @@ function agentView(plan, agent) {
     approvedModel: j.stage ? j.stage.model : null,
     approvedEffort: j.stage ? j.stage.effort : null,
     ranModel,
-    ranEffort: ranEffort || null
+    ranEffort: ranEffort || null,
+    phase: phaseOf(plan, agent)
   }
+}
+
+function phaseViews(run, plan, views) {
+  const titles = plan ? unique([...(run.gate.phases || []), ...plan.map((s) => s.phase).filter(isId)]) : []
+  if (titles.length === 0) return null
+  const ended = run.status !== 'running'
+  const groups = titles.map((title) => ({ key: title, title, members: [] }))
+  const byTitle = new Map(groups.map((g) => [g.title, g]))
+  const unknown = { key: UNKNOWN_PHASE, title: 'phase unknown', members: [] }
+  run.agents.forEach((a, i) => (byTitle.get(views[i].phase) || unknown).members.push(i))
+  const all = unknown.members.length > 0 ? [...groups, unknown] : groups
+  return all.map((g, gi) => {
+    const agents = g.members.map((i) => views[i])
+    const done = g.members.filter((i) => run.agents[i].done).length
+    const red = agents.filter((a) => !a.ok).length
+    const later = all.some((h, hi) => hi > gi && h.members.length > 0)
+    const state = agents.length === 0 ? (ended ? 'did not run' : 'not started') : ended || (done === agents.length && later) ? 'done' : 'running'
+    const counts = { opus: 0, sonnet: 0, haiku: 0 }
+    for (const i of g.members) {
+      const f = agentFamily(run.agents[i])
+      if (f) counts[f] += 1
+    }
+    return {
+      key: g.key,
+      title: g.title,
+      state,
+      total: agents.length,
+      done,
+      red,
+      ok: red === 0,
+      open: red > 0 || state === 'running' || run.agents.length <= FOLD_ABOVE,
+      counts,
+      agentIds: agents.map((a) => a.agentId),
+      agents
+    }
+  })
 }
 
 export function runView(run) {
@@ -542,6 +613,7 @@ export function runView(run) {
     if (f) counts[f] += 1
   }
   const id = run.runId || run.key
+  const agents = run.agents.map((a) => agentView(plan, a))
   return {
     key: run.key,
     ok: !bad,
@@ -555,7 +627,8 @@ export function runView(run) {
     endedClock: run.endedAt ? hhmm(run.endedAt) : null,
     countsText: [`${counts.opus} opus`, `${counts.sonnet} sonnet`, ...(counts.haiku > 0 ? [`${counts.haiku} haiku`] : [])].join(' · '),
     checks: checks.map((c) => ({ ...c, title: CHECK_TITLES[c.id](run), detail: c.ok ? CHECK_DETAILS[c.id](run) : null })),
-    agents: run.agents.map((a) => agentView(plan, a))
+    agents,
+    phases: phaseViews(run, plan, agents)
   }
 }
 
@@ -595,8 +668,10 @@ export function evalRecord(state, run) {
       approved: view.agents[i].approved,
       sent: a.sent,
       done: a.done,
+      phase: view.agents[i].phase,
       ok: view.agents[i].ok,
       reason: view.agents[i].reason
-    }))
+    })),
+    phases: view.phases ? view.phases.map((p) => ({ title: p.key === UNKNOWN_PHASE ? null : p.title, state: p.state, agents: p.agentIds })) : null
   }
 }

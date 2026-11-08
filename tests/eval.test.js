@@ -4,7 +4,7 @@ import { sha256Hex } from '../src/fingerprint.mjs'
 import { recordPath } from '../src/record.mjs'
 import { readFileSync } from 'node:fs'
 import { loadPrices } from '../src/prices.mjs'
-import { agentPieces, finishedRuns, hideFinished, noteMainStep, noteMeterReading, noteSaved, noteStored, noteUsage } from '../src/eval.mjs'
+import { UNKNOWN_PHASE, noteFocus, phaseOpen, setFolds, agentPieces, finishedRuns, hideFinished, noteMainStep, noteMeterReading, noteSaved, noteStored, noteUsage } from '../src/eval.mjs'
 import {
   activeRuns,
   bandText,
@@ -740,4 +740,184 @@ test('a clear hides the finished runs too', () => {
   assert.equal(finishedRuns(twoEnded()).length, 2)
   const live = compliant()
   assert.equal(hideFinished(live), live)
+})
+
+const withPhase = (st, phase) => ({ ...st, phase })
+const phasedGate = (over = {}) =>
+  gate({
+    phases: ['Collect', 'Investigate', 'Decide'],
+    stages: [
+      withPhase(stage(0, 'grunt: facts ${…}', 'haiku', 'xhigh'), 'Collect'),
+      withPhase(stage(1, 'investigate: map', 'sonnet', 'high'), 'Investigate'),
+      withPhase(stage(2, 'decide: pick', 'opus', 'high'), 'Decide')
+    ],
+    ...over
+  })
+const done = (s, n) => noteAgentDone(s, { agentId: `a${n}` })
+const phasesOf = (s) => runView(only(s)).phases
+
+function phasedRun(record = phasedGate()) {
+  let s = launched({ record })
+  s = spawn(s, 1, 'grunt: facts a', HAIKU)
+  s = spawn(s, 2, 'grunt: facts b', HAIKU)
+  return s
+}
+
+test('a gate without phases gives a flat run', () => {
+  assert.equal(phasesOf(compliant()), null)
+  assert.equal(phasesOf(launched({ record: null })), null)
+})
+
+test('phases come in declared order, with the agents the plan places in each', () => {
+  let s = phasedRun()
+  s = spawn(s, 3, 'investigate: map', SONNET)
+  const phases = phasesOf(s)
+  assert.deepEqual(phases.map((p) => [p.title, p.total, p.agentIds]), [
+    ['Collect', 2, ['a1', 'a2']],
+    ['Investigate', 1, ['a3']],
+    ['Decide', 0, []]
+  ])
+  assert.deepEqual(phases[0].counts, { opus: 0, sonnet: 0, haiku: 2 })
+  assert.deepEqual(runView(only(s)).agents.map((a) => a.phase), ['Collect', 'Collect', 'Investigate'])
+})
+
+test('stage phases not declared in meta come after the declared ones', () => {
+  const record = phasedGate({ phases: ['Decide'] })
+  const s = spawn(phasedRun(record), 3, 'investigate: map', SONNET)
+  assert.deepEqual(phasesOf(s).map((p) => p.title), ['Decide', 'Collect', 'Investigate'])
+})
+
+test('a phase is running until its agents are done and a later phase has started', () => {
+  let s = phasedRun()
+  assert.deepEqual(phasesOf(s).map((p) => p.state), ['running', 'not started', 'not started'])
+  s = done(done(s, 1), 2)
+  assert.deepEqual(phasesOf(s).map((p) => [p.state, p.done]), [['running', 2], ['not started', 0], ['not started', 0]])
+  s = spawn(s, 3, 'investigate: map', SONNET)
+  assert.deepEqual(phasesOf(s).map((p) => p.state), ['done', 'running', 'not started'])
+})
+
+test('when the run ends every phase is done or did not run', () => {
+  let s = spawn(phasedRun(), 3, 'investigate: map', SONNET)
+  s = noteRunEnd(s, { toolUseId: TU, taskId: 'w1', status: 'completed', at: 3000 })
+  const run = finishedRuns(s)[0]
+  assert.deepEqual(runView(run).phases.map((p) => p.state), ['done', 'done', 'did not run'])
+})
+
+test('an agent the plan cannot place goes to a last unknown group', () => {
+  const record = phasedGate({
+    stages: [
+      withPhase(stage(0, 'grunt: facts ${…}', 'haiku', 'xhigh'), 'Collect'),
+      withPhase(stage(1, 'grunt: facts ${…}', 'haiku', 'xhigh'), 'Decide'),
+      withPhase(stage(2, 'investigate: map', 'sonnet', 'high'), 'Investigate')
+    ]
+  })
+  const s = spawn(spawn(phasedRun(record), 3, 'investigate: map', SONNET), 4, 'investigate: map', SONNET)
+  const phases = phasesOf(s)
+  assert.equal(phases.at(-1).key, UNKNOWN_PHASE)
+  assert.equal(phases.at(-1).title, 'phase unknown')
+  assert.deepEqual(phases.at(-1).agentIds, ['a1', 'a2'])
+  assert.deepEqual(phases.find((p) => p.title === 'Investigate').agentIds, ['a3', 'a4'])
+})
+
+test('an ambiguous label resolves by the model the agent ran on', () => {
+  const record = phasedGate({
+    stages: [
+      withPhase(stage(0, 'grunt: facts ${…}', 'haiku', 'xhigh'), 'Collect'),
+      withPhase(stage(1, 'grunt: facts ${…}', 'sonnet', 'high'), 'Decide')
+    ]
+  })
+  const s = spawn(spawn(launched({ record }), 1, 'grunt: facts a', HAIKU), 2, 'grunt: facts b', SONNET)
+  assert.deepEqual(runView(only(s)).agents.map((a) => a.phase), ['Collect', 'Decide'])
+})
+
+test('a stage with no phase in a phased plan puts its agents in the unknown group', () => {
+  const record = phasedGate({
+    stages: [stage(0, 'grunt: facts ${…}', 'haiku', 'xhigh'), withPhase(stage(1, 'investigate: map', 'sonnet', 'high'), 'Investigate')]
+  })
+  const s = spawn(phasedRun(record), 3, 'investigate: map', SONNET)
+  assert.deepEqual(phasesOf(s).map((p) => [p.key === UNKNOWN_PHASE ? 'unknown' : p.title, p.total]), [['Collect', 0], ['Investigate', 1], ['Decide', 0], ['unknown', 2]])
+})
+
+test('a red agent makes its phase red and counts it', () => {
+  let s = phasedRun()
+  s = spawn(s, 3, 'investigate: map', OPUS)
+  const phases = phasesOf(s)
+  const bad = phases.find((p) => p.title === 'Investigate')
+  assert.deepEqual([bad.ok, bad.red, bad.open], [false, 1, true])
+  assert.equal(phases[0].ok, true)
+  assert.match(bad.agents[0].reason, /ran on opus, the gate approved sonnet/)
+})
+
+test('a finished green phase starts folded only on a run of more than 12 agents', () => {
+  let few = phasedRun()
+  few = done(done(spawn(few, 3, 'investigate: map', SONNET), 1), 2)
+  assert.equal(phasesOf(few)[0].open, true)
+  let many = launched({ record: phasedGate() })
+  for (let n = 1; n <= 13; n++) many = spawn(many, n, `grunt: facts ${n}`, HAIKU)
+  for (let n = 1; n <= 13; n++) many = done(many, n)
+  many = spawn(many, 14, 'investigate: map', SONNET)
+  const phases = phasesOf(many)
+  assert.deepEqual([phases[0].state, phases[0].open], ['done', false])
+  assert.deepEqual([phases[1].state, phases[1].open], ['running', true])
+})
+
+test('a toggle beats the default and survives a redraw; opening another run resets it', () => {
+  const s = done(done(phasedRun(), 1), 2)
+  const first = phasesOf(s)[0]
+  assert.equal(phaseOpen(first, undefined), true)
+  assert.equal(phaseOpen(first, {}), true)
+  const folded = setFolds(openRun(s, TU), [first.key], true)
+  assert.equal(phaseOpen(first, folded.ui.folds), false)
+  assert.equal(setFolds(folded, [first.key], true), folded)
+  const all = setFolds(folded, ['Investigate', 'Decide'], false)
+  assert.deepEqual(all.ui.folds, { Collect: true, Investigate: false, Decide: false })
+  assert.equal(phaseOpen(first, all.ui.folds), false)
+  assert.deepEqual(openRun(all, 'other').ui, { run: 'other', folds: {} })
+  assert.equal(openRun(all, TU).ui.run, TU)
+  assert.deepEqual(closeRun(all).ui, { run: null, folds: {} })
+  assert.equal(phaseOpen({ key: 'x', open: false }, null), false)
+})
+
+test('state saved before folds existed still opens, folds and closes', () => {
+  const old = { ...createState(), ui: { run: null } }
+  const opened = openRun(old, TU)
+  assert.deepEqual(opened.ui, { run: TU, folds: {} })
+  assert.deepEqual(setFolds(old, ['a'], true).ui.folds, { a: true })
+})
+
+test('the gate record keeps only text phases', () => {
+  const record = gate({
+    phases: ['A', 'A', '', 7, null, 'B'],
+    stages: [{ ...stage(0, 'investigate: map', 'sonnet', 'high'), phase: 7 }, { ...stage(1, 'synth: x', 'opus', 'high'), phase: 'A' }]
+  })
+  const run = only(launched({ record }))
+  assert.deepEqual(run.gate.phases, ['A', 'B'])
+  assert.deepEqual(run.gate.stages.map((s) => s.phase), [null, 'A'])
+  const older = gate()
+  delete older.phases
+  assert.deepEqual(only(launched({ record: older })).gate.phases, [])
+  assert.equal(phasesOf(launched({ record: older })), null)
+})
+
+test('the eval record names each agent phase and lists the phases', () => {
+  const s = spawn(done(done(phasedRun(), 1), 2), 3, 'investigate: map', SONNET)
+  const rec = evalRecord(s, only(s))
+  assert.deepEqual(rec.agents.map((a) => a.phase), ['Collect', 'Collect', 'Investigate'])
+  assert.deepEqual(rec.phases, [
+    { title: 'Collect', state: 'done', agents: ['a1', 'a2'] },
+    { title: 'Investigate', state: 'running', agents: ['a3'] },
+    { title: 'Decide', state: 'not started', agents: [] }
+  ])
+  assert.equal(evalRecord(compliant(), only(compliant())).phases, null)
+})
+
+test('the focused element is kept in the ui state, and the same one is not a change', () => {
+  const s = compliant()
+  assert.equal(s.ui.focus ?? null, null)
+  const focused = noteFocus(s, 'run:abc')
+  assert.equal(focused.ui.focus, 'run:abc')
+  assert.equal(noteFocus(focused, 'run:abc'), focused)
+  assert.equal(noteFocus(focused, null).ui.focus, null)
+  assert.equal(noteFocus(s, null), s)
+  assert.equal(noteFocus(focused, 'run:abc').ui.run, focused.ui.run)
 })
