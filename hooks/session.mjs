@@ -13,9 +13,9 @@ const WORKFLOW_WIDE_RULES = new Set(['Workflow', 'Workflow()', 'Workflow(*)']);
 
 const cell = (s) => String(s).replace(/\|/g, '\\|').replace(/\s+/g, ' ');
 
-function pairsTable(policy, { effectivePairs, formatPairs }) {
+function pairsTable(policy, { formatClassPairs }) {
   const rows = Object.entries(policy.classes).map(
-    ([cls, def]) => `| \`${cls}:\` | ${cell(def.owns)} | ${cell(formatPairs(effectivePairs(policy, cls, 'opus')))} |`,
+    ([cls, def]) => `| \`${cls}:\` | ${cell(def.owns)} | ${cell(formatClassPairs(policy, cls))} |`,
   );
   return [
     '## Allowed (model, effort) pairs',

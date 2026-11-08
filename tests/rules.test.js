@@ -1,9 +1,12 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { loadPolicy, effectivePairs, formatPairs, rules } from '../src/rules.mjs'
+import { loadPolicy, effectivePairs, formatPairs, formatClassPairs, rules } from '../src/rules.mjs'
 import { analyze } from '../src/analyze.mjs'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
+import { mkdtempSync, rmSync, existsSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
 const shipped = loadPolicy()
 const ALL = ['medium', 'high', 'xhigh']
@@ -334,15 +337,21 @@ test('opus stage with an unknown or missing class asks for blocked_on on every s
 test('gate on an Opus session: an unknown-class opus draft is denied with the blocked_on snippet', () => {
   const root = fileURLToPath(new URL('..', import.meta.url))
   const script = "await agent('Summarize the three reports into one list of findings', { label: 'summarize: findings', model: 'opus', effort: 'medium' })"
-  const env = { ...process.env }
+  const configDir = mkdtempSync(join(tmpdir(), 'tierguard-rules-'))
+  const env = { ...process.env, CLAUDE_CONFIG_DIR: configDir }
   for (const k of ['CLAUDE_CODE_WORKFLOW_SUBAGENT_MODEL', 'CLAUDE_CODE_SUBAGENT_MODEL_FORCE', 'CLAUDE_CODE_EFFORT_LEVEL']) delete env[k]
   const input = JSON.stringify({
+    session_id: 'rules',
+    tool_use_id: 'toolu_rules',
     tool_name: 'Workflow',
     tool_input: { script },
     cwd: root,
     transcript_path: `${root}tests/harness/transcripts/opus.jsonl`
   })
   const r = spawnSync(process.execPath, [`${root}hooks/gate.mjs`], { input, env, encoding: 'utf8' })
+  const wrote = existsSync(join(configDir, 'tierguard', 'sessions', 'rules', 'toolu_rules.gate.json'))
+  rmSync(configDir, { recursive: true, force: true })
+  assert.ok(wrote)
   assert.equal(r.status, 0, r.stderr)
   const reason = JSON.parse(r.stdout).hookSpecificOutput.permissionDecisionReason
   assert.match(reason, /Unknown class "summarize:"/)
@@ -399,4 +408,166 @@ test('shipped policy allows haiku xhigh for every class that lists haiku, and no
     const nonListing = Object.keys(shipped.classes).find((k) => !('haiku' in shipped.classes[k].pairs))
     assert.equal(rules([stage(nonListing, 'haiku', 'xhigh')], shipped, { sessionModel }).length, 1, nonListing)
   }
+})
+
+const fan = (...bigs) => ({ stages: bigs.map((bigFanout) => ({ inFanout: bigFanout, bigFanout })) })
+const OPUS_CTX = { sessionModel: 'opus' }
+
+test('opus session: investigate is sonnet only', () => {
+  assert.deepEqual(effectivePairs(shipped, 'investigate', 'opus'), { sonnet: ALL })
+  for (const effort of ALL) assert.deepEqual(rules([stage('investigate', 'sonnet', effort)], shipped, OPUS_CTX), [], effort)
+  const errs = rules([stage('investigate', 'opus', 'high')], shipped, OPUS_CTX)
+  assert.equal(errs.length, 1)
+  assert.equal(errs[0].code, 'PAIR')
+  assert.ok(errs[0].message.includes('sonnet × {medium, high, xhigh}'))
+  assert.equal(errs[0].needsBlockedOn, true)
+  assert.equal(rules([stage('investigate', 'sonnet', 'low')], shipped, OPUS_CTX).length, 1)
+})
+
+test('investigate runs on sonnet and haiku sessions', () => {
+  assert.deepEqual(rules([stage('investigate', 'sonnet', 'high')], shipped, { sessionModel: 'sonnet' }), [])
+  assert.deepEqual(rules([stage('investigate', 'sonnet', 'high')], shipped, { sessionModel: null }), [])
+  assert.equal(rules([stage('investigate', 'opus', 'high')], shipped, { sessionModel: 'sonnet' }).length, 1)
+})
+
+test('effectivePairs: conditional pairs are added on an opus session only', () => {
+  assert.deepEqual(effectivePairs(shipped, 'judge', 'opus'), { opus: ALL })
+  assert.deepEqual(effectivePairs(shipped, 'judge', 'opus', { verdict: true }), { opus: ALL, sonnet: ALL })
+  assert.deepEqual(effectivePairs(shipped, 'judge', 'opus', { bigFanout: true }), { opus: ALL })
+  assert.deepEqual(effectivePairs(shipped, 'decide', 'opus', { bigFanout: true }), { opus: ALL, sonnet: ALL })
+  assert.deepEqual(effectivePairs(shipped, 'decide', 'opus', { verdict: true }), { opus: ALL })
+  assert.deepEqual(effectivePairs(shipped, 'synth', 'opus', { bigFanout: true, verdict: true }), { opus: ALL, sonnet: ALL })
+  assert.deepEqual(effectivePairs(shipped, 'build', 'opus', { bigFanout: true, verdict: true }), shipped.classes.build.pairs)
+  for (const sessionModel of ['sonnet', null]) {
+    assert.deepEqual(effectivePairs(shipped, 'judge', sessionModel, { verdict: true }), { sonnet: ALL })
+    assert.deepEqual(effectivePairs(shipped, 'decide', sessionModel, { bigFanout: true }), { sonnet: ALL })
+  }
+})
+
+test('effectivePairs merges efforts of a conditional pair into a model the class already lists', () => {
+  const custom = {
+    classes: { x: { owns: 'x', pairs: { opus: ['high'], sonnet: ['medium'] }, fanoutPairs: { sonnet: ['high', 'medium'], haiku: ['xhigh'] } } }
+  }
+  assert.deepEqual(effectivePairs(custom, 'x', 'opus', { bigFanout: true }), { opus: ['high'], sonnet: ['medium', 'high'], haiku: ['xhigh'] })
+  assert.deepEqual(effectivePairs(custom, 'x', 'opus'), { opus: ['high'], sonnet: ['medium'] })
+})
+
+test('judge on sonnet passes with a verdict schema and fails without it', () => {
+  assert.deepEqual(rules([stage('judge', 'sonnet', 'high', { verdict: true })], shipped, OPUS_CTX), [])
+  for (const effort of ALL) assert.deepEqual(rules([stage('judge', 'sonnet', effort, { verdict: true })], shipped, OPUS_CTX), [], effort)
+  const errs = rules([stage('judge', 'sonnet', 'high', { verdict: false })], shipped, OPUS_CTX)
+  assert.equal(errs.length, 1)
+  assert.equal(errs[0].code, 'PAIR')
+  assert.match(errs[0].message, /single yes\/no review/)
+  assert.match(errs[0].message, /pass/)
+  assert.match(errs[0].message, /evidence/)
+  assert.match(errs[0].message, /Allowed: opus × \{medium, high, xhigh\}\.$/)
+  assert.ok(!errs[0].message.includes('fan-out'))
+  assert.equal(rules([stage('judge', 'sonnet', 'high')], shipped, OPUS_CTX).length, 1)
+})
+
+test('a judge verdict is not tied to a fan-out and a fan-out does not unlock a judge on sonnet', () => {
+  assert.deepEqual(rules([stage('judge', 'sonnet', 'high', { verdict: true })], shipped, { ...OPUS_CTX, fanout: fan(true) }), [])
+  assert.deepEqual(rules([stage('judge', 'sonnet', 'high', { verdict: true })], shipped, { ...OPUS_CTX, fanout: fan(false) }), [])
+  const errs = rules([stage('judge', 'sonnet', 'high')], shipped, { ...OPUS_CTX, fanout: fan(true) })
+  assert.equal(errs.length, 1)
+  assert.match(errs[0].message, /single yes\/no review/)
+})
+
+test('judge on opus keeps any schema, verdict or not', () => {
+  assert.deepEqual(rules([stage('judge', 'opus', 'xhigh', { verdict: true })], shipped, OPUS_CTX), [])
+  assert.deepEqual(rules([stage('judge', 'opus', 'xhigh', { verdict: false })], shipped, OPUS_CTX), [])
+})
+
+test('decide, synth and design on sonnet pass only in a big fan-out', () => {
+  for (const cls of ['decide', 'synth', 'design']) {
+    assert.deepEqual(rules([stage(cls, 'sonnet', 'high')], shipped, { ...OPUS_CTX, fanout: fan(true) }), [], cls)
+    for (const ctx of [OPUS_CTX, { ...OPUS_CTX, fanout: fan(false) }, { ...OPUS_CTX, fanout: { stages: [] } }]) {
+      const errs = rules([stage(cls, 'sonnet', 'high')], shipped, ctx)
+      assert.equal(errs.length, 1, cls)
+      assert.equal(errs[0].code, 'PAIR')
+      assert.match(errs[0].message, /more than 3 agents/, cls)
+      assert.ok(errs[0].message.includes(`${cls}: may use sonnet only in a fan-out`), errs[0].message)
+      assert.match(errs[0].message, /Allowed: opus × \{medium, high, xhigh\}\.$/)
+      assert.ok(!errs[0].message.includes('yes/no'))
+    }
+  }
+})
+
+test('bigFanout is read per stage by index', () => {
+  const stages = [stage('decide', 'sonnet', 'high'), stage('decide', 'sonnet', 'high'), stage('decide', 'opus', 'high')]
+  const errs = rules(stages, shipped, { ...OPUS_CTX, fanout: fan(true, false, false) })
+  assert.deepEqual(errs.map((e) => e.stage), [1])
+})
+
+test('a fan-out changes nothing for classes without fanoutPairs', () => {
+  assert.deepEqual(rules([stage('build', 'sonnet', 'high')], shipped, { ...OPUS_CTX, fanout: fan(false) }), [])
+  assert.equal(rules([stage('investigate', 'opus', 'high')], shipped, { ...OPUS_CTX, fanout: fan(true) }).length, 1)
+})
+
+test('sonnet and null sessions: judge needs no verdict schema and decide needs no fan-out', () => {
+  for (const sessionModel of ['sonnet', null]) {
+    const ctx = { sessionModel, fanout: fan(false) }
+    assert.deepEqual(rules([stage('judge', 'sonnet', 'high', { verdict: false })], shipped, ctx), [], String(sessionModel))
+    assert.deepEqual(rules([stage('decide', 'sonnet', 'high')], shipped, ctx), [], String(sessionModel))
+    assert.deepEqual(rules([stage('synth', 'sonnet', 'medium')], shipped, ctx), [], String(sessionModel))
+    assert.deepEqual(rules([stage('design', 'sonnet', 'xhigh')], shipped, ctx), [], String(sessionModel))
+    assert.equal(rules([stage('judge', 'opus', 'high')], shipped, ctx).length, 1, String(sessionModel))
+  }
+})
+
+test('a conditional refusal carries no hint when the pair is not allowed under any condition', () => {
+  const errs = rules([stage('decide', 'sonnet', 'low')], shipped, OPUS_CTX)
+  assert.equal(errs.length, 1)
+  assert.ok(!errs[0].message.includes('fan-out'))
+  const haiku = rules([stage('judge', 'haiku', 'xhigh')], shipped, OPUS_CTX)
+  assert.ok(haiku.every((e) => !e.message.includes('yes/no')))
+})
+
+test('a refused judge on sonnet that has a valid blocked_on does not ask for the snippet again', () => {
+  const errs = rules(analyzed('judge: x', 'sonnet', true), shipped, OPUS_CTX)
+  assert.equal(errs.length, 1)
+  assert.match(errs[0].message, /single yes\/no review/)
+  assert.ok(!errs[0].needsBlockedOn)
+})
+
+test('formatClassPairs marks the conditional pairs of a class', () => {
+  assert.equal(formatClassPairs(shipped, 'investigate'), 'sonnet × {medium, high, xhigh}')
+  assert.equal(formatClassPairs(shipped, 'build'), formatPairs(shipped.classes.build.pairs))
+  assert.equal(
+    formatClassPairs(shipped, 'judge'),
+    'opus × {medium, high, xhigh}; sonnet × {medium, high, xhigh} (yes/no verdict schema only)'
+  )
+  for (const cls of ['decide', 'synth', 'design']) {
+    assert.equal(
+      formatClassPairs(shipped, cls),
+      'opus × {medium, high, xhigh}; sonnet × {medium, high, xhigh} (in a fan-out of more than 3 only)',
+      cls
+    )
+  }
+  const wide = { limits: { bigFanout: 5 }, classes: { decide: { owns: 'x', pairs: { opus: ['high'] }, fanoutPairs: { sonnet: ['high'] } } } }
+  assert.equal(formatClassPairs(wide, 'decide'), 'opus × {high}; sonnet × {high} (in a fan-out of more than 5 only)')
+})
+
+test('label check: investigation words in decide, judge and design labels are LABEL errors', () => {
+  const s = (label, cls, model = 'opus') => ({ line: 1, label, class: cls, model, effort: 'high' })
+  const run = (st, fan = false) => rules([st], shipped, { sessionModel: 'opus', fanout: { stages: [{ inFanout: fan, bigFanout: false }] } }).filter((e) => e.code === 'LABEL')
+  const hit = run(s('decide: ovh extra ip research', 'decide'))
+  assert.equal(hit.length, 1)
+  assert.match(hit[0].message, /reads like investigation \("research"\)/)
+  assert.match(hit[0].message, /investigate: on sonnet × \{medium, high, xhigh\}/)
+  assert.equal(hit[0].needsBlockedOn, true)
+  assert.equal(run(s('judge: migration readiness', 'judge')).length, 1)
+  assert.equal(run(s('design: map ${…}', 'design')).length, 1)
+  assert.equal(run(s('decide: pc1 relay design', 'decide')).length, 0)
+  assert.equal(run(s('judge: verify finding ${…}', 'judge')).length, 0)
+  assert.equal(run(s('investigate: research legal', 'investigate', 'sonnet')).length, 0)
+  assert.equal(run(s('build: search index', 'build', 'sonnet')).length, 0)
+})
+
+test('label check: synth is checked only inside a fan-out', () => {
+  const st = { line: 1, label: 'synth: research ${…}', class: 'synth', model: 'opus', effort: 'high' }
+  const run = (fan) => rules([st], shipped, { sessionModel: 'opus', fanout: { stages: [{ inFanout: fan, bigFanout: false }] } }).filter((e) => e.code === 'LABEL')
+  assert.equal(run(false).length, 0)
+  assert.equal(run(true).length, 1)
 })

@@ -185,8 +185,20 @@ function checkBlockedOn(call, schema, fail) {
   if (!descOk) blocked(desc.prop ? desc.prop.value : boObj, 'blocked_on.description must be a non-empty quoted string')
 }
 
+function isVerdictSchema(schema) {
+  const propsObj = member(schema.prop.value, 'properties').prop.value
+  if (propsObj.properties.length !== 3) return false
+  const typed = (name, type) => {
+    const entry = member(propsObj, name)
+    if (!entry.prop || entry.prop.value.type !== 'ObjectExpression' || !isLiteralTree(entry.prop.value)) return false
+    const t = member(entry.prop.value, 'type')
+    return Boolean(t.prop) && isString(t.prop.value) && t.prop.value.value === type
+  }
+  return typed('pass', 'boolean') && typed('evidence', 'string')
+}
+
 function analyzeCall(call, index, errors) {
-  const stage = { line: lineOf(call), label: null, class: null, model: null, effort: null, hasBlockedOn: false }
+  const stage = { line: lineOf(call), label: null, class: null, model: null, effort: null, hasBlockedOn: false, verdict: false }
   const found = []
   const fail = (node, message, extra) => found.push({ node, message, extra })
   const failLabel = (node, message) => found.push({ node, message, classless: true })
@@ -265,6 +277,7 @@ function analyzeCall(call, index, errors) {
         valid = false
       })
       stage.hasBlockedOn = valid
+      stage.verdict = valid && isVerdictSchema(schema)
       if (typeof stage.model === 'string' && stage.model !== 'opus') {
         checkBlockedOn(opts, schema, fail)
       } else if (stage.model === null && schemaProps && isReadable(schemaProps[0])) {
@@ -301,7 +314,7 @@ export function analyze(source) {
   } catch (e) {
     if (!(e instanceof SyntaxError)) throw e
     const line = e.loc && typeof e.loc.line === 'number' ? e.loc.line : null
-    return { ast: null, stages: [], errors: [{ code: 'PARSE', line, label: null, message: e.message, stage: null }] }
+    return { ast: null, stages: [], calls: [], errors: [{ code: 'PARSE', line, label: null, message: e.message, stage: null }] }
   }
 
   const errors = []
@@ -382,5 +395,5 @@ export function analyze(source) {
   })
   const order = new Map(unique.map((e, i) => [e, i]))
   unique.sort((a, b) => (a.line ?? Infinity) - (b.line ?? Infinity) || order.get(a) - order.get(b))
-  return { ast, stages, errors: unique }
+  return { ast, stages, calls, errors: unique }
 }

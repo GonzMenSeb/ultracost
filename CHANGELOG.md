@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.4.7 - tierguard
+
+- At most 3 Opus agents may run at once in a workflow. The gate bounds the concurrency from the script (array literals, `parallel`, `pipeline`, `Promise.allSettled`, `.map` over known sizes, `.slice`, `.then` chains, local helpers; `Promise.all`, `race` and `any` over more than one Opus agent count as unknown) and denies every Opus stage involved with the new code `FANOUT` when the bound is above 3 or cannot be computed. Sonnet and Haiku fan-outs are not limited. `FANOUT` is not checked on a Sonnet or Haiku session.
+- New class `investigate:` (web research, code mapping, any reading that reports findings): Sonnet only. `judge:` no longer owns "any reading whose output feeds a verdict".
+- New deny code `LABEL`: a `decide:`, `judge:` or `design:` label, or a fanned-out `synth:` label, containing research, investigate, map, explore, survey, scan, search, find, audit, inventory or readiness. That work is `investigate:` on Sonnet. Configured by `labelCheck` in `policy/default.json`.
+- `judge:` may run on Sonnet for one yes/no review, with a verdict schema of exactly `pass` (boolean), `evidence` (string) and `blocked_on`.
+- `decide:`, `synth:` and `design:` may run on Sonnet in a fan-out of more than 3 agents, or of unknown size.
+- `policy/default.json` gains `fanoutPairs`, `verdictPairs`, `limits` (`maxConcurrentOpus`, `bigFanout`) and `labelCheck`.
+- The gate now writes a record per launch, pass or deny, to `<configDir>/tierguard/sessions/<session_id>/<tool_use_id>.gate.json`, with a SHA-256 fingerprint of the script. It fails closed if it cannot write the record of a clean launch. It no longer "keeps no state and writes no files".
+- New tierguard-eval hooks module: a band above the prompt and a pane (`/tierguard`) that show each running workflow green or red from four checks (approved by the gate, every agent matches the plan, every request as approved, at most 3 Opus at once). It writes `<tool_use_id>.eval.json` per run. It observes only and never denies.
+- The guidance teaches the new classes, the cap, the `slice(0, 3)` split and the batching loop.
+
 ## 0.4.6 - tierguard
 
 - Rewrote the fork of ultracost as `tierguard`, a per-agent delegation gate for Workflow launches.

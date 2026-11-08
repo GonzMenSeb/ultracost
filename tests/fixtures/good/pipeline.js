@@ -48,18 +48,19 @@ const results = await pipeline(
       }
     }),
   (built, file) =>
-    agent(`Review the migration of ${file}. Try to break it: missing defaults, changed exports, tests that no longer cover the loader.\n\nReported change: ${built ? built.summary : 'none'}`, {
+    agent(`Review the migration of ${file}. Try to break it: missing defaults, changed exports, tests that no longer cover the loader.\n\nReported change: ${built ? built.summary : 'none'}\n\nAnswer pass: true only if the migration is correct.`, {
       label: `judge: review ${file}`,
       phase: 'Verify',
-      model: 'opus',
+      model: 'sonnet',
       effort: 'high',
       schema: {
         type: 'object',
         properties: {
-          verdict: { type: 'string', enum: ['pass', 'fail'] },
-          problems: { type: 'array', items: { type: 'string' } }
+          pass: { type: 'boolean' },
+          evidence: { type: 'string', description: 'The file and line that decided the verdict' },
+          blocked_on: { type: ['string', 'null'], description: 'An open decision this stage must not make, or null' }
         },
-        required: ['verdict', 'problems']
+        required: ['pass', 'evidence', 'blocked_on']
       }
     })
 )

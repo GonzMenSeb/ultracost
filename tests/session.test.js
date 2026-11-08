@@ -5,7 +5,7 @@ import { readFileSync, writeFileSync, mkdtempSync, mkdirSync, cpSync, rmSync } f
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadPolicy, effectivePairs, formatPairs } from '../src/rules.mjs';
+import { loadPolicy, formatClassPairs } from '../src/rules.mjs';
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const SESSION = join(ROOT, 'hooks', 'session.mjs');
@@ -55,7 +55,7 @@ test('additionalContext is guidance plus the pairs table rendered from the polic
     assert.match(h.additionalContext, /authoritative/);
     const policy = loadPolicy();
     for (const [cls, def] of Object.entries(policy.classes)) {
-      const row = `| \`${cls}:\` | ${def.owns} | ${formatPairs(effectivePairs(policy, cls, 'opus'))} |`;
+      const row = `| \`${cls}:\` | ${def.owns} | ${formatClassPairs(policy, cls)} |`;
       assert.ok(h.additionalContext.includes(row), row);
     }
   } finally {
@@ -63,12 +63,60 @@ test('additionalContext is guidance plus the pairs table rendered from the polic
   }
 });
 
+test('the pairs table lists investigate and marks the conditional pairs', () => {
+  const sb = sandbox();
+  try {
+    const { additionalContext } = runSession(sb).hookSpecificOutput;
+    const rows = Object.fromEntries(
+      additionalContext
+        .split('\n')
+        .filter((l) => /^\| `\w+:` \|/.test(l))
+        .map((l) => [/^\| `(\w+):`/.exec(l)[1], l.split(' | ').pop().replace(/ \|$/, '')]),
+    );
+    assert.equal(rows.investigate, 'sonnet × {medium, high, xhigh}');
+    assert.equal(
+      rows.judge,
+      'opus × {medium, high, xhigh}; sonnet × {medium, high, xhigh} (yes/no verdict schema only)',
+    );
+    for (const cls of ['decide', 'synth', 'design']) {
+      assert.equal(
+        rows[cls],
+        'opus × {medium, high, xhigh}; sonnet × {medium, high, xhigh} (in a fan-out of more than 3 only)',
+        cls,
+      );
+    }
+    assert.equal(rows.build, 'sonnet × {medium, high, xhigh}; opus × {medium, high, xhigh}');
+    assert.equal(rows.grunt, 'haiku × {xhigh}; sonnet × {medium, high, xhigh}');
+  } finally {
+    sb.cleanup();
+  }
+});
+
+test('the pairs table of a custom policy follows its limits', () => {
+  const sb = sandbox();
+  const tmp = copyPlugin();
+  try {
+    const file = join(tmp, 'policy', 'default.json');
+    const policy = JSON.parse(readFileSync(file, 'utf8'));
+    policy.limits = { maxConcurrentOpus: 2, bigFanout: 6 };
+    writeFileSync(file, JSON.stringify(policy));
+    const { additionalContext } = runSession({ ...sb, script: join(tmp, 'hooks', 'session.mjs') }).hookSpecificOutput;
+    assert.match(additionalContext, /\(in a fan-out of more than 6 only\)/);
+    assert.doesNotMatch(additionalContext, /more than 3 only/);
+  } finally {
+    sb.cleanup();
+    rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
 test('additionalContext fits 8000 characters and 200 lines', () => {
   const sb = sandbox();
   try {
     const { additionalContext } = runSession(sb).hookSpecificOutput;
-    assert.ok(additionalContext.length <= 8000, String(additionalContext.length));
-    assert.ok(additionalContext.split('\n').length <= 200);
+    assert.ok(additionalContext.length < 8000, `${additionalContext.length} characters reaches the 8000 clamp, which cuts the table`);
+    assert.ok(additionalContext.split('\n').length < 200);
+    const lastClass = Object.keys(loadPolicy().classes).at(-1);
+    assert.match(additionalContext.split('\n').at(-1), new RegExp(`^\\| \`${lastClass}:\` \\|.*\\|$`), 'the context ends with the whole last table row');
   } finally {
     sb.cleanup();
   }

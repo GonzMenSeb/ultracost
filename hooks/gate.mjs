@@ -1,5 +1,11 @@
-import { loadPolicy, rules, effectivePairs, formatPairs } from '../src/rules.mjs';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { dirname, join } from 'node:path';
+import { loadPolicy, limitsOf, rules, effectivePairs, formatPairs } from '../src/rules.mjs';
 import { analyze } from '../src/analyze.mjs';
+import { fanout } from '../src/fanout.mjs';
+import { sha256Hex } from '../src/fingerprint.mjs';
+import { RECORD_VERSION, recordPath } from '../src/record.mjs';
 import { env } from '../src/env.mjs';
 import { resolve } from '../src/resolve.mjs';
 import { sessionModel } from '../src/sessionModel.mjs';
@@ -55,13 +61,21 @@ function buildItems(errors, stages, tableShown) {
   for (const e of nonStage) {
     items.push({ classes: [], codes: [e.code], stageBound: false, lines: e.line != null ? [e.line] : [], body: oneLine(`${e.code} ${e.message}`) });
   }
+  const fanoutSeen = new Map();
+  const textOf = (e, line) => {
+    if (e.code === 'FANOUT') {
+      if (fanoutSeen.has(e.message)) return `Same as line ${fanoutSeen.get(e.message)}.`;
+      fanoutSeen.set(e.message, line);
+    }
+    return sentence(tableShown ? withoutValid(withoutAllowed(e.message)) : withoutAllowed(e.message));
+  };
   for (const idx of [...byStage.keys()].sort((a, b) => a - b)) {
     const errs = byStage.get(idx);
     const st = stages[idx];
     const line = errs.find((e) => e.line != null)?.line ?? st.line;
     const label = errs.find((e) => e.label != null)?.label ?? st.label;
     const codes = [...new Set(errs.map((e) => e.code))].join('+');
-    const body = `${codes} [${label != null ? clip(String(label), 50) : 'no label'}] ${errs.map((e) => sentence(tableShown ? withoutValid(withoutAllowed(e.message)) : withoutAllowed(e.message))).join(' ')}`;
+    const body = `${codes} [${label != null ? clip(String(label), 50) : 'no label'}] ${errs.map((e) => textOf(e, e.line ?? st.line)).join(' ')}`;
     items.push({ classes: [st.class], codes: [...new Set(errs.map((e) => e.code))], stageBound: true, lines: line != null ? [line] : [], body: oneLine(body) });
   }
   return items;
@@ -205,6 +219,51 @@ function buildReason(allErrors, stages, rawFile, policy, sm, analyzed) {
   return [lines[0], LAST_LINE].join('\n');
 }
 
+function gateRecord({ input, toolInput, resolved, analysis, fan, sm, errors, decision }) {
+  const stages = fan
+    ? analysis.stages.map((st, index) => ({
+        index,
+        line: st.line,
+        label: st.label,
+        class: st.class,
+        model: st.model,
+        effort: st.effort,
+        inFanout: fan.stages[index].inFanout,
+        bigFanout: fan.stages[index].bigFanout,
+        verdict: st.verdict === true,
+      }))
+    : [];
+  return {
+    v: RECORD_VERSION,
+    kind: 'gate',
+    at: new Date().toISOString(),
+    session_id: typeof input.session_id === 'string' ? input.session_id : null,
+    tool_use_id: typeof input.tool_use_id === 'string' ? input.tool_use_id : null,
+    decision,
+    fingerprint: resolved.source !== null ? sha256Hex(resolved.source) : null,
+    scriptPath: typeof toolInput?.scriptPath === 'string' ? toolInput.scriptPath : null,
+    sessionModel: sm ?? null,
+    maxOpus: fan && Number.isFinite(fan.maxOpus) ? fan.maxOpus : null,
+    stages,
+    errors: errors.map((e) => ({ code: e.code, line: e.line ?? null, message: e.message })),
+  };
+}
+
+function writeRecord(input, record) {
+  const dir = process.env.CLAUDE_CONFIG_DIR?.trim() || join(homedir(), '.claude');
+  const path = recordPath(dir, input.session_id, input.tool_use_id, 'gate');
+  if (path === null) {
+    return { path: null, error: new Error(`tool_use_id ${JSON.stringify(input.tool_use_id)} is missing or invalid`) };
+  }
+  try {
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, JSON.stringify(record));
+    return { path, error: null };
+  } catch (e) {
+    return { path, error: e };
+  }
+}
+
 async function main() {
   const input = JSON.parse(await readStdin());
   if (input === null || typeof input !== 'object' || Array.isArray(input)) {
@@ -217,17 +276,30 @@ async function main() {
   const sm = sessionModel(input.transcript_path);
 
   const resolved = resolve(toolInput, input.cwd);
-  const analysis = resolved.source !== null ? analyze(resolved.source) : { stages: [], errors: [] };
+  const analysis = resolved.source !== null ? analyze(resolved.source) : { ast: null, stages: [], calls: [], errors: [] };
+  const fan = analysis.ast ? fanout(analysis.ast, analysis.calls, analysis.stages, limitsOf(policy)) : null;
+  const fanErrors = sm === 'opus' && fan
+    ? fan.errors.map((e) => (analysis.stages[e.stage].hasBlockedOn === true ? e : { ...e, needsBlockedOn: true }))
+    : [];
   const errors = [
     ...env(process.env),
     ...resolved.errors,
     ...analysis.errors,
-    ...rules(analysis.stages, policy, { sessionModel: haikuNoneSession(policy, sm) ? 'opus' : sm }),
+    ...rules(analysis.stages, policy, { sessionModel: haikuNoneSession(policy, sm) ? 'opus' : sm, fanout: fan }),
+    ...fanErrors,
   ];
   if (haikuNoneSession(policy, sm) && (analysis.stages.length > 0 || errors.length > 0)) {
     errors.unshift({ code: 'PAIR', message: HAIKU_NONE, line: null, label: null, stage: null, sessionNone: true });
   }
-  if (errors.length === 0) return;
+
+  const decision = errors.length === 0 ? 'pass' : 'deny';
+  const written = writeRecord(input, gateRecord({ input, toolInput, resolved, analysis, fan, sm, errors, decision }));
+  if (decision === 'pass') {
+    if (written.error) {
+      throw new Error(`cannot write the gate record${written.path ? ` ${written.path}` : ''}: ${written.error.message}`);
+    }
+    return;
+  }
 
   const file = typeof toolInput?.scriptPath === 'string' ? toolInput.scriptPath : 'script';
   const analyzed = resolved.source !== null && !analysis.errors.some((e) => e.code === 'PARSE');

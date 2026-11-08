@@ -16,6 +16,8 @@ const ERROR_KEYS = new Set(['code', 'line', 'label', 'message', 'stage', 'needsB
 function assertContract(result) {
   assert.ok(Array.isArray(result.stages))
   assert.ok(Array.isArray(result.errors))
+  assert.ok(Array.isArray(result.calls))
+  assert.equal(result.calls.length, result.stages.length)
   for (const e of result.errors) {
     assert.ok(CODES.has(e.code), `bad code ${e.code}`)
     assert.ok(e.line === null || (Number.isInteger(e.line) && e.line >= 1), `bad line ${e.line}`)
@@ -30,8 +32,9 @@ function assertContract(result) {
     else assert.equal(e.label, null)
   }
   for (const s of result.stages) {
-    assert.deepEqual(Object.keys(s), ['line', 'label', 'class', 'model', 'effort', 'hasBlockedOn'])
+    assert.deepEqual(Object.keys(s), ['line', 'label', 'class', 'model', 'effort', 'hasBlockedOn', 'verdict'])
     assert.equal(typeof s.hasBlockedOn, 'boolean')
+    assert.equal(typeof s.verdict, 'boolean')
     assert.ok(Number.isInteger(s.line) && s.line >= 1)
   }
 }
@@ -153,8 +156,26 @@ const BAD = {
   'parse-error.js': [E('PARSE', /Unexpected token|Unterminated|Unexpected/)]
 }
 
+const GATE_ONLY = [
+  'decide-sonnet-alone.js',
+  'fanout-four-opus.js',
+  'fanout-unknown-size.js',
+  'investigate-opus.js',
+  'judge-sonnet-findings.js',
+  'label-investigation.js'
+]
+
 test('every bad fixture has an expectation and every expectation has a fixture', () => {
-  assert.deepEqual(listFixtures('bad'), Object.keys(BAD).sort())
+  assert.deepEqual(listFixtures('bad'), [...Object.keys(BAD), ...GATE_ONLY].sort())
+})
+
+test('gate-only bad fixtures are clean for the analyzer; the rules and the fan-out analysis deny them in the gate test', () => {
+  for (const file of GATE_ONLY) {
+    const r = analyze(readFixture('bad', file))
+    assertContract(r)
+    assert.deepEqual(r.errors, [], file)
+    assert.ok(r.stages.length > 0, file)
+  }
 })
 
 for (const [file, expected] of Object.entries(BAD)) {
@@ -198,9 +219,9 @@ const c = ${call("label: 'code: rename', model: 'haiku', effort: 'xhigh', schema
 `)
   assert.deepEqual(r.errors, [])
   assert.deepEqual(r.stages, [
-    { line: 2, label: 'decide: pick', class: 'decide', model: 'opus', effort: 'high', hasBlockedOn: false },
-    { line: 3, label: 'build: parse ${…}', class: 'build', model: 'sonnet', effort: 'xhigh', hasBlockedOn: true },
-    { line: 9, label: 'code: rename', class: 'code', model: 'haiku', effort: 'xhigh', hasBlockedOn: true }
+    { line: 2, label: 'decide: pick', class: 'decide', model: 'opus', effort: 'high', hasBlockedOn: false, verdict: false },
+    { line: 3, label: 'build: parse ${…}', class: 'build', model: 'sonnet', effort: 'xhigh', hasBlockedOn: true, verdict: false },
+    { line: 9, label: 'code: rename', class: 'code', model: 'haiku', effort: 'xhigh', hasBlockedOn: true, verdict: false }
   ])
 })
 
@@ -222,7 +243,7 @@ test('a no-substitution template label is accepted and its class captured', () =
 test('quoted option keys are read like identifier keys', () => {
   const r = analyze(call("'label': 'decide: pick', 'model': 'opus', 'effort': 'high'"))
   assert.deepEqual(r.errors, [])
-  assert.deepEqual(r.stages[0], { line: 1, label: 'decide: pick', class: 'decide', model: 'opus', effort: 'high', hasBlockedOn: false })
+  assert.deepEqual(r.stages[0], { line: 1, label: 'decide: pick', class: 'decide', model: 'opus', effort: 'high', hasBlockedOn: false, verdict: false })
 })
 
 test('label class is the lowercase-letters-then-colon capture, case-sensitive and untrimmed', () => {
@@ -765,4 +786,66 @@ test('an unknown model reports the specific blocked_on problem as conditional on
   assert.ok(valid.errors.every((e) => !/sonnet or haiku/.test(e.message)))
   const opus = analyze(`${SHARED}${call(props('FP', "model: 'opus', "))}`)
   assert.deepEqual(opus.errors, [])
+})
+
+const PASS = "pass: { type: 'boolean' }"
+const EVIDENCE = "evidence: { type: 'string', description: 'x' }"
+const judge = (props) => call(`label: 'judge: check', model: 'sonnet', effort: 'high', schema: { type: 'object', properties: { ${props} } }`)
+const verdictOf = (src) => analyze(src).stages[0].verdict
+
+test('verdict is true for exactly pass boolean, evidence string and a valid blocked_on, in any order', () => {
+  const parts = [PASS, EVIDENCE, BLOCKED_ON]
+  for (const order of [[0, 1, 2], [2, 1, 0], [1, 2, 0], [2, 0, 1]]) {
+    const r = analyze(judge(order.map((i) => parts[i]).join(', ')))
+    assert.deepEqual(r.errors, [])
+    assert.equal(r.stages[0].verdict, true, order.join())
+    assert.equal(r.stages[0].hasBlockedOn, true)
+  }
+  assert.equal(verdictOf(judge(`'pass': { 'type': 'boolean' }, ${EVIDENCE}, ${BLOCKED_ON}`)), true)
+  assert.equal(verdictOf(judge(`pass: { type: 'boolean', description: 'did it pass' }, ${EVIDENCE}, ${BLOCKED_ON}`)), true)
+})
+
+test('verdict does not depend on the model or the class', () => {
+  const props = `${PASS}, ${EVIDENCE}, ${BLOCKED_ON}`
+  assert.equal(verdictOf(call(`label: 'decide: x', model: 'opus', effort: 'high', schema: { type: 'object', properties: { ${props} } }`)), true)
+  assert.equal(verdictOf(call(`label: 'decide: x', model: tier, effort: 'high', schema: { type: 'object', properties: { ${props} } }`)), true)
+})
+
+test('verdict is false for an extra key, a wrong type, a missing key, a bad blocked_on or a non-literal value', () => {
+  const cases = {
+    'extra key': `${PASS}, ${EVIDENCE}, score: { type: 'number' }, ${BLOCKED_ON}`,
+    'pass typed string': `pass: { type: 'string' }, ${EVIDENCE}, ${BLOCKED_ON}`,
+    'evidence typed boolean': `${PASS}, evidence: { type: 'boolean' }, ${BLOCKED_ON}`,
+    'evidence missing': `${PASS}, ${BLOCKED_ON}`,
+    'pass missing': `${EVIDENCE}, ${BLOCKED_ON}`,
+    'blocked_on missing': `${PASS}, ${EVIDENCE}`,
+    'blocked_on wrong type': `${PASS}, ${EVIDENCE}, blocked_on: { type: 'string', description: 'x' }`,
+    'pass not an object literal': `pass: BOOL, ${EVIDENCE}, ${BLOCKED_ON}`,
+    'pass without type': `pass: { description: 'x' }, ${EVIDENCE}, ${BLOCKED_ON}`,
+    'pass type is an identifier': `pass: { type: T }, ${EVIDENCE}, ${BLOCKED_ON}`,
+    'pass type is a template': `pass: { type: \`boolean\` }, ${EVIDENCE}, ${BLOCKED_ON}`,
+    'pass type is an array': `pass: { type: ['boolean'] }, ${EVIDENCE}, ${BLOCKED_ON}`,
+    'pass has a non-literal description': `pass: { type: 'boolean', description: D }, ${EVIDENCE}, ${BLOCKED_ON}`,
+    'evidence has a spread': `evidence: { type: 'string', ...X }, ${PASS}, ${BLOCKED_ON}`,
+    'pass type defined twice': `pass: { type: 'boolean', type: 'boolean' }, ${EVIDENCE}, ${BLOCKED_ON}`,
+    'pass defined twice': `${PASS}, ${PASS}, ${EVIDENCE}, ${BLOCKED_ON}`,
+    'computed key': `${PASS}, ${EVIDENCE}, [k]: { type: 'string' }, ${BLOCKED_ON}`,
+    'spread': `...X, ${PASS}, ${EVIDENCE}, ${BLOCKED_ON}`
+  }
+  for (const [name, props] of Object.entries(cases)) assert.equal(verdictOf(judge(props)), false, name)
+})
+
+test('verdict is false without an inline schema, with a shared schema const, or with a duplicate schema', () => {
+  const props = `${PASS}, ${EVIDENCE}, ${BLOCKED_ON}`
+  assert.equal(verdictOf(call("label: 'judge: x', model: 'sonnet', effort: 'high'")), false)
+  assert.equal(verdictOf(`const S = { type: 'object', properties: { ${props} } }\n${call("label: 'judge: x', model: 'sonnet', effort: 'high', schema: S")}`), false)
+  assert.equal(verdictOf(call(`label: 'judge: x', model: 'sonnet', effort: 'high', schema: { type: 'object', properties: { ${props} } }, schema: {}`)), false)
+  assert.equal(verdictOf("await agent('p', opts)"), false)
+})
+
+test('calls are the agent() call nodes in stage order', () => {
+  const r = analyze(`${call(OPUS)}\n${call("label: 'build: x', model: 'sonnet', effort: 'high'")}`)
+  assert.equal(r.calls.length, 2)
+  assert.deepEqual(r.calls.map((c) => c.loc.start.line), r.stages.map((s) => s.line))
+  assert.equal(analyze('const =').calls.length, 0)
 })

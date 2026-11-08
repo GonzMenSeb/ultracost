@@ -1,6 +1,7 @@
 {
   "hook_event_name": "PreToolUse",
   "session_id": "harness",
+  "tool_use_id": "toolu_harness",
   "transcript_path": "${HARNESS}/transcripts/opus.jsonl",
   "cwd": "${HARNESS}",
   "permission_mode": "default",

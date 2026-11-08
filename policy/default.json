@@ -1,20 +1,35 @@
 {
+  "limits": { "maxConcurrentOpus": 3, "bigFanout": 3 },
+  "labelCheck": {
+    "words": ["research", "investigate", "map", "explore", "survey", "scan", "search", "find", "audit", "inventory", "readiness"],
+    "classes": ["decide", "judge", "design"],
+    "fanoutClasses": ["synth"],
+    "use": "investigate"
+  },
   "classes": {
+    "investigate": {
+      "owns": "Investigation: web research, code mapping, and any reading that reports findings",
+      "pairs": { "sonnet": ["medium", "high", "xhigh"] }
+    },
     "decide": {
       "owns": "Open decisions: any choice, approach, software design, design of complex functionality, taste, diagnosing unclear or cross-cutting bugs",
-      "pairs": { "opus": ["medium", "high", "xhigh"] }
+      "pairs": { "opus": ["medium", "high", "xhigh"] },
+      "fanoutPairs": { "sonnet": ["medium", "high", "xhigh"] }
     },
     "judge": {
-      "owns": "Adversarial review, verification, verdicts, and any reading whose output feeds a verdict",
-      "pairs": { "opus": ["medium", "high", "xhigh"] }
+      "owns": "Adversarial review, verification and verdicts",
+      "pairs": { "opus": ["medium", "high", "xhigh"] },
+      "verdictPairs": { "sonnet": ["medium", "high", "xhigh"] }
     },
     "synth": {
       "owns": "Synthesizing complex, distributed, multi-faceted or conflicting work",
-      "pairs": { "opus": ["medium", "high", "xhigh"] }
+      "pairs": { "opus": ["medium", "high", "xhigh"] },
+      "fanoutPairs": { "sonnet": ["medium", "high", "xhigh"] }
     },
     "design": {
       "owns": "Visual / UI design",
-      "pairs": { "opus": ["medium", "high", "xhigh"] }
+      "pairs": { "opus": ["medium", "high", "xhigh"] },
+      "fanoutPairs": { "sonnet": ["medium", "high", "xhigh"] }
     },
     "build": {
       "owns": "Decided implementation: well-defined modules, scoped UI implementation, \"like this\" examples, long build-test-debug loops",

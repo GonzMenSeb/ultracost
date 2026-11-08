@@ -4,71 +4,72 @@ The tierguard gate checks every `agent()` in a Workflow script before the workfl
 
 ## Tier by who owns the decision
 
-Use Haiku only when two agents would produce the same output and the result is mechanically checkable.
+Use Haiku only when two agents would produce the same output and the result is mechanically checkable. The allowed-pairs table at the end says what each class owns and is authoritative.
 
-| Class (label prefix) | Owns | Base model | Effort allowed (default) |
-|---|---|---|---|
-| `decide:` | Open decisions: any choice, approach, software design, design of complex functionality, taste, diagnosing unclear or cross-cutting bugs | opus | medium · high · xhigh (medium/high) |
-| `judge:` | Adversarial review, verification, verdicts, and any reading whose output feeds a verdict | opus | medium · high · xhigh (high) |
-| `synth:` | Synthesizing complex, distributed, multi-faceted or conflicting work | opus | medium · high · xhigh (medium/high) |
-| `design:` | Visual / UI design | opus | medium · high · xhigh (high) |
-| `build:` | Decided implementation: well-defined modules, scoped UI implementation, "like this" examples, long build-test-debug loops | sonnet | medium · high · xhigh (high/xhigh) |
-| `fix:` | Fixes whose cause or repro is known | sonnet | medium · high · xhigh (medium/high) |
-| `combine:` | Merging groundwork toward one stated goal | sonnet | medium · high · xhigh (high/xhigh) |
-| `code:` | Very simple, fully specified, mechanically checkable code; blind, well-specified UI implementation | haiku | Haiku: xhigh only (xhigh); Sonnet: medium · high · xhigh |
-| `grunt:` | Non-code, zero-decision work: search, extraction, summaries, compaction, repetitive separable groundwork | haiku | Haiku: xhigh only (xhigh); Sonnet: medium · high · xhigh |
+| Class | Models | Default effort |
+|---|---|---|
+| `decide:` | opus; sonnet in a fan-out of more than 3 | medium/high |
+| `judge:` | opus; sonnet with the verdict schema | high |
+| `synth:` | opus; sonnet in a fan-out of more than 3 | medium/high |
+| `design:` | opus; sonnet in a fan-out of more than 3 | high |
+| `investigate:` | sonnet only | high |
+| `build:`, `combine:` | sonnet or opus | high/xhigh |
+| `fix:` | sonnet or opus | medium/high |
+| `code:`, `grunt:` | haiku (xhigh only) or sonnet | xhigh |
+
+Efforts are medium, high or xhigh.
 
 ## Hard rules
 
-- Every `agent()` names a model and an effort.
-- Never `low` and never `max`, on any model. Never Fable or Mythos. Models are the aliases `opus`, `sonnet` and `haiku`.
-- A stage may run one tier above its class, never below, except under the session cap.
-- Session cap: no stage uses a model above the main session's model (haiku < sonnet < opus; a Fable session counts as Opus). On a Sonnet session, `decide:`, `judge:`, `synth:` and `design:` run on sonnet × {medium, high, xhigh} and Opus is denied. On a Haiku session, every stage runs on haiku × xhigh if the allowed-pairs table lists any haiku pair; if it lists none, no workflow can launch from a Haiku session, so ask the user to switch with `/model sonnet` or `/model opus` instead of drafting one. If the session model cannot be read, the session counts as Sonnet.
-- Every Sonnet and Haiku agent's schema has `blocked_on`, so the agent reports an undecided question instead of deciding it.
-- The allowed-pairs table below is the authoritative list of (model, effort) pairs per class. Haiku pairs apply only when that table lists them; otherwise `code:` and `grunt:` run on sonnet × {medium, high, xhigh}.
+- Every `agent()` names a model and an effort. Never `low`, never `max`, never Fable or Mythos. Models are the aliases `opus`, `sonnet` and `haiku`.
+- A stage may run one tier above its class (`investigate:` never above Sonnet). It runs below only under the session cap, or where a row above says Sonnet is allowed.
+- At most 3 Opus agents run at once. The gate counts from the script alone: thunks in an array literal add up; `X.map(...)` inside `parallel`, `pipeline` or `Promise.allSettled` counts size(X) × the agents in its body; `Promise.all`, `race` and `any` over more than one Opus agent cannot be counted (the others keep running after the first settles), so use `parallel`; awaited loop iterations run one at a time. It reads sizes of array literals, unmutated `const` arrays, `Array.from({ length: N })`, `.slice(0, N)` and `.slice(i, i + N)`. If it cannot count (unknown size, `args`, an unawaited agent promise, an agent pushed into an array, recursion) the Opus stages involved are denied as `FANOUT`. Sonnet and Haiku fan-outs of any size pass.
+- `decide:`, `synth:` and `design:` run on Sonnet only for the simpler agents of a fan-out of more than 3 agents at once (all models counted) or unknown size.
+- `judge:` runs on Sonnet only for one yes/no review, and only when `schema.properties` has exactly `pass`, `evidence` and `blocked_on` as below, inline. Findings lists and scores stay on Opus.
+- Session cap: no stage uses a model above the session's (haiku < sonnet < opus; Fable counts as Opus; unreadable counts as Sonnet). On a Sonnet session the four Opus classes run on sonnet × {medium, high, xhigh} with no verdict schema or fan-out needed. On a Haiku session every stage runs on haiku × xhigh if the table lists a haiku pair; if none, ask the user to `/model sonnet` or `/model opus`.
 
 ## Judgment
 
+- Opus is for design, decisions, synthesis and complex reviews. Investigation and the simpler agents of a big fan-out run on Sonnet.
 - Unsure → go up a tier if an error would be costly or undetectable.
-- Parallelize only work that actually saves time when run in parallel; never force parallelism.
+- Parallelize only work that saves time in parallel.
 - If `blocked_on` is set, re-run that stage as a `decide:` stage with the question.
-- The gate cannot see whether a label's class is honest. Pick the class by who owns the decision.
+- Pick the class by who owns the decision. A `decide:`, `judge:` or `design:` label (or a fanned-out `synth:` label) containing research, investigate, map, explore, survey, scan, search, find, audit, inventory or readiness is denied as `LABEL`: that work is `investigate:` on Sonnet.
 
 ## Script shape the gate accepts
 
 - Launch with `script` or `scriptPath`, never by `name`, and never both.
 - Call `agent` directly with exactly two arguments: a prompt and an object literal of options, with no spread. Never use `agent` as a value (`.map(agent)`, `const run = agent`) and never name anything else `agent`.
-- `model` and `effort` are quoted string literals. `label` is a string or template literal that starts with the class prefix, such as `'build: parser'`.
+- `model` and `effort` are quoted string literals. `label` is a string or template literal starting with the class prefix, such as `'build: parser'`.
 - No `agentType`. The name `workflow` must not appear anywhere (no call, variable, parameter or property shorthand): inline child workflows. No `globalThis`, `eval`, `Function` or `this`.
-- Sonnet and Haiku stages carry an inline `schema` object literal whose inline `properties` include `blocked_on` exactly as below. Do not share a schema const. On a Sonnet session, or when the session model cannot be read, `decide:`, `judge:`, `synth:` and `design:` stages run on sonnet too, so they need the same schema.
+- Every Sonnet and Haiku stage, including the Opus classes when they run on Sonnet, carries an inline `schema` object literal whose inline `properties` include `blocked_on` exactly as below, so the agent reports an undecided question instead of deciding it. No shared schema const.
+
+Verdict schema for `judge:` on Sonnet (exactly these keys, any order). Other Sonnet and Haiku stages use their own properties plus `blocked_on`:
 
 ```js
-const r = await agent(`…`, {
-  label: 'build: parser module',
-  model: 'sonnet',
-  effort: 'high',
-  schema: {
-    type: 'object',
-    properties: {
-      result: { type: 'string' },
-      blocked_on: { type: ['string', 'null'], description: 'An open decision this stage must not make, or null' }
-    },
-    required: ['result', 'blocked_on']
-  }
-})
-if (r?.blocked_on) {
-  const d = await agent(`Decide: ${r.blocked_on}`, {
-    label: 'decide: parser question',
-    model: 'opus',
-    effort: 'high',
-    schema: {
-      type: 'object',
-      properties: {
-        decision: { type: 'string' },
-        blocked_on: { type: ['string', 'null'], description: 'An open decision this stage must not make, or null' }
-      },
-      required: ['decision', 'blocked_on']
-    }
-  })
+schema: {
+  type: 'object',
+  properties: {
+    pass: { type: 'boolean' },
+    evidence: { type: 'string' },
+    blocked_on: { type: ['string', 'null'], description: 'An open decision this stage must not make, or null' }
+  },
+  required: ['pass', 'evidence', 'blocked_on']
 }
+```
+
+The 3 most complex on Opus, the rest on Sonnet:
+
+```js
+await parallel([
+  ...ranked.slice(0, 3).map(t => () => agent(`…${t.key}`, { label: `design: ${t.key}`, model: 'opus', effort: 'high' })),
+  ...ranked.slice(3).map(t => () => agent(`…${t.key}`, { label: `design: ${t.key}`, model: 'sonnet', effort: 'high', schema: { /* with blocked_on */ } }))
+])
+```
+
+Opus over a list of unknown size, 3 at a time:
+
+```js
+for (let i = 0; i < items.length; i += 3)
+  await parallel(items.slice(i, i + 3).map(x => () => agent(`…${x}`, { label: `decide: ${x}`, model: 'opus', effort: 'high' })))
 ```

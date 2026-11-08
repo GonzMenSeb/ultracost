@@ -7,7 +7,7 @@ export const meta = {
   ]
 }
 
-const LENSES = ['correctness', 'security', 'performance', 'maintainability']
+const LENSES = ['correctness', 'security', 'performance']
 
 const FINDINGS = {
   type: 'object',

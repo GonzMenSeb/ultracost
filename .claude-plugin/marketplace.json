@@ -8,9 +8,9 @@
     {
       "name": "tierguard",
       "source": "./",
-      "version": "0.4.6",
+      "version": "0.4.7",
       "license": "MIT",
-      "description": "Denies Workflow scripts whose agent() stages break the model and effort tier policy, and injects that policy at session start.",
+      "description": "Denies Workflow scripts whose agent() stages break the model and effort tier policy, injects that policy at session start, and shows live whether each running workflow follows what the gate approved.",
       "category": "developer-tools",
       "tags": [
         "model-routing",

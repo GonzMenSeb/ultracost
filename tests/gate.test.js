@@ -1,11 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { readFileSync, writeFileSync, mkdtempSync, mkdirSync, cpSync, rmSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdtempSync, mkdirSync, cpSync, rmSync, existsSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadPolicy, effectivePairs, formatPairs } from '../src/rules.mjs';
+import { sha256Hex } from '../src/fingerprint.mjs';
+import { RECORD_VERSION, recordPath } from '../src/record.mjs';
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const HARNESS = join(ROOT, 'tests', 'harness');
@@ -29,10 +31,21 @@ function fixture(name, patch = {}) {
   return { ...JSON.parse(raw), ...patch };
 }
 
-function run(stdin, { env = cleanEnv(), gate = GATE } = {}) {
+const configDirs = [];
+test.after(() => {
+  for (const d of configDirs) rmSync(d, { recursive: true, force: true });
+});
+
+function freshConfigDir() {
+  const d = mkdtempSync(join(tmpdir(), 'tierguard-config-'));
+  configDirs.push(d);
+  return d;
+}
+
+function run(stdin, { env = cleanEnv(), gate = GATE, configDir = freshConfigDir() } = {}) {
   const input = typeof stdin === 'string' ? stdin : JSON.stringify(stdin);
-  const r = spawnSync(process.execPath, [gate], { input, env, encoding: 'utf8' });
-  return { status: r.status, stdout: r.stdout, stderr: r.stderr };
+  const r = spawnSync(process.execPath, [gate], { input, env: { ...env, CLAUDE_CONFIG_DIR: configDir }, encoding: 'utf8' });
+  return { status: r.status, stdout: r.stdout, stderr: r.stderr, configDir };
 }
 
 function denied(r) {
@@ -655,4 +668,411 @@ test('haiku session with no haiku pair on a launch by name keeps the name messag
     assert.ok(reason.includes(NAME_MESSAGE), reason);
     assert.ok(reason.includes(HAIKU_NONE), reason);
   });
+});
+
+const FIXTURES = join(ROOT, 'tests', 'fixtures');
+const fixtureScript = (kind, name) => readFileSync(join(FIXTURES, kind, name), 'utf8');
+const launch = (script, t = 'opus', extra = {}) =>
+  fixture('clean', { transcript_path: transcript(t), tool_input: { script }, ...extra });
+
+const gateRecordOf = (r, sid = 'harness', tuid = 'toolu_harness') => {
+  const file = recordPath(r.configDir, sid, tuid, 'gate');
+  assert.ok(existsSync(file), `no record at ${file}`);
+  return JSON.parse(readFileSync(file, 'utf8'));
+};
+
+const verdictSchema = `schema: { type: 'object', properties: { pass: { type: 'boolean' }, evidence: { type: 'string' }, ${BLOCKED_ON} } }`;
+const agentCall = (label, model, effort = 'high', schemaText = schema) =>
+  `agent('Work.', { label: '${label}', model: '${model}', effort: '${effort}'${model === 'opus' ? '' : `, ${schemaText}`} })`;
+const thunkList = (n, make) => Array.from({ length: n }, (_, i) => `() => ${make(i)}`).join(', ');
+
+test('a clean launch writes a pass record with the script fingerprint', () => {
+  const script = stageScript('build', 'sonnet', 'high');
+  const r = run(launch(script));
+  clean(r);
+  const rec = gateRecordOf(r);
+  assert.equal(rec.v, RECORD_VERSION);
+  assert.equal(rec.kind, 'gate');
+  assert.equal(rec.decision, 'pass');
+  assert.equal(rec.session_id, 'harness');
+  assert.equal(rec.tool_use_id, 'toolu_harness');
+  assert.equal(rec.fingerprint, sha256Hex(script));
+  assert.equal(rec.scriptPath, null);
+  assert.equal(rec.sessionModel, 'opus');
+  assert.equal(rec.maxOpus, 0);
+  assert.deepEqual(rec.errors, []);
+  assert.ok(!Number.isNaN(Date.parse(rec.at)));
+  assert.deepEqual(rec.stages, [
+    { index: 0, line: 1, label: 'build: stage', class: 'build', model: 'sonnet', effort: 'high', inFanout: false, bigFanout: false, verdict: false },
+  ]);
+  assert.deepEqual(Object.keys(rec), ['v', 'kind', 'at', 'session_id', 'tool_use_id', 'decision', 'fingerprint', 'scriptPath', 'sessionModel', 'maxOpus', 'stages', 'errors']);
+});
+
+test('the record is written exactly where recordPath says, one file per launch', () => {
+  const r = run(launch(stageScript('build', 'sonnet', 'high'), 'opus', { session_id: 'sess_1', tool_use_id: 'toolu_A' }));
+  clean(r);
+  const dir = join(r.configDir, 'tierguard', 'sessions', 'sess_1');
+  assert.deepEqual(readdirSync(dir), ['toolu_A.gate.json']);
+  assert.equal(recordPath(r.configDir, 'sess_1', 'toolu_A', 'gate'), join(dir, 'toolu_A.gate.json'));
+});
+
+test('a clean scriptPath launch fingerprints the text of the file and records the path as given', () => {
+  const r = run(fixture('clean-scriptpath'));
+  clean(r);
+  const rec = gateRecordOf(r);
+  assert.equal(rec.fingerprint, sha256Hex(readFileSync(join(HARNESS, 'scripts', 'clean.js'), 'utf8')));
+  assert.equal(rec.scriptPath, 'scripts/clean.js');
+  assert.equal(rec.decision, 'pass');
+});
+
+test('a denied launch writes a deny record with its errors', () => {
+  const script = "await agent('x', { label: 'build: x', model: 'sonnet', effort: 'low' })\n";
+  const r = run(launch(script));
+  denied(r);
+  const rec = gateRecordOf(r);
+  assert.equal(rec.decision, 'deny');
+  assert.equal(rec.fingerprint, sha256Hex(script));
+  assert.ok(rec.errors.length >= 1);
+  for (const e of rec.errors) {
+    assert.deepEqual(Object.keys(e), ['code', 'line', 'message']);
+    assert.equal(typeof e.message, 'string');
+  }
+  assert.ok(rec.errors.some((e) => e.code === 'PAIR' && e.line === 1));
+  assert.equal(rec.stages.length, 1);
+});
+
+test('a deny before any script exists records a null fingerprint and no stages', () => {
+  const r = run(fixture('source-none'));
+  denied(r);
+  const rec = gateRecordOf(r);
+  assert.equal(rec.decision, 'deny');
+  assert.equal(rec.fingerprint, null);
+  assert.equal(rec.maxOpus, null);
+  assert.deepEqual(rec.stages, []);
+  assert.deepEqual(rec.errors.map((e) => e.code), ['SOURCE']);
+});
+
+test('a parse error records the source fingerprint, no stages and an unknown bound', () => {
+  const r = run(fixture('parse-error'));
+  denied(r);
+  const rec = gateRecordOf(r);
+  assert.equal(rec.decision, 'deny');
+  assert.equal(typeof rec.fingerprint, 'string');
+  assert.equal(rec.maxOpus, null);
+  assert.deepEqual(rec.stages, []);
+  assert.equal(rec.errors[0].code, 'PARSE');
+});
+
+test('the config dir is CLAUDE_CONFIG_DIR trimmed, else ~/.claude', () => {
+  const base = mkdtempSync(join(tmpdir(), 'tierguard-cfg-'));
+  configDirs.push(base);
+  const padded = run(fixture('clean'), { configDir: `  ${base}  ` });
+  clean(padded);
+  assert.ok(existsSync(recordPath(base, 'harness', 'toolu_harness', 'gate')));
+
+  const home = mkdtempSync(join(tmpdir(), 'tierguard-home-'));
+  configDirs.push(home);
+  for (const blank of ['', '   ']) {
+    const r = run(fixture('clean'), { env: cleanEnv({ HOME: home }), configDir: blank });
+    clean(r);
+    assert.ok(existsSync(recordPath(join(home, '.claude'), 'harness', 'toolu_harness', 'gate')), JSON.stringify(blank));
+  }
+});
+
+test('an invalid session_id writes under unknown; an invalid or missing tool_use_id on a pass fails closed', () => {
+  const odd = run(launch(stageScript('build', 'sonnet', 'high'), 'opus', { session_id: '../escape' }));
+  clean(odd);
+  assert.ok(existsSync(recordPath(odd.configDir, 'unknown', 'toolu_harness', 'gate')));
+  assert.ok(!existsSync(join(odd.configDir, 'escape')));
+
+  for (const bad of ['a/b', '', 'x'.repeat(129), 7, null]) {
+    const r = run(launch(stageScript('build', 'sonnet', 'high'), 'opus', { tool_use_id: bad }));
+    assert.equal(r.status, 2, JSON.stringify(bad));
+    assert.equal(r.stdout, '');
+    assert.match(r.stderr, /tierguard gate internal error/);
+    assert.match(r.stderr, /cannot write the gate record/);
+    assert.match(r.stderr, /tool_use_id/);
+    assert.ok(!existsSync(join(r.configDir, 'tierguard')), JSON.stringify(bad));
+  }
+  const missing = launch(stageScript('build', 'sonnet', 'high'));
+  delete missing.tool_use_id;
+  assert.equal(run(missing).status, 2);
+});
+
+test('a missing session_id writes under unknown', () => {
+  const input = launch(stageScript('build', 'sonnet', 'high'));
+  delete input.session_id;
+  const r = run(input);
+  clean(r);
+  assert.ok(existsSync(recordPath(r.configDir, 'unknown', 'toolu_harness', 'gate')));
+});
+
+test('a FANOUT deny omits the blocked_on snippet when every opus stage already has one', () => {
+  const withBlockedOn = (i) =>
+    `() => agent('W${i}.', { label: 'decide: option ${i}', model: 'opus', effort: 'high', schema: { type: 'object', properties: { ${BLOCKED_ON} } } })`;
+  const body = Array.from({ length: 4 }, (_, i) => withBlockedOn(i)).join(', ');
+  const reason = denied(run(launch(`await parallel([${body}])\n`)));
+  assert.match(reason, /FANOUT/);
+  assert.ok(!reason.includes('blocked_on'), reason);
+});
+
+test('a deny with an invalid tool_use_id still denies and writes nothing', () => {
+  const r = run(launch("await agent('x', { label: 'build: x', model: 'sonnet', effort: 'low' })\n", 'opus', { tool_use_id: 'a/b' }));
+  denied(r);
+  assert.ok(!existsSync(join(r.configDir, 'tierguard')));
+});
+
+test('when the record cannot be written a clean launch exits 2 naming the path, and a deny still prints its deny', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'tierguard-blocked-'));
+  configDirs.push(dir);
+  const asFile = join(dir, 'config-is-a-file');
+  writeFileSync(asFile, 'x');
+  const passing = run(fixture('clean'), { configDir: asFile });
+  assert.equal(passing.status, 2, passing.stderr);
+  assert.equal(passing.stdout, '');
+  assert.match(passing.stderr, /cannot write the gate record/);
+  assert.ok(passing.stderr.includes(recordPath(asFile, 'harness', 'toolu_harness', 'gate')), passing.stderr);
+
+  const denying = run(fixture('shape-missing-effort'), { configDir: asFile });
+  assert.match(denied(denying), /SHAPE/);
+  assert.equal(denying.stderr, '');
+});
+
+test('the four-opus fixture is denied with FANOUT on an opus session and names the stage line', () => {
+  const r = run(launch(fixtureScript('bad', 'fanout-four-opus.js')));
+  const reason = denied(r);
+  assert.match(reason, /FANOUT/);
+  assert.match(reason, /Up to 4 opus agents can run at once here; the limit is 3/);
+  assert.match(reason, /^script:\d+ FANOUT /m);
+  assert.ok(reason.includes(BLOCKED_ON), reason);
+  const rec = gateRecordOf(r);
+  assert.equal(rec.decision, 'deny');
+  assert.equal(rec.maxOpus, 4);
+  assert.ok(rec.errors.some((e) => e.code === 'FANOUT'));
+  assert.deepEqual(rec.stages.map((st) => [st.inFanout, st.bigFanout]), [[true, true]]);
+});
+
+test('the same four-opus script on a sonnet session reports PAIR, not FANOUT', () => {
+  const r = run(launch(fixtureScript('bad', 'fanout-four-opus.js'), 'sonnet'));
+  const reason = denied(r);
+  assert.match(reason, /PAIR/);
+  assert.doesNotMatch(reason, /FANOUT/);
+  assert.equal(gateRecordOf(r).maxOpus, 4);
+  assert.ok(gateRecordOf(r).errors.every((e) => e.code !== 'FANOUT'));
+});
+
+test('FANOUT never fires on a haiku session or with no readable session model', () => {
+  for (const t of ['haiku', null]) {
+    const input = launch(fixtureScript('bad', 'fanout-four-opus.js'), t ?? 'opus');
+    if (t === null) delete input.transcript_path;
+    const r = run(input);
+    assert.doesNotMatch(denied(r), /FANOUT/, String(t));
+  }
+});
+
+test('an opus fan-out of unknown size is denied with FANOUT and a null bound in the record', () => {
+  const r = run(launch(fixtureScript('bad', 'fanout-unknown-size.js')));
+  const reason = denied(r);
+  assert.match(reason, /FANOUT/);
+  assert.match(reason, /cannot count how many opus agents run at once/);
+  assert.equal(gateRecordOf(r).maxOpus, null);
+});
+
+test('FANOUT is reported next to a PAIR error on the same stage and keeps one line per stage', () => {
+  const script = `await parallel([${thunkList(4, () => agentCall('decide: x', 'opus', 'low'))}])\n`;
+  const reason = denied(run(launch(script)));
+  assert.match(reason, /PAIR\+FANOUT/);
+});
+
+test('identical FANOUT sentences are stated once and later stages point at the first line', () => {
+  const body = Array.from({ length: 4 }, (_, i) => `() => agent('W${i}.', { label: 'decide: option ${i}', model: 'opus', effort: 'high' })`).join(',\n  ');
+  const reason = denied(run(launch(`await parallel([\n  ${body}\n])\n`)));
+  assert.equal(reason.split('Up to 4 opus agents can run at once here').length - 1, 1, reason);
+  assert.equal(reason.split('Same as line 2.').length - 1, 3, reason);
+  const covered = coveredLines(reason);
+  for (let n = 2; n <= 5; n++) assert.ok(covered.has(n), `line ${n}: ${reason}`);
+});
+
+test('the sonnet fixtures are denied for the right reason on an opus session', () => {
+  const judge = denied(run(launch(fixtureScript('bad', 'judge-sonnet-findings.js'))));
+  assert.match(judge, /single yes\/no review/);
+  const decide = denied(run(launch(fixtureScript('bad', 'decide-sonnet-alone.js'))));
+  assert.match(decide, /more than 3 agents/);
+  const investigate = denied(run(launch(fixtureScript('bad', 'investigate-opus.js'))));
+  assert.match(investigate, /does not allow model "opus"/);
+  assert.match(investigate, /^investigate: sonnet × \{medium, high, xhigh\}$/m);
+  assert.ok(investigate.includes(BLOCKED_ON), investigate);
+});
+
+test('those fixtures need no verdict schema or fan-out on a sonnet session', () => {
+  for (const name of ['judge-sonnet-findings.js', 'decide-sonnet-alone.js']) {
+    clean(run(launch(fixtureScript('bad', name), 'sonnet')));
+  }
+  assert.match(denied(run(launch(fixtureScript('bad', 'investigate-opus.js'), 'sonnet'))), /PAIR/);
+});
+
+test('every good fixture passes on an opus session and its record agrees with the fan-out analysis', () => {
+  const bounds = { 'fanout-slice.js': 3, 'judge-verdict.js': 1, 'loops.js': 1, 'mixed-tiers.js': 1, 'parallel.js': 3, 'pipeline.js': 0 };
+  const files = readdirSync(join(FIXTURES, 'good')).filter((f) => f.endsWith('.js')).sort();
+  assert.deepEqual(files, Object.keys(bounds).sort());
+  for (const f of files) {
+    const script = fixtureScript('good', f);
+    const r = run(launch(script));
+    assert.equal(r.status, 0, `${f}: ${r.stderr}`);
+    assert.equal(r.stdout, '', `${f}: ${r.stdout}`);
+    const rec = gateRecordOf(r);
+    assert.equal(rec.decision, 'pass', f);
+    assert.equal(rec.maxOpus, bounds[f], f);
+    assert.equal(rec.fingerprint, sha256Hex(script), f);
+  }
+});
+
+test('good fixtures also pass when launched by scriptPath', () => {
+  const r = run(fixture('clean', { tool_input: { scriptPath: join(FIXTURES, 'good', 'fanout-slice.js') } }));
+  clean(r);
+  assert.equal(gateRecordOf(r).fingerprint, sha256Hex(fixtureScript('good', 'fanout-slice.js')));
+});
+
+test('the slice fixture marks its sonnet designers as a big fan-out and passes', () => {
+  const rec = gateRecordOf(run(launch(fixtureScript('good', 'fanout-slice.js'))));
+  const designers = rec.stages.filter((st) => st.class === 'design');
+  assert.deepEqual(designers.map((st) => st.model), ['opus', 'sonnet']);
+  assert.ok(designers.every((st) => st.inFanout));
+  assert.equal(designers[1].bigFanout, true);
+  assert.equal(rec.stages.find((st) => st.class === 'investigate').inFanout, false);
+});
+
+test('the verdict fixture records verdict true for the sonnet judge only', () => {
+  const rec = gateRecordOf(run(launch(fixtureScript('good', 'judge-verdict.js'))));
+  assert.deepEqual(rec.stages.map((st) => [st.class, st.model, st.verdict]), [
+    ['build', 'sonnet', false],
+    ['judge', 'sonnet', true],
+    ['judge', 'opus', false],
+  ]);
+});
+
+test('every conditional pair of the shipped policy passes in its condition and is denied outside it', () => {
+  const policy = loadPolicy();
+  let n = 0;
+  for (const [cls, def] of Object.entries(policy.classes)) {
+    for (const [model, efforts] of Object.entries(def.verdictPairs ?? {})) {
+      for (const effort of efforts) {
+        const inside = `await ${agentCall(`${cls}: stage`, model, effort, verdictSchema)}\n`;
+        const r = run(launch(inside));
+        assert.equal(r.status, 0, `${cls} ${model} ${effort}: ${r.stderr}`);
+        assert.equal(r.stdout, '');
+        assert.match(denied(run(launch(stageScript(cls, model, effort)))), /single yes\/no review/, `${cls} ${model} ${effort}`);
+        n++;
+      }
+    }
+    for (const [model, efforts] of Object.entries(def.fanoutPairs ?? {})) {
+      for (const effort of efforts) {
+        const big = `await parallel([${thunkList(policy.limits.bigFanout + 1, () => agentCall(`${cls}: stage`, model, effort))}])\n`;
+        const r = run(launch(big));
+        assert.equal(r.status, 0, `${cls} ${model} ${effort}: ${r.stderr}`);
+        assert.equal(r.stdout, '');
+        const small = `await parallel([${thunkList(policy.limits.bigFanout, () => agentCall(`${cls}: stage`, model, effort))}])\n`;
+        assert.match(denied(run(launch(small))), /more than 3 agents/, `${cls} ${model} ${effort}`);
+        assert.match(denied(run(launch(stageScript(cls, model, effort)))), /more than 3 agents/, `${cls} ${model} ${effort}`);
+        n++;
+      }
+    }
+  }
+  assert.ok(n > 0);
+});
+
+test('a fan-out of unknown size makes decide on sonnet legal and a sequential one does not', () => {
+  const unknown = `await parallel(args.items.map((x) => () => ${agentCall('decide: pick', 'sonnet')}))\n`;
+  clean(run(launch(unknown)));
+  const loop = `for (const x of args.items) await ${agentCall('decide: pick', 'sonnet')}\n`;
+  assert.match(denied(run(launch(loop))), /more than 3 agents/);
+});
+
+test('sonnet agents never trigger FANOUT, whatever the shape, on an opus session', () => {
+  for (const script of [
+    `await parallel(args.items.map((x) => () => ${agentCall('build: x', 'sonnet')}))\n`,
+    `await pipeline(args.items, (x) => ${agentCall('grunt: x', 'sonnet')}, (y) => ${agentCall('build: y', 'sonnet')})\n`,
+    `await parallel([${thunkList(12, () => agentCall('fix: x', 'sonnet'))}])\n`,
+  ]) {
+    const r = run(launch(script));
+    clean(r);
+    assert.equal(gateRecordOf(r).maxOpus, 0);
+  }
+});
+
+test('three opus at once pass and four are denied; the slice and batching patterns pass', () => {
+  const three = `await parallel([${thunkList(3, () => agentCall('decide: x', 'opus'))}])\n`;
+  const r = run(launch(three));
+  clean(r);
+  assert.equal(gateRecordOf(r).maxOpus, 3);
+  denied(run(launch(`await parallel([${thunkList(4, () => agentCall('decide: x', 'opus'))}])\n`)));
+  const batch = `for (let i = 0; i < args.items.length; i += 3) await parallel(args.items.slice(i, i + 3).map((x) => () => ${agentCall('decide: x', 'opus')}))\n`;
+  const b = run(launch(batch));
+  clean(b);
+  assert.equal(gateRecordOf(b).maxOpus, 3);
+});
+
+test('a sonnet session judge needs no verdict schema and passes with a record', () => {
+  const script = `await ${agentCall('judge: x', 'sonnet')}\n`;
+  const r = run(launch(script, 'sonnet'));
+  clean(r);
+  assert.equal(gateRecordOf(r).sessionModel, 'sonnet');
+});
+
+test('FANOUT denies stay within 2000 characters and 20 lines and cover every stage line', () => {
+  for (const count of [4, 10, 30]) {
+    for (const t of ['opus']) {
+      const body = Array.from({ length: count }, (_, i) => `() => agent('W${i}.', { label: 'decide: option number ${i} of the audit', model: 'opus', effort: 'high' })`).join(',\n  ');
+      const script = `await parallel([\n  ${body}\n])\n`;
+      const reason = denied(run(launch(script, t)));
+      assert.ok(reason.length <= 2000, `${count}: ${reason.length} chars`);
+      assert.ok(reason.split('\n').length <= 20, `${count}: ${reason.split('\n').length} lines`);
+      const covered = coveredLines(reason);
+      for (let n = 2; n < 2 + count; n++) assert.ok(covered.has(n), `${count}: line ${n} missing:\n${reason}`);
+    }
+  }
+});
+
+test('a deny mixing FANOUT, PAIR and SHAPE over many stages keeps the limits and the last line', () => {
+  const stages = Array.from({ length: 24 }, (_, i) => {
+    const cls = ['decide', 'judge', 'synth', 'investigate', 'build'][i % 5];
+    const effort = i % 3 === 0 ? 'low' : 'high';
+    return `() => agent('W${i}.', { label: '${cls}: a long descriptive label for stage ${i}', model: 'opus', effort: '${effort}' })`;
+  });
+  for (const t of ['opus', 'sonnet', 'haiku']) {
+    const reason = denied(run(launch(`await parallel([\n${stages.join(',\n')}\n])\n`, t)));
+    assert.ok(reason.length <= 2000, `${t}: ${reason.length}`);
+    assert.ok(reason.split('\n').length <= 20, `${t}: ${reason.split('\n').length}`);
+  }
+});
+
+test('FANOUT with an unreadable script path style input still honours the 2000 character limit', () => {
+  const script = `const out = []\nfor (const x of args.items) out.push(() => ${agentCall('decide: x', 'opus')})\nawait parallel(out)\n`;
+  const reason = denied(run(launch(script)));
+  assert.match(reason, /FANOUT/);
+  assert.ok(reason.length <= 2000 && reason.split('\n').length <= 20, reason);
+});
+
+test('the session table of conditional pairs does not leak into a deny: pair lines show the base pairs', () => {
+  const reason = denied(run(launch(fixtureScript('bad', 'decide-sonnet-alone.js'))));
+  assert.match(reason, /^decide: opus × \{medium, high, xhigh\}$/m);
+});
+
+test('a gate run never writes outside CLAUDE_CONFIG_DIR/tierguard', () => {
+  const r = run(fixture('clean'));
+  clean(r);
+  assert.deepEqual(readdirSync(r.configDir), ['tierguard']);
+  assert.deepEqual(readdirSync(join(r.configDir, 'tierguard')), ['sessions']);
+});
+
+test('investigation words in opus-class labels are denied with LABEL on any session', () => {
+  for (const t of ['opus', 'sonnet']) {
+    const r = run(launch(fixtureScript('bad', 'label-investigation.js'), t));
+    const reason = denied(r);
+    assert.match(reason, /LABEL[+A-Z]* \[decide: ovh extra ip research\] "decide: ovh extra ip research" reads like investigation \("research"\)/, t);
+    assert.match(reason, /LABEL[+A-Z]* \[judge: migration readiness\]/, t);
+    assert.doesNotMatch(reason, /LABEL[+A-Z]* \[decide: pc1 relay design\]/, t);
+    assert.doesNotMatch(reason, /LABEL[+A-Z]* \[synth: research synthesis\]/, t);
+    assert.ok(gateRecordOf(r).errors.filter((e) => e.code === 'LABEL').length === 2, t);
+  }
 });
