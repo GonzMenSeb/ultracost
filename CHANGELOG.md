@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.9 - tierguard
+
+- tierguard-eval shows what each tracked run saved against running every agent on the session's model at the session's effort: percent of the 5-hour and weekly limits (subscribers), dollars at API prices (API key users) and tokens; percentages and dollars carry a ± margin of error (90%, 4,000 seeded draws), tokens are a median. A figure it cannot back is shown as unknown, never as 0.
+- The estimate is probe-calibrated: the observed run times a ratio between configurations, in three token buckets (output, fresh input, cache reads). Ratios are measured, chained from a measured ratio with a published effort step, or taken from published figures. The error combines the shared ratio (Fieller interval), a between-workflow τ of 0.30 and a per-agent spread.
+- `data/ratios.json` comes from 22 agents replayed on Sonnet at high against their Opus runs, measuring `sonnet:high>opus:high` and `sonnet:high>opus:medium`. `data/replays.json`, `data/published.json` and `data/prices.json` hold the inputs; `node scripts/calibrate.mjs` rebuilds the ratios and `--check` fails when they are stale.
+- Limit percentages use a meter that learns how fast your limit fills from your own `/usage` readings, stored in `$.store` under `meter:<session id>` (at most 200 intervals per window, 30 days). A window's figure shows after 5 readings.
+- The pane gains a "saved" block in the workflow detail, a saved column in the run list, runs kept under "finished this session" until `/clear`, and a toast at run end. The row above the prompt is unchanged.
+- The eval record gains a `savings` block.
+
 ## 0.4.8 - tierguard
 
 - The tierguard-eval pane matches the approved design: aligned columns, Opus, Sonnet and Haiku in their tier colors, passing checks with their detail (gate approval time, agent and request counts, peak Opus), an agent table with approved and ran-on model and effort, and key hints at the bottom.

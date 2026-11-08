@@ -1,6 +1,6 @@
 # tierguard reference
 
-This is the complete reference for tierguard 0.4.7. The [README](../README.md) explains what tierguard is for and why the rules exist. This page lists every rule, code, file and limit, and it is written to match the code in `src/`, `hooks/` and `policy/`.
+This is the complete reference for tierguard 0.4.9. The [README](../README.md) explains what tierguard is for and why the rules exist. This page lists every rule, code, file and limit, and it is written to match the code in `src/`, `hooks/` and `policy/`.
 
 ## Contents
 
@@ -24,12 +24,22 @@ This is the complete reference for tierguard 0.4.7. The [README](../README.md) e
    - [Gate record](#gate-record)
    - [Eval record](#eval-record)
 8. [tierguard-eval](#tierguard-eval)
-9. [Environment checks](#environment-checks)
-10. [Scope and limits](#scope-and-limits)
-11. [Threat model](#threat-model)
-12. [Failure behavior](#failure-behavior)
-13. [Changing the policy](#changing-the-policy)
-14. [Development](#development)
+9. [Savings](#savings)
+   - [The estimator](#the-estimator)
+   - [Where ratios come from](#where-ratios-come-from)
+   - [Margin of error](#margin-of-error)
+   - [Data files and calibration](#data-files-and-calibration)
+   - [Dollars](#dollars)
+   - [Limit percentages](#limit-percentages)
+   - [What the pane shows](#what-the-pane-shows)
+   - [Calibration results](#calibration-results)
+   - [Savings limits](#savings-limits)
+10. [Environment checks](#environment-checks)
+11. [Scope and limits](#scope-and-limits)
+12. [Threat model](#threat-model)
+13. [Failure behavior](#failure-behavior)
+14. [Changing the policy](#changing-the-policy)
+15. [Development](#development)
 
 ## Prerequisites and install
 
@@ -406,6 +416,7 @@ tierguard-eval writes this file for each workflow run it saw, next to the gate's
 | `checks` | the four checks, each with `id` (`gate`, `plan`, `requests`, `opus`), `ok` and `reason` |
 | `failures` | the distinct failure reasons, check and agent |
 | `agents` | one entry per agent, with `agent_id`, `label`, `askedModel`, `ranModel`, `approved` (the matched stage's model and effort), `sent` (each distinct model and effort the agent's requests used), `done`, `ok` and `reason` |
+| `savings` | per-agent usage by configuration, the baseline configuration, each transition's source and ratio, the seed, and the results (see [Savings](#savings)) |
 
 ## tierguard-eval
 
@@ -447,10 +458,159 @@ An agent spawned for a run with no known launch is red with "not approved by the
 ### Limits
 
 - Claude Code draws one plugin band above the prompt. A plugin whose hook draws its own band there without keeping the one beneath it (Cognee's memory row does) hides tierguard's band; `/tierguard` still opens the pane.
-- It shows only running workflows. A run leaves the band and the pane when it ends and stays in its `.eval.json`. The mod keeps the 20 most recently ended runs in memory. A launch the gate refused is not a run: it is only in the gate's record. Workflows still being drafted are not shown, because nothing reliably marks when drafting starts or ends.
+- The band counts running workflows. A run that ends leaves the band, stays in its `.eval.json`, and stays in the pane under "finished this session" (see [Savings](#savings)). The mod keeps the 20 most recently ended runs in memory. A launch the gate refused is not a run: it is only in the gate's record. Workflows still being drafted are not shown, because nothing reliably marks when drafting starts or ends.
 - If a workflow is running and there is no `tierguard-eval` button, tierguard is not loaded in that session.
 - Check 1 compares the script's text at two moments, the gate's read and the mod's read. It cannot tell what a sibling hook or the runtime did to the script after that.
 - It sees the models and efforts in requests that Claude Code sends. It does not see what a provider does after receiving them.
+
+## Savings
+
+For each tracked run, tierguard shows what it saved against one counterfactual: every agent of the workflow running on the session's model at the session's effort. That is what Claude Code does when a stage pins nothing. The figures are the percent of the 5-hour and weekly limits (subscribers), dollars at API prices (API key users) and tokens. Percentages and dollars carry a margin of error; the token figure is the median. A figure tierguard cannot back is shown as unknown, never as 0. There is no model call, and nothing on the request path waits on the estimate.
+
+Observed exactly, by the mod:
+
+- Every request an agent sends: its model, effort and agent id, and the usage in the response (`input_tokens`, `output_tokens`, `cache_read_input_tokens`, `cache_creation_input_tokens`).
+- The run an agent belongs to and the session model, from the agent's spawn.
+- The session effort, as it was when the workflow launched.
+- On a subscription, the `five_hour` and `seven_day` limits with `percentUsed` (0 to 100, one decimal) and `resetsAt`. The list is empty off a subscription, which is how tierguard tells subscribers from API key users.
+
+What the session model would have spent on the same task is not observable, so it is estimated. Pricing the same tokens again at the expensive rate is wrong in both directions: in the replays the real cost ratio ranged from 1.40 to 2.60 against a flat 2× price ratio.
+
+### The estimator
+
+The cost of a task on configuration B equals its observed cost on configuration A times a ratio between the two, learned from tasks run on both (Smékal, "probe-calibrated shared shape", arXiv 2608.25399, Sec 3.4). The observed run is the probe. With one probe the paper measured a median error of 36% and needed a ×1.9 allowance to cover 90% of cases.
+
+- **Configuration:** a (model family, effort) pair, such as `sonnet:high`. A transition is actual to baseline, such as `sonnet:high>opus:xhigh`.
+- **Buckets:** each transition has three token ratios, the same three the limit meter weighs: `output` (thinking included), `fresh` (input plus cache write, keeping the actual split between them) and `read` (cache reads).
+- **Why not one context ratio:** a single context ratio overstated the measured dollars by 42%. In the Opus-at-high replays cache reads grew 2.3× from Sonnet to Opus while cache writes grew 1.15× and cost 25× more per token.
+- **Ratio of totals:** `R = Σ baseline tokens / Σ actual tokens` over the paired agents, per bucket.
+- **Identical configuration:** an agent already on the baseline configuration saves exactly 0.
+- **Unknown:** an agent with no usage, a model with no price, an effort tierguard cannot read, or a transition with no ratio is left out and counted, as in "from 5 of 6 agents". Nothing is extrapolated to it.
+
+### Where ratios come from
+
+In this order, first match wins:
+
+1. **Measured**, from the paired replays.
+2. **Chained:** a measured ratio into the same baseline family at another effort, times a published effort step within that family. Effort steps within one model agree across sources (Opus 5.5 xhigh ÷ high: 1.75, 2.55, 2.98 and 2.34 across four sources, log sd 0.22), unlike steps between models.
+3. **Prior:** published cost per task for both configurations, converted to a token ratio by dividing by the input-price ratio, applied to all three buckets, with log sd = max(0.6, spread between sources). The same model at another effort (an Opus agent at medium in an Opus session at high) uses the published effort step for that pair, applied the same way, with log sd = the spread between sources (0.4 with one source) and no between-run τ.
+
+Chaining passed its one test: measured Opus medium times the published Opus high ÷ medium (1.45) predicted 2.31 for the high transition, inside the measured 2.19 to 2.89.
+
+### Margin of error
+
+- **Shared ratio error:** each measured bucket ratio has a 90% Fieller interval with Student t at n − 1 degrees of freedom. Its log half-width ÷ 1.645 is the draw's standard deviation. If the interval is unbounded, that transition falls through to chained or prior.
+- **Between-workflow error (τ):** the same transition saved 29% on long code mapping and 52% on short checks, so a workflow carries an error of its own: `τ² = Σ (ln R_workflow − ln R_transition)² / max(1, W − T)` over the replayed workflows, floored at 0.15. Today τ = 0.30.
+- **Per-agent error:** the sample sd of the paired agents' log ratios, mean-corrected (`− s²/2`) so its multiplier averages 1.
+- **Monte Carlo:** 4,000 draws, seeded from the run key, so the pane shows the same numbers on every draw. Per draw: one deviate per run (τ), one per transition (shared ratio, all buckets) and one per agent (all buckets).
+- **Shown as ±:** the 90% range is lopsided, so ± uses its wider side, `max(median − 5th, 95th − median)`. That slightly overstates the uncertainty. The pane prints "± = how far off the estimate can be, 9 times out of 10" under the figures.
+
+### Data files and calibration
+
+| File | Content |
+|---|---|
+| `data/replays.json` | The 22 measured pairs, as numbers only: workflow, task kind, `from` and `to` configuration, and the `input`, `output`, `cacheRead` and `cacheWrite` tokens of the actual and baseline run. No prompts, labels or paths. Records the Claude Code version (2.1.319) and the date. |
+| `data/published.json` | Published cost per task by family and effort, from four sources, with their URLs. Costs are compared only inside one source, never across sources. |
+| `data/prices.json` | List prices per million tokens by family (see [Dollars](#dollars)). |
+| `data/ratios.json` | Generated from the three files above. It ships with the plugin: `tau`, `pooledAgentSd`, the `measured` transitions, the effort `steps` and the `priors`. |
+
+```
+node scripts/calibrate.mjs
+node scripts/calibrate.mjs --check
+```
+
+The first rewrites `data/ratios.json` from the other three files. `--check` writes nothing and exits 1 with "data/ratios.json is stale: run node scripts/calibrate.mjs" when the file on disk differs from what the data would produce.
+
+`data/ratios.json` groups pairs by transition, not by task kind. Its `sonnet:high>opus:medium` entry pools the 18 pairs of both Opus-medium workflows: 90% interval 1.45 to 2.10 on dollars, ratio 1.59.
+
+### Dollars
+
+List prices per million tokens in `data/prices.json` (platform.claude.com pricing, 2026-11-08):
+
+| Family | Input | Output | Cache read | Cache write |
+|---|---|---|---|---|
+| Opus 5.5 | 4 | 20 | 0.20 | 5 |
+| Sonnet 5.5 | 2 | 10 | 0.10 | 2.50 |
+| Haiku 5.5 (prompt ≤ 100k) | 0.10 | 0.50 | 0.01 | 0.125 |
+| Haiku 5.5 (prompt > 100k) | 0.50 | 2.50 | 0.05 | 0.625 |
+| Fable 5.1 | 10 | 50 | 0.25 | 12.50 |
+
+Cache writes are priced at the 5-minute rate, because `usage` does not split them by TTL. Haiku's long-prompt rule applies per request on input plus cache read plus cache write. A model with no row is unknown; it never falls back to Opus. The rows cover the 5 generation (Opus 5.5, Sonnet 5.5, Haiku 5.5, Fable 5.1): an older model such as `claude-opus-4-1` is unknown.
+
+### Limit percentages
+
+The best public reverse-engineering of the meter fits input and output at list-price ratios, cache writes at the input rate and cache reads free; another analysis says cache reads count 0.1×. tierguard calibrates its own rate.
+
+- **Meter units** per request, in list-price dollars: `U = in·p_in + cw·p_in + out·p_out` and `C = cr·p_in`. The weight is `U + w·C`, with `w` unknown in [0, 0.1].
+- **Intervals:** every request of the session, main loop and agents, adds to running `U` and `C` per window. When a reading shows `percentUsed` up by Δ ≥ 0.1 with the same `resetsAt`, the interval `{Δ, U, C, at}` is stored and the counters restart. A changed `resetsAt` or a drop restarts the counters and stores nothing. So does an interval with `U = 0`.
+- **Storage:** `$.store` key `meter:<session id>`, at most 200 intervals per window across all keys, intervals older than 30 days dropped. Sessions write separate keys, and all keys are merged on load. On start, keys whose readings are all older than 30 days are deleted.
+- **Rate:** `ΣΔ / Σ(U + w·C)` over the stored intervals. Each Monte Carlo draw takes `w` uniform in [0, 0.1] and a bootstrap resample of the intervals.
+- **Readiness:** a window's figure shows once it has 5 intervals. Before that the line reads "learning how fast your limit fills, 3 of 5 readings so far".
+
+Usage from other sessions and claude.ai moves the meter without adding units here, so the figure reads high. Fable's separate weekly limit is not exposed and not shown.
+
+### What the pane shows
+
+The row above the prompt is unchanged: green and red still mean only enforced or evaded.
+
+Workflow detail (Enter on a run), after the four checks:
+
+```
+tierguard saved
+compared with running every agent on Opus at high effort, your session's setting
+  1.4% of your 5-hour limit        ± 0.6
+  0.2% of your weekly limit        ± 0.1
+  $2.32 at API prices              ± $0.59   62% of the $3.77 Opus would cost
+  2.9M fewer tokens
+  ± = how far off the estimate can be, 9 times out of 10
+  from 4 of 4 agents · ratio measured on 4 replayed agents
+```
+
+The agent table gets one more column, "saved of 5-hour limit" (or "saved at API prices" when no limit figure shows), with each agent's median.
+
+- **Running:** the heading reads "tierguard saved so far".
+- **API key:** the first line is "$2.32 off your API bill", with no limit lines.
+- **Limit not calibrated:** "5-hour limit: learning how fast your limit fills, 3 of 5 readings so far".
+- **More tokens:** "8.8M more tokens: sonnet read and wrote more, at a lower price per token".
+- **Range below zero:** the first figure line ends with "this run may have saved nothing".
+- **Sources:** "ratio measured on N replayed agents"; "ratio measured at high effort, adjusted with published figures for xhigh"; "no replay measured sonnet · medium against opus · high; using published figures, so ± is wide".
+- **Coverage:** "from 5 of 6 agents: tierguard has no price for the model one agent ran on".
+- **Nothing to estimate:** "every agent ran on your session's model and effort, so nothing was saved"; "tierguard could not read your session's model or effort, so it has no estimate".
+
+Run list: a dim header row `workflow · id · agents · saved of 5-hour limit` (or `saved at API prices`). Green rows show `1.4% ± 0.6`, running rows `0.6% so far`, red rows keep their reason.
+
+Finished this session: ended runs stay in the pane under "finished this session", with `done 14:51` in the agents column, until `/clear` or the session ends. Enter opens them. Cleared runs are not listed.
+
+Toast at run end (8 seconds; the model never sees it):
+
+- "tierguard: research-config finished as approved and saved about 1.4% of your 5-hour limit"
+- "… saved about $2.32 at API prices" (limit not calibrated) or "… $2.32 off your API bill" (API key)
+- "tierguard: research-config finished as approved; every agent ran on your session's model and effort"
+- "tierguard: research-config finished, but <reason>" for a red run
+
+Percentages have one decimal ("< 0.1%" below that), dollars two, tokens are written `2.9M` or `84k`.
+
+### Calibration results
+
+Replays run 2026-11-08: 22 agents from 3 past all-Opus workflows, replayed with the same prompts on Sonnet at high effort in repo snapshots at the original commits, through a tierguard-gated workflow. The 22 Sonnet runs in `data/replays.json` cost $11.16 at list price.
+
+| Transition | Task kind | Pairs | Opus ÷ Sonnet cost (90%) | Saved |
+|---|---|---|---|---|
+| `sonnet:high>opus:high` | web research | 4 | 2.60 (2.19–2.89) | 62% |
+| `sonnet:high>opus:medium` | code mapping | 4 | 1.40 (1.23–1.99) | 29% |
+| `sonnet:high>opus:medium` | yes/no checks | 14 | 2.08 (1.84–2.35) | 52% |
+
+- Tokens saved can be negative: on code mapping Sonnet at high wrote 1.86× the output of Opus at medium and still cost less.
+- Claude Code 2.1.299 transcripts write partial usage on a message's early records, so a transcript reader must take the largest value per message id. The mod reads live events and is not affected.
+- tierguard pins investigation to Sonnet at high, above an Opus-medium session's effort, which shrinks savings there. The policy is unchanged.
+
+### Savings limits
+
+- Smékal's estimator is unproven across models. The replays are the only evidence for this workload, and they measure two transitions directly.
+- With 3 replayed workflows the per-workflow ± is wide (τ = 0.30), close to Smékal's ×1.9.
+- Effort labels have cost about 2× more from one Claude Code version to the next (anthropics/claude-code#78320). `data/ratios.json` records the version it was measured on.
+- Limit figures carry the meter's unknowns: other usage on the account, the cache-read weight and server-side changes. A change of plan or account leaves readings from the old limit in use for up to 30 days. A request on a model with no price voids the reading it falls in.
+- Not included: a user's own ratios file, a replay-building script, a session or weekly total, per-class ratios.
 
 ## Environment checks
 
