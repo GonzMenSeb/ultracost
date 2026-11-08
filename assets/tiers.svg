@@ -1,0 +1,93 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="698" viewBox="0 0 960 698" role="img" aria-labelledby="t d">
+  <title id="t">Who owns the decision picks the model</title>
+  <desc id="d">Opus: decide, synth, design, and judge for reviews with findings; at most 3 at once. Sonnet: investigate (never Opus), build, fix and combine (Opus also allowed), judge as one yes/no review, and the simpler agents of a fan-out of more than 3. Haiku at xhigh: code and grunt (Sonnet also allowed), mechanical and checkable.</desc>
+  <rect x="0.5" y="0.5" width="959" height="697" rx="16" fill="#16161a" stroke="#2a2a31"/>
+  <text x="24" y="46" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="18" font-weight="700" fill="#e4e4e7">Who owns the decision picks the model</text>
+  <text x="24" y="70" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="14" fill="#a1a1aa">Every <tspan fill="#e4e4e7" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="13">agent()</tspan> label starts with a class. The class sets which models and efforts the gate allows.</text>
+  <rect x="24" y="92" width="296" height="480" rx="12" fill="#1e1e24" stroke="#c084fc" stroke-opacity="0.4"/>
+  <text x="44" y="130" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="20" font-weight="700" fill="#c084fc">Opus</text>
+  <text x="44" y="152" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="14" fill="#a1a1aa">Judgment: decisions, design, reviews</text>
+  <rect x="200" y="112" width="100" height="26" rx="13" fill="none" stroke="#c084fc" stroke-width="1.2"/>
+  <text x="250.0" y="129.5" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="13" fill="#c084fc">≤ 3 at once</text>
+  <line x1="24" y1="170" x2="320" y2="170" stroke="#c084fc" stroke-opacity="0.25"/>
+  <rect x="336" y="92" width="320" height="480" rx="12" fill="#1e1e24" stroke="#60a5fa" stroke-opacity="0.4"/>
+  <text x="356" y="130" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="20" font-weight="700" fill="#60a5fa">Sonnet</text>
+  <text x="356" y="152" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="14" fill="#a1a1aa">Investigation and decided work</text>
+  <rect x="500" y="112" width="136" height="26" rx="13" fill="none" stroke="#60a5fa" stroke-width="1.2"/>
+  <text x="568.0" y="129.5" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="13" fill="#60a5fa">any fan-out size</text>
+  <line x1="336" y1="170" x2="656" y2="170" stroke="#60a5fa" stroke-opacity="0.25"/>
+  <rect x="672" y="92" width="264" height="480" rx="12" fill="#1e1e24" stroke="#2dd4bf" stroke-opacity="0.4"/>
+  <text x="692" y="130" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="20" font-weight="700" fill="#2dd4bf">Haiku</text>
+  <text x="692" y="152" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="14" fill="#a1a1aa">Mechanical, checkable work</text>
+  <rect x="824" y="112" width="92" height="26" rx="13" fill="none" stroke="#2dd4bf" stroke-width="1.2"/>
+  <text x="870.0" y="129.5" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="13" fill="#2dd4bf">xhigh only</text>
+  <line x1="672" y1="170" x2="936" y2="170" stroke="#2dd4bf" stroke-opacity="0.25"/>
+  <text x="44" y="194" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="15" font-weight="700" fill="#c084fc">decide:</text>
+  <text x="44" y="214" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="14" fill="#a1a1aa">Any open choice: approach, software</text>
+  <text x="44" y="232" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="14" fill="#a1a1aa">design, taste, unclear bugs</text>
+  <line x1="44" y1="244" x2="300" y2="244" stroke="#2a2a31"/>
+  <text x="44" y="268" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="15" font-weight="700" fill="#c084fc">synth:</text>
+  <text x="44" y="288" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="14" fill="#a1a1aa">Complex, distributed or conflicting work</text>
+  <line x1="44" y1="300" x2="300" y2="300" stroke="#2a2a31"/>
+  <text x="44" y="324" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="15" font-weight="700" fill="#c084fc">design:</text>
+  <text x="44" y="344" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="14" fill="#a1a1aa">Visual and UI design</text>
+  <line x1="44" y1="356" x2="300" y2="356" stroke="#2a2a31"/>
+  <text x="44" y="380" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="15" font-weight="700" fill="#c084fc">judge:</text>
+  <text x="44" y="400" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="14" fill="#a1a1aa">Reviews with findings lists, scores</text>
+  <text x="44" y="418" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="14" fill="#a1a1aa">or several verdicts</text>
+  <text x="356" y="194" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="15" font-weight="700" fill="#60a5fa">investigate:</text>
+  <text x="636" y="194" text-anchor="end" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="13" fill="#a1a1aa">never opus</text>
+  <text x="356" y="214" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="14" fill="#a1a1aa">Research, code mapping, any reading</text>
+  <text x="356" y="232" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="14" fill="#a1a1aa">that reports findings</text>
+  <line x1="356" y1="244" x2="636" y2="244" stroke="#2a2a31"/>
+  <text x="356" y="268" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="15" font-weight="700" fill="#60a5fa">build:</text>
+  <text x="636" y="268" text-anchor="end" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="13" fill="#c084fc">or opus</text>
+  <text x="356" y="288" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="14" fill="#a1a1aa">Decided implementation, build-test loops</text>
+  <line x1="356" y1="300" x2="636" y2="300" stroke="#2a2a31"/>
+  <text x="356" y="324" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="15" font-weight="700" fill="#60a5fa">fix:</text>
+  <text x="636" y="324" text-anchor="end" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="13" fill="#c084fc">or opus</text>
+  <text x="356" y="344" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="14" fill="#a1a1aa">Fixes whose cause or repro is known</text>
+  <line x1="356" y1="356" x2="636" y2="356" stroke="#2a2a31"/>
+  <text x="356" y="380" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="15" font-weight="700" fill="#60a5fa">combine:</text>
+  <text x="636" y="380" text-anchor="end" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="13" fill="#c084fc">or opus</text>
+  <text x="356" y="400" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="14" fill="#a1a1aa">Merging groundwork toward one goal</text>
+  <line x1="356" y1="412" x2="636" y2="412" stroke="#2a2a31"/>
+  <text x="356" y="436" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="15" font-weight="700" fill="#60a5fa">judge:</text>
+  <text x="356" y="456" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="14" fill="#a1a1aa">One yes/no review, schema exactly</text>
+  <text x="356" y="474" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="14" fill="#a1a1aa"><tspan fill="#e4e4e7" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="13">pass</tspan>, <tspan fill="#e4e4e7" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="13">evidence</tspan>, <tspan fill="#e4e4e7" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="13">blocked_on</tspan></text>
+  <line x1="356" y1="486" x2="636" y2="486" stroke="#2a2a31"/>
+  <text x="356" y="510" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="15" font-weight="700" fill="#60a5fa">decide: synth: design:</text>
+  <text x="356" y="530" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="14" fill="#a1a1aa">The simpler agents of a fan-out of</text>
+  <text x="356" y="548" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="14" fill="#a1a1aa">more than 3 at once, or of unknown size</text>
+  <text x="692" y="194" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="15" font-weight="700" fill="#2dd4bf">code:</text>
+  <text x="916" y="194" text-anchor="end" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="13" fill="#60a5fa">or sonnet</text>
+  <text x="692" y="214" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="14" fill="#a1a1aa">Very simple, fully specified,</text>
+  <text x="692" y="232" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="14" fill="#a1a1aa">mechanically checkable code</text>
+  <line x1="692" y1="244" x2="916" y2="244" stroke="#2a2a31"/>
+  <text x="692" y="268" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="15" font-weight="700" fill="#2dd4bf">grunt:</text>
+  <text x="916" y="268" text-anchor="end" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="13" fill="#60a5fa">or sonnet</text>
+  <text x="692" y="288" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="14" fill="#a1a1aa">Zero-decision work: search,</text>
+  <text x="692" y="306" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="14" fill="#a1a1aa">extraction, summaries</text>
+  <rect x="40" y="444" width="264" height="104" rx="10" fill="#16161a" stroke="#2a2a31"/>
+  <circle cx="60" cy="465" r="5" fill="#c084fc"/>
+  <circle cx="74" cy="465" r="5" fill="#c084fc"/>
+  <circle cx="88" cy="465" r="5" fill="#c084fc"/>
+  <text x="102" y="470" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="14" font-weight="700" fill="#e4e4e7">At most 3 Opus at once</text>
+  <text x="54" y="494" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="14" fill="#a1a1aa">Counted from the script.</text>
+  <text x="54" y="512" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="14" fill="#a1a1aa">Wider fan-out: the 3 most complex</text>
+  <text x="54" y="530" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="14" fill="#a1a1aa">on Opus, the rest on Sonnet.</text>
+  <rect x="688" y="444" width="232" height="104" rx="10" fill="#16161a" stroke="#2a2a31"/>
+  <text x="702" y="470" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="14" font-weight="700" fill="#e4e4e7">Same output, checkable</text>
+  <text x="702" y="494" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="14" fill="#a1a1aa">Only when two agents would</text>
+  <text x="702" y="512" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="14" fill="#a1a1aa">give the same output and the</text>
+  <text x="702" y="530" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="14" fill="#a1a1aa">result is checkable.</text>
+  <line x1="304" y1="520" x2="348" y2="520" stroke="#a1a1aa" stroke-width="1.5" stroke-dasharray="3 3"/>
+  <path d="M343 515.5 L349 520 L343 524.5" fill="none" stroke="#a1a1aa" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="24" y="606" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="13" fill="#e4e4e7">blocked_on</text>
+  <text x="112" y="606" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="14" fill="#a1a1aa">Every Sonnet and Haiku stage reports an open decision instead of making it.</text>
+  <text x="24" y="628" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="13" fill="#e4e4e7">LABEL</text>
+  <text x="112" y="628" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="14" fill="#a1a1aa">A <tspan fill="#e4e4e7" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="13">decide:</tspan>, <tspan fill="#e4e4e7" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="13">judge:</tspan> or <tspan fill="#e4e4e7" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="13">design:</tspan> label, or a fanned-out <tspan fill="#e4e4e7" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="13">synth:</tspan> label, with research, map,</text>
+  <text x="112" y="646" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="14" fill="#a1a1aa">audit… in it is denied: that work is <tspan fill="#e4e4e7" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="13">investigate:</tspan>.</text>
+  <text x="24" y="672" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="13" fill="#e4e4e7">effort</text>
+  <text x="112" y="672" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="14" fill="#a1a1aa">medium, high or xhigh. Never low or max.</text>
+</svg>

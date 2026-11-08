@@ -1,0 +1,131 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="460" viewBox="0 0 960 460" role="img" aria-labelledby="t d">
+  <title id="t">How a workflow goes through tierguard</title>
+  <desc id="d">Claude drafts a Workflow script with the policy from SessionStart in context. The tierguard gate checks it statically before anything runs. A deny goes back to Claude with fixable reasons; a pass lets the workflow run. tierguard-eval watches every agent spawn and model request and shows a green or red square above the prompt. Both steps write a record file.</desc>
+  <defs>
+    <marker id="ad" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="#a1a1aa"/></marker>
+    <marker id="ag" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="#4ade80"/></marker>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="#f87171"/></marker>
+  </defs>
+  <rect x="0.5" y="0.5" width="959" height="459" rx="16" fill="#16161a" stroke="#2a2a31"/>
+
+  <g font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif">
+    <text x="32" y="46" font-size="18" font-weight="700" fill="#e4e4e7">From launch to verdict</text>
+  </g>
+
+  <path d="M350 132 V92 H116 V128" fill="none" stroke="#f87171" stroke-width="2" marker-end="url(#ar)"/>
+  <rect x="210" y="81" width="52" height="22" rx="11" fill="#16161a" stroke="#f87171"/>
+  <g font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="14">
+    <text x="236" y="96" text-anchor="middle" fill="#f87171" font-weight="700">deny</text>
+    <text x="366" y="97" fill="#a1a1aa"><tspan fill="#e4e4e7" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="13">file:line CODE</tspan> reasons for each stage, so Claude fixes the script and relaunches</text>
+  </g>
+
+  <g fill="#1e1e24" stroke="#2a2a31">
+    <rect x="32" y="132" width="168" height="180" rx="12"/>
+    <rect x="236" y="132" width="228" height="180" rx="12"/>
+    <rect x="500" y="132" width="140" height="180" rx="12"/>
+    <rect x="676" y="132" width="252" height="180" rx="12"/>
+  </g>
+
+  <g stroke-width="2" fill="none">
+    <line x1="200" y1="222" x2="232" y2="222" stroke="#a1a1aa" marker-end="url(#ad)"/>
+    <line x1="464" y1="222" x2="496" y2="222" stroke="#4ade80" marker-end="url(#ag)"/>
+    <line x1="640" y1="222" x2="672" y2="222" stroke="#a1a1aa" marker-end="url(#ad)"/>
+  </g>
+  <text x="482" y="212" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" font-weight="700" fill="#4ade80">pass</text>
+
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="13" fill="#a1a1aa" letter-spacing="1">
+    <text x="48" y="158">1 · DRAFT</text>
+    <text x="252" y="158">2 · GATE · STATIC</text>
+    <text x="516" y="158">3 · RUN</text>
+    <text x="692" y="158">4 · TIERGUARD-EVAL</text>
+  </g>
+
+  <g font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="16" font-weight="700" fill="#e4e4e7">
+    <text x="48" y="184">Claude writes a</text>
+    <text x="48" y="204">Workflow script</text>
+    <text x="252" y="184">Checks the script</text>
+    <text x="252" y="204">before anything runs</text>
+    <text x="516" y="184">The workflow</text>
+    <text x="516" y="204">runs</text>
+    <text x="692" y="184">Watches every agent</text>
+    <text x="692" y="204">spawn and request</text>
+  </g>
+
+  <g font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="14" fill="#a1a1aa">
+    <text x="48" y="234">SessionStart put the</text>
+    <text x="48" y="254">policy in its context,</text>
+    <text x="48" y="274">so each agent() pins</text>
+    <text x="48" y="294">a model and an effort</text>
+
+    <text x="268" y="234">A class on every label</text>
+    <text x="268" y="254">An allowed model × effort</text>
+    <text x="268" y="274">At most 3 Opus at once</text>
+    <text x="268" y="294">Research is investigate:</text>
+
+    <text x="710" y="234">Approved by the gate</text>
+    <text x="710" y="254">Every agent matches the plan</text>
+    <text x="710" y="274">Every request as approved</text>
+    <text x="710" y="294">At most 3 Opus at once</text>
+  </g>
+  <g fill="#a1a1aa">
+    <rect x="254" y="226" width="6" height="6" rx="1"/>
+    <rect x="254" y="246" width="6" height="6" rx="1"/>
+    <rect x="254" y="266" width="6" height="6" rx="1"/>
+    <rect x="254" y="286" width="6" height="6" rx="1"/>
+  </g>
+  <g fill="none" stroke="#4ade80" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M693 229 l3 3 l6 -7"/>
+    <path d="M693 249 l3 3 l6 -7"/>
+    <path d="M693 269 l3 3 l6 -7"/>
+    <path d="M693 289 l3 3 l6 -7"/>
+  </g>
+
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="13">
+    <text x="516" y="238" fill="#c084fc">opus</text>
+    <text x="516" y="264" fill="#60a5fa">sonnet</text>
+    <text x="516" y="290" fill="#2dd4bf">haiku</text>
+  </g>
+  <g fill="#c084fc">
+    <circle cx="575" cy="234" r="5"/><circle cx="589" cy="234" r="5"/><circle cx="603" cy="234" r="5"/>
+  </g>
+  <g fill="#60a5fa">
+    <circle cx="575" cy="260" r="5"/><circle cx="589" cy="260" r="5"/><circle cx="603" cy="260" r="5"/><circle cx="617" cy="260" r="5"/>
+  </g>
+  <g fill="#2dd4bf">
+    <circle cx="575" cy="286" r="5"/><circle cx="589" cy="286" r="5"/><circle cx="603" cy="286" r="5"/>
+  </g>
+
+  <g stroke="#a1a1aa" stroke-width="1.5" stroke-dasharray="3 4" fill="none">
+    <line x1="350" y1="312" x2="350" y2="352"/>
+    <line x1="860" y1="312" x2="860" y2="352"/>
+  </g>
+  <line x1="700" y1="312" x2="700" y2="348" stroke="#a1a1aa" stroke-width="2" marker-end="url(#ad)"/>
+
+  <g fill="#16161a" stroke="#2a2a31">
+    <rect x="236" y="352" width="228" height="56" rx="10"/>
+    <rect x="792" y="352" width="136" height="56" rx="10"/>
+  </g>
+  <rect x="500" y="352" width="220" height="40" rx="10" fill="#1e1e24" stroke="#2a2a31"/>
+  <rect x="516" y="366" width="12" height="12" rx="2" fill="#4ade80"/>
+
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="14" fill="#e4e4e7">
+    <text x="252" y="376">.gate.json</text>
+    <text x="808" y="376">.eval.json</text>
+  </g>
+  <g font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" fill="#a1a1aa">
+    <text x="252" y="396">pass or deny, script fingerprint</text>
+    <text x="808" y="396">one per run</text>
+    <text x="500" y="414">Above the prompt: green while all four</text>
+    <text x="500" y="432">checks hold, red names the first failure</text>
+  </g>
+  <g font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="14">
+    <text x="536" y="377" font-weight="700" fill="#e4e4e7">tierguard-eval</text>
+    <text x="640" y="377" fill="#a1a1aa">2 running</text>
+  </g>
+
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="13" fill="#a1a1aa">
+    <text x="32" y="372">records in</text>
+    <text x="32" y="390">~/.claude/tierguard/</text>
+    <text x="32" y="408">sessions/&lt;id&gt;/</text>
+  </g>
+</svg>

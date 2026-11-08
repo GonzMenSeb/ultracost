@@ -38,6 +38,14 @@ type Notice = { toolUseId: string | null | undefined; taskId: string | null | un
 type WorkflowOutput = { taskId?: string; runId?: string; workflowName?: string; summary?: string; error?: string }
 
 const tone = (ok: boolean) => (ok ? 'success' : 'error')
+const fit = (text: string, width: number) => (text.length > width ? `${text.slice(0, Math.max(0, width - 2))}… ` : text.padEnd(width))
+const countsWidth = (c: { opus: number; sonnet: number; haiku: number }) => {
+  const parts = (['opus', 'sonnet', 'haiku'] as const).filter(m => c[m] > 0).map(m => `${m} ${c[m]}`)
+  return parts.length === 0 ? 'no agents yet'.length : parts.join(' · ').length
+}
+const MODEL_COLORS: Record<string, string> = { opus: '#c084fc', sonnet: '#60a5fa', haiku: '#2dd4bf' }
+const modelColor = (model: string | null) => (model && MODEL_COLORS[model]) || undefined
+
 
 function cap<V>(map: Map<string, V>) {
   while (map.size > KEPT) map.delete(map.keys().next().value as string)
@@ -287,54 +295,89 @@ export const register: Register = on => {
     const state = await read($, ev)
     const runs = activeRuns(state).map(r => runView(r))
     const open = runs.find(v => v.key === state.ui.run)
+    const pair = (model: string | null, effort: string | null, width: number) => {
+      const m = model ?? '—'
+      const rest = ` · ${effort ?? '—'}`
+      return (
+        <Text>
+          <Text color={modelColor(model)}>{m}</Text>
+          <Text dimColor>{fit(rest, Math.max(0, width - m.length))}</Text>
+        </Text>
+      )
+    }
+
+    const counts = (c: { opus: number; sonnet: number; haiku: number }) => {
+      const parts = (['opus', 'sonnet', 'haiku'] as const).filter(m => c[m] > 0)
+      if (parts.length === 0) return <Text dimColor>no agents yet</Text>
+      return (
+        <Text>
+          {parts.map((m, i) => (
+            <Text>
+              {i > 0 && <Text dimColor>{' · '}</Text>}
+              <Text color={MODEL_COLORS[m]}>{`${m} ${c[m]}`}</Text>
+            </Text>
+          ))}
+        </Text>
+      )
+    }
 
     if (open) {
+      const labelWidth = Math.min(34, Math.max(12, ...open.agents.map((a: EvalAgentView) => a.label.length + 4)))
       return (
         <Box flexDirection="column">
-          <Button key="back" label="back to the list" plain hotkey="b" autoFocus onPress={() => update($, ev, closeRun)} />
           <Text wrap="truncate-end">
-            <Text color={tone(open.ok)}>■</Text>
-            <Text weight="bold">{` ${open.title}`}</Text>
-            <Text dimColor>{` · ${open.shortId} · ${open.countsText}`}</Text>
+            <Text weight="bold">{TITLE}</Text>
+            <Text dimColor>{' › '}</Text>
+            <Text weight="bold">{open.title}</Text>
+            <Text dimColor>{` · ${open.shortId}`}</Text>
           </Text>
-          {open.checks.map(c => (
+          <Text> </Text>
+          {open.checks.map((c: { id: string; ok: boolean; title: string; reason: string | null; detail: string | null }) => (
             <Text wrap="truncate-end">
               <Text color={tone(c.ok)}>{c.ok ? '✓' : '✗'}</Text>
               {` ${c.title}`}
-              {c.reason && <Text color="error">{` · ${c.reason}`}</Text>}
+              {c.ok ? c.detail && <Text dimColor>{`  ${c.detail}`}</Text> : <Text color="error">{`  ${c.reason}`}</Text>}
             </Text>
           ))}
-          <Text dimColor>{`agents · approved → ran on (${open.agents.length})`}</Text>
+          <Text> </Text>
+          <Text dimColor wrap="truncate-end">{`${fit('  agent', labelWidth)}${fit('approved', 18)}ran on`}</Text>
           {open.agents.map((a: EvalAgentView) => (
-            <Box flexDirection="column">
-              <Text wrap="truncate-end">
-                <Text color={tone(a.ok)}>■</Text>
-                {` ${a.label}  `}
-                <Text dimColor>{`${a.approved ?? '—'} → ${a.ran}`}</Text>
-              </Text>
-              {a.reason && <Text color="error" wrap="truncate-end">{`  ${a.reason}`}</Text>}
-            </Box>
+            <Text wrap="truncate-end">
+              <Text color={tone(a.ok)}>■</Text>
+              {` ${fit(a.label, labelWidth - 2)}`}
+              {pair(a.approvedModel, a.approvedEffort, 18)}
+              {pair(a.ranModel, a.ranEffort, 18)}
+              {a.reason && <Text color="error">{a.reason}</Text>}
+            </Text>
           ))}
+          <Text> </Text>
+          <Button key="back" label="back to the list" plain hotkey="b" autoFocus onPress={() => update($, ev, closeRun)} />
         </Box>
       )
     }
 
     const view = bandView(state)
+    const nameWidth = Math.min(30, Math.max(12, ...runs.map(v => v.title.length + 4)))
     return (
       <Box flexDirection="column">
         <Text wrap="truncate-end">
           <Text weight="bold">{TITLE}</Text>
           <Text dimColor>{view ? ` · ${bandText(view)}` : ''}</Text>
         </Text>
+        <Text> </Text>
         {runs.length === 0 && <Text dimColor>No workflow is running.</Text>}
         {runs.map((v, i) => (
           <Button key={`run:${v.key}`} plain autoFocus={i === 0 ? true : undefined} onPress={() => update($, ev, s => openRun(s, v.key))}>
             <Text color={tone(v.ok)}>■</Text>
-            {` ${v.title} · ${v.shortId} · ${v.countsText} · `}
-            {v.ok ? <Text dimColor>as approved</Text> : <Text color="error">{v.reason}</Text>}
+            {` ${fit(v.title, nameWidth - 2)}`}
+            <Text dimColor>{fit(v.shortId, 9)}</Text>
+            {counts(v.counts)}
+            {' '.repeat(Math.max(1, 26 - countsWidth(v.counts)))}
+            {v.ok ? <Text color="success">as approved</Text> : <Text color="error">{v.reason}</Text>}
           </Button>
         ))}
-        {runs.length > 0 && <Text dimColor>{e.props.isFocused ? 'enter: details · esc: close' : 'ctrl+x tab: focus this pane'}</Text>}
+        {runs.length > 0 && <Text> </Text>}
+        {runs.length > 0 && <Text dimColor>{e.props.isFocused ? '↑↓ choose · enter details · esc close' : 'ctrl+x tab: focus this pane'}</Text>}
       </Box>
     )
   }).catch(($, e, next) => {
