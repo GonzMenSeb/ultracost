@@ -28,7 +28,7 @@ Not observable: what the session model would have spent on the same task. No rou
 From Smékal, "probe-calibrated shared shape" (arXiv 2608.25399, Sec 3.4): the cost of a task on configuration B equals its observed cost on configuration A times a ratio between the two configurations, learned from tasks run on both. The observed run is the "probe"; tierguard always has it. With one probe the paper measured a median error of 36% and needed a ×1.9 allowance to cover 90% of cases.
 
 - **Configuration:** a (model family, effort) pair, such as `sonnet:high`. A **transition** is actual → baseline, such as `sonnet:high → opus:xhigh`.
-- **Buckets:** each transition has two token ratios, one for output tokens (thinking included) and one for context tokens (input, cache read and cache write together, keeping the actual split between them).
+- **Buckets:** each transition has three token ratios, the same three the limit meter weighs: output tokens (thinking included), fresh input (input and cache write, keeping the actual split between them) and cache reads. A single context ratio overstated the measured dollars by 42%, because cache reads grew 2.3× from Sonnet to Opus while cache writes grew 1.15× and cost 25× more per token.
 - **Ratio of totals** (Cochran): `R = Σ baseline tokens / Σ actual tokens` over the paired agents, per bucket.
 - **Identical configuration:** an agent already on the baseline configuration saves exactly 0 (LiteLLM's `observed_identical`).
 - **Unknown:** an agent with no usage, a model with no price, an effort tierguard cannot read, or a transition with no ratio is left out and counted: "from 5 of 6 agents". Nothing is extrapolated.
@@ -39,7 +39,7 @@ In this order, first match wins:
 
 1. **Measured**, from the paired replays below.
 2. **Chained:** a measured ratio into the same baseline family at another effort, times a published effort step within that family. Effort steps within one model agree across sources (Opus 5.5 xhigh ÷ high: 1.75, 2.55, 2.98, 2.34 across four sources, log sd 0.22), unlike steps between models.
-3. **Prior:** published cost per task for both configurations, converted to a token ratio by dividing by the input-price ratio, applied to both buckets, log sd = max(0.6, spread between sources).
+3. **Prior:** published cost per task for both configurations, converted to a token ratio by dividing by the input-price ratio, applied to all three buckets, log sd = max(0.6, spread between sources).
 
 `data/published.json` holds the published figures with their sources; `data/replays.json` holds the measured pairs as numbers only (anonymized task kinds, no prompts, labels or paths). `scripts/calibrate.mjs` turns both into `data/ratios.json`, which ships.
 
@@ -48,7 +48,7 @@ In this order, first match wins:
 - **Shared ratio error:** each measured bucket ratio has a 90% Fieller interval with Student t at n − 1 degrees of freedom; its log half-width / 1.645 is the draw's standard deviation. If the interval is unbounded, that transition falls through to chained or prior.
 - **Between-workflow error (τ):** the same transition saved 29% on long code mapping and 52% on short checks, so a single workflow carries an error of its own: `τ² = Σ (ln R_workflow − ln R_transition)² / max(1, W − T)` over the replayed workflows, floored at 0.15. Today τ = 0.30.
 - **Per-agent error:** the sample sd of the paired agents' log ratios, mean-corrected (`− s²/2`) so its multiplier averages 1.
-- **Monte Carlo:** 4,000 draws, seeded from the run key, so the pane shows the same numbers on every draw. Per draw: one deviate per run (τ), one per transition (shared ratio, both buckets), one per agent (both buckets).
+- **Monte Carlo:** 4,000 draws, seeded from the run key, so the pane shows the same numbers on every draw. Per draw: one deviate per run (τ), one per transition (shared ratio, all buckets), one per agent (all buckets).
 - **Shown as ±:** the 90% range is lopsided, so ± uses its wider side (`max(median − 5th, 95th − median)`), which slightly overstates the uncertainty. "± = how far off the estimate can be, 9 times out of 10" is printed under the figures.
 
 ### Calibration results (replays run 2026-11-08)

@@ -37,11 +37,11 @@ export function inputPrice(prices, family) {
   return row ? row.input : null
 }
 
-export function requestCost(prices, family, tokens) {
+export function requestCost(prices, family, tokens, long) {
   const base = rowOf(prices, family)
   if (!base) return null
-  const long = base.longPrompt && tokens.input + tokens.cacheRead + tokens.cacheWrite > base.longPrompt.above
-  const row = long ? base.longPrompt : base
+  const isLong = long ?? tokens.input + tokens.cacheRead + tokens.cacheWrite > (base.longPrompt?.above ?? Infinity)
+  const row = isLong && base.longPrompt ? base.longPrompt : base
   return BUCKETS.reduce((sum, b) => sum + (tokens[b] * row[b]) / PER, 0)
 }
 

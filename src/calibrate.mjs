@@ -13,10 +13,10 @@ const MIN_TAU = 0.15
 const round = (x) => Math.round(x * 1e9) / 1e9
 const mean = (v) => v.reduce((s, x) => s + x, 0) / v.length
 const familyOf = (config) => config.split(':')[0]
-const contextOf = (u) => u.input + u.cacheRead + u.cacheWrite
 const BUCKETS = {
   output: (u) => u.output,
-  context: contextOf,
+  fresh: (u) => u.input + u.cacheWrite,
+  read: (u) => u.cacheRead,
 }
 
 function groupBy(items, keyOf) {
@@ -60,7 +60,7 @@ function measuredOf(pairs, prices) {
       const bucket = measuredBucket(group, of)
       if (bucket) entry[name] = bucket
     }
-    if (!entry.output && !entry.context) continue
+    if (!Object.keys(BUCKETS).some((name) => entry[name])) continue
     const costs = pairCosts(prices, group)
     const d = fieller(costs.actual, costs.baseline)
     entry.dollars = { r: d.r, lo: d.lo, hi: d.hi }
@@ -142,7 +142,7 @@ export function buildRatios({ replays, published, prices }) {
     claudeCode: replays.claudeCode,
     measuredAt: replays.measuredAt,
     tau: tauOf(pairs, prices),
-    pooledAgentSd: { output: pooled(BUCKETS.output), context: pooled(BUCKETS.context) },
+    pooledAgentSd: Object.fromEntries(Object.entries(BUCKETS).map(([name, of]) => [name, pooled(of)])),
     measured: measuredOf(pairs, prices),
     steps: stepsOf(published.sources),
     priors: priorsOf(published.sources, prices),

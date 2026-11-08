@@ -13,7 +13,8 @@ test('measured web research ratio', () => {
   const m = ratios.measured['sonnet:high>opus:high']
   assert.equal(m.pairs, 4)
   within(m.output.r, 1.07)
-  within(m.context.r, 2.14)
+  within(m.read.r, 2.29)
+  within(m.fresh.r, 1.15)
   within(m.dollars.r, 2.6)
   within(m.dollars.lo, 2.19)
   within(m.dollars.hi, 2.89)
@@ -24,12 +25,11 @@ test('measured medium ratio pools code mapping and checks', () => {
   assert.equal(m.pairs, 18)
   assert.equal(m.workflows, 2)
   within(m.output.r, 0.61)
-  within(m.context.r, 0.79)
   within(m.dollars.r, 1.59)
 })
 
 test('a measured bucket carries its log mean, sigma and per-agent spread', () => {
-  const b = ratios.measured['sonnet:high>opus:high'].context
+  const b = ratios.measured['sonnet:high>opus:high'].read
   within(b.mu, Math.log(b.r), 1e-6)
   within(b.sigma, (Math.log(b.hi) - Math.log(b.lo)) / (2 * 1.645), 1e-6)
   assert.ok(b.agentSd > 0)
@@ -39,9 +39,8 @@ test('tau comes from the spread between workflows', () => {
   within(ratios.tau, 0.3)
 })
 
-test('pooled per-agent spread covers both buckets', () => {
-  assert.ok(ratios.pooledAgentSd.output > 0)
-  assert.ok(ratios.pooledAgentSd.context > 0)
+test('pooled per-agent spread covers every bucket', () => {
+  for (const name of ['output', 'fresh', 'read']) assert.ok(ratios.pooledAgentSd[name] > 0)
 })
 
 test('opus effort steps agree across sources', () => {
@@ -78,7 +77,8 @@ test('an unbounded bucket is dropped', () => {
   }
   const m = buildRatios({ ...inputs(), replays }).measured['sonnet:high>opus:high']
   assert.equal(m.output, undefined)
-  assert.ok(m.context.lo > 0)
+  assert.equal(m.read, undefined)
+  assert.ok(m.fresh.lo > 0)
   const none = { ...replays, pairs: [pair(u(1, 1), u(5, 5)), pair(u(10, 10), u(6, 6))] }
   assert.deepEqual(buildRatios({ ...inputs(), replays: none }).measured, {})
 })

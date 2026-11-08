@@ -111,9 +111,9 @@
 - Produces: `buildRatios({ replays, published, prices }): Ratios` and the `data/ratios.json` shape:
   ```
   { v: 1, claudeCode: '2.1.319', measuredAt: '2026-11-08', tau: number,
-    pooledAgentSd: { output, context },
+    pooledAgentSd: { output, fresh, read },
     measured: { 'sonnet:high>opus:high': { pairs, workflows,
-        output: { r, lo, hi, mu, sigma, agentSd }, context: { …same }, dollars: { r, lo, hi } } },
+        output: { r, lo, hi, mu, sigma, agentSd }, fresh: { …same }, read: { …same }, dollars: { r, lo, hi } } },
     steps: { opus: { 'high>xhigh': { mu, sd, sources } , … }, … },
     priors: { 'sonnet:high>opus:xhigh': { mu, sd, sources }, … } }
   ```
@@ -128,7 +128,7 @@
 `data/replays.json`: built once from `/tmp/claude-1000/-home-sebastian-versioned-code-ultracost/f9f13f27-1f36-491f-8162-8f4927636605/scratchpad/replay/pairs.json` (22 rows; usage already merged by max per message id). Anonymize: `wq9m0v29a`→`{workflow:'w1', kind:'web research'}`, `witttj32b`→`{w2, 'code mapping'}`, `wcua90vt3`→`{w3, 'yes/no check'}`. Per pair: `{ workflow, kind, from: 'sonnet:high', to: 'opus:' + oe[0], baseline: {input:o.inp, output:o.out, cacheRead:o.cr, cacheWrite:o.cw}, actual: {…from r} }`. No labels, prompts or paths. Top level: `{ v:1, claudeCode:'2.1.319', measuredAt:'2026-11-08', method: 'same prompts replayed on Sonnet at high in repo snapshots at the original commits', pairs:[…] }`.
 
 Algorithm (`buildRatios`):
-- **measured:** group pairs by `from>to`; per bucket (`output` = output; `context` = input + cacheRead + cacheWrite) `fieller(actual, baseline)`; `agentSd = logSd(ln(baseline/actual))` over pairs with both > 0; `dollars` = `fieller` on per-pair costs (`requestCost` with each side's family). A bucket with `lo === null` is dropped; a transition with no bucket left is dropped.
+- **measured:** group pairs by `from>to`; per bucket (`output` = output; `fresh` = input + cacheWrite; `read` = cacheRead) `fieller(actual, baseline)`; `agentSd = logSd(ln(baseline/actual))` over pairs with both > 0; `dollars` = `fieller` on per-pair costs (`requestCost` with each side's family). A bucket with `lo === null` is dropped; a transition with no bucket left is dropped.
 - **tau:** per workflow `R_w` = Σ baseline cost / Σ actual cost; per transition `R_t` the same over all its pairs; `tau = max(0.15, √(Σ (ln R_w − ln R_t)² / max(1, W − T)))`.
 - **pooledAgentSd:** `logSd` per bucket over all pairs.
 - **steps:** for each family and each ordered effort pair `e1≠e2` (low, medium, high, xhigh, max): per source with both cells `ln(c(e2)/c(e1))`; `mu` = mean; `sd` = `logSd` when ≥ 2 sources, else 0.4.
@@ -138,8 +138,8 @@ Algorithm (`buildRatios`):
 
 - [ ] **Step 1: Write `data/replays.json`** from `pairs.json` as specified (a throwaway `python3 -c` or `node -e`; not committed).
 - [ ] **Step 2: Write the failing tests** (`tests/calibrate.test.js`, reading the real data files):
-  - `measured web research ratio`: `measured['sonnet:high>opus:high']`: `pairs 4`, `output.r ≈ 1.07`, `context.r ≈ 2.14`, `dollars.r ≈ 2.60`, `dollars.lo ≈ 2.19`, `dollars.hi ≈ 2.89` (±0.01).
-  - `measured medium ratio pools code mapping and checks`: `measured['sonnet:high>opus:medium']`: `pairs 18`, `output.r ≈ 0.61`, `context.r ≈ 0.79`, `dollars.r ≈ 1.59` (±0.01).
+  - `measured web research ratio`: `measured['sonnet:high>opus:high']`: `pairs 4`, `output.r ≈ 1.07`, `fresh.r ≈ 1.15`, `read.r ≈ 2.29`, `dollars.r ≈ 2.60`, `dollars.lo ≈ 2.19`, `dollars.hi ≈ 2.89` (±0.01).
+  - `measured medium ratio pools code mapping and checks`: `measured['sonnet:high>opus:medium']`: `pairs 18`, `output.r ≈ 0.61`, `dollars.r ≈ 1.59` (±0.01).
   - `tau comes from the spread between workflows`: `tau ≈ 0.30` (±0.01).
   - `opus effort steps agree across sources`: `exp(steps.opus['high>xhigh'].mu) ≈ 2.36`, `sd ≈ 0.22`; `exp(steps.opus['medium>high'].mu) ≈ 1.455` (±0.01).
   - `priors convert cost to tokens with the input-price ratio`: `exp(priors['sonnet:high>opus:xhigh'].mu) ≈ 3.43`, `sd ≈ 0.61` (±0.01).
@@ -158,7 +158,7 @@ Algorithm (`buildRatios`):
 - Consumes: Tasks 1–3.
 - Produces:
   - `configOf(family: string|null, effort: unknown): string|null` — `null` unless family is a price family and effort is one of `low|medium|high|xhigh|max`.
-  - `ratioFor(ratios, from: string, to: string): Ratio|null` where `Ratio = { source: 'identical'|'measured'|'chained'|'prior', output: {mu, sigma}, context: {mu, sigma}, agentSd: {output, context}, tau, pairs: number, via?: string }`. Order: identical (from === to, all zeros); measured; chained (measured into the same baseline family at the effort nearest the baseline's, ties to the lower; adds `steps[family]['e'>'eb']` mu to both buckets, `sigma = √(σ² + sd²)`; `via` = the measured effort); prior (`mu` both buckets, `sigma = sd`, `agentSd = pooledAgentSd`, `tau = 0`); else null.
+  - `ratioFor(ratios, from: string, to: string): Ratio|null` where `Ratio = { source: 'identical'|'measured'|'chained'|'prior', output: {mu, sigma}, fresh: {mu, sigma}, read: {mu, sigma}, agentSd: {output, fresh, read}, tau, pairs: number, via?: string }`. Order: identical (from === to, all zeros); measured; chained (measured into the same baseline family at the effort nearest the baseline's, ties to the lower; adds `steps[family]['e'>'eb']` mu to both buckets, `sigma = √(σ² + sd²)`; `via` = the measured effort); prior (`mu` both buckets, `sigma = sd`, `agentSd = pooledAgentSd`, `tau = 0`); else null.
   - `estimateRun({ agents, baseline, ratios, prices, meter, seed, draws = 4000, running }): Saved`
     - `agents: [{ agentId, pieces: [{ family, effort, input, output, cacheRead, cacheWrite }] }]` (one piece per config the agent sent requests on)
     - `baseline: { family, effort }|null`
@@ -176,7 +176,7 @@ Algorithm (`buildRatios`):
       sources: { measuredPairs: number, chained: string[], priors: string[] } }
     Range = { mid, lo, hi, pm }   // 50th, 5th, 95th percentile; pm = max(mid − lo, hi − mid)
     ```
-  - Draw `k`: `zRun ~ N(0,1)`; per transition `zT ~ N(0,1)`; per agent `eps ~ N(0,1)`; per piece and bucket `m = mu + sigma·zT + tau·zRun − tau²/2 + agentSd·eps − agentSd²/2`; counterfactual tokens = actual × `exp(m)` (context scales input, cacheRead and cacheWrite alike); counterfactual cost with the baseline family's prices; saved = counterfactual − actual. Limits: `w ~ U(0, 0.1)`, a bootstrap resample of the window's intervals, `rate = Σd / Σ(u + w·c)`; points = `(meterUnits(cf, baseline) − meterUnits(actual, family))` with that `w`, times `rate`. A window shows only with ≥ 5 intervals; `readings` counts them either way. `limits` is null when `meter.subscription` is not true.
+  - Draw `k`: `zRun ~ N(0,1)`; per transition `zT ~ N(0,1)`; per agent `eps ~ N(0,1)`; per piece and bucket `m = mu + sigma·zT + tau·zRun − tau²/2 + agentSd·eps − agentSd²/2`; counterfactual tokens = actual × `exp(m)` (fresh scales input and cacheWrite alike; read scales cacheRead); counterfactual cost with the baseline family's prices; saved = counterfactual − actual. Limits: `w ~ U(0, 0.1)`, a bootstrap resample of the window's intervals, `rate = Σd / Σ(u + w·c)`; points = `(meterUnits(cf, baseline) − meterUnits(actual, family))` with that `w`, times `rate`. A window shows only with ≥ 5 intervals; `readings` counts them either way. `limits` is null when `meter.subscription` is not true.
   - `status`: `unknown` with `why` when baseline is null (`no-baseline`) or no piece has a ratio (`no-agents`); `none` when every used piece is identical; else `estimated`.
 
 - [ ] **Step 1: Write the failing tests** (`tests/savings.test.js`, using the real data files):

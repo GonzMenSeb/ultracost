@@ -49,3 +49,11 @@ test('loadPrices refuses a negative or missing price', () => {
   bad((j) => { j.families.haiku.longPrompt.input = Number.NaN })
   assert.throws(() => loadPrices(null))
 })
+
+test('an explicit long flag overrides the per-request rule for aggregated usage', () => {
+  const t = { input: 200000, output: 0, cacheRead: 0, cacheWrite: 0 }
+  near(requestCost(prices, 'haiku', t, false), 0.02)
+  near(requestCost(prices, 'haiku', t), 0.1)
+  near(requestCost(prices, 'haiku', { ...t, input: 1000 }, true), 0.0005)
+  near(requestCost(prices, 'opus', t, true), 0.8)
+})
