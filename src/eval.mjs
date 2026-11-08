@@ -155,6 +155,7 @@ function trimGate(record, toolUseId) {
     fingerprint: text(record.fingerprint),
     maxOpus: Number.isInteger(record.maxOpus) ? record.maxOpus : null,
     sessionModel: text(record.sessionModel),
+    at: text(record.at),
     stages
   }
 }
@@ -394,6 +395,23 @@ const CHECK_TITLES = {
   opus: (run) => `At most ${run.limit} Opus at once`
 }
 
+const clockOf = (iso) => {
+  const t = typeof iso === 'string' ? Date.parse(iso) : NaN
+  if (Number.isNaN(t)) return null
+  const d = new Date(t)
+  return [d.getHours(), d.getMinutes(), d.getSeconds()].map((n) => String(n).padStart(2, '0')).join(':')
+}
+
+const CHECK_DETAILS = {
+  gate: (run) => [clockOf(run.gate && run.gate.at), 'script fingerprint matches'].filter(Boolean).join(' · '),
+  plan: (run) => `${run.agents.length} agent${run.agents.length === 1 ? '' : 's'}`,
+  requests: (run) => {
+    const n = run.agents.reduce((sum, a) => sum + a.sent.length, 0)
+    return `${n} request${n === 1 ? '' : 's'}`
+  },
+  opus: (run) => `peak ${run.peakOpus}`
+}
+
 const pairText = (model, effort) => `${model || '?'} · ${effort || '—'}`
 
 function agentView(plan, agent) {
@@ -409,7 +427,11 @@ function agentView(plan, agent) {
     reason,
     done: agent.done,
     approved: j.stage ? pairText(j.stage.model, j.stage.effort) : null,
-    ran: pairText(ranModel, ranEffort || null)
+    ran: pairText(ranModel, ranEffort || null),
+    approvedModel: j.stage ? j.stage.model : null,
+    approvedEffort: j.stage ? j.stage.effort : null,
+    ranModel,
+    ranEffort: ranEffort || null
   }
 }
 
@@ -433,7 +455,7 @@ export function runView(run) {
     status: run.status,
     counts,
     countsText: [`${counts.opus} opus`, `${counts.sonnet} sonnet`, ...(counts.haiku > 0 ? [`${counts.haiku} haiku`] : [])].join(' · '),
-    checks: checks.map((c) => ({ ...c, title: CHECK_TITLES[c.id](run) })),
+    checks: checks.map((c) => ({ ...c, title: CHECK_TITLES[c.id](run), detail: c.ok ? CHECK_DETAILS[c.id](run) : null })),
     agents: run.agents.map((a) => agentView(plan, a))
   }
 }

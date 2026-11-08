@@ -11,6 +11,7 @@ export type EvalGate = {
   fingerprint: string | null
   maxOpus: number | null
   sessionModel: string | null
+  at?: string | null
   stages: EvalGateStage[]
 }
 
@@ -61,6 +62,10 @@ export type EvalAgentView = {
   done: boolean
   approved: string | null
   ran: string
+  approvedModel: string | null
+  approvedEffort: string | null
+  ranModel: string
+  ranEffort: string | null
 }
 
 export type EvalState = {

@@ -1,0 +1,76 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="320" viewBox="0 0 1280 320" role="img" aria-labelledby="t d">
+  <title id="t">tierguard</title>
+  <desc id="d">Every ultracode workflow on the right model. Opus only where judgment pays, never more than 3 at once.</desc>
+  <defs>
+    <radialGradient id="glow" cx="1010" cy="160" r="300" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#c084fc" stop-opacity="0.07"/>
+      <stop offset="1" stop-color="#c084fc" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect x="0.5" y="0.5" width="1279" height="319" rx="20" fill="#16161a" stroke="#2a2a31"/>
+  <rect x="0.5" y="0.5" width="1279" height="319" rx="20" fill="url(#glow)"/>
+
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="18" fill="#a1a1aa" letter-spacing="2">
+    <text x="76" y="92">CLAUDE CODE PLUGIN</text>
+  </g>
+  <g font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif">
+    <text x="72" y="168" font-size="80" font-weight="700" fill="#e4e4e7" letter-spacing="-2">tierguard</text>
+    <text x="76" y="220" font-size="25" fill="#e4e4e7">Every ultracode workflow on the right model.</text>
+    <text x="76" y="256" font-size="25" fill="#a1a1aa">Opus only where judgment pays, never more than 3 at once.</text>
+  </g>
+
+  <g fill="#c084fc" fill-opacity="0.3">
+    <circle cx="846" cy="104" r="7"/>
+    <circle cx="880" cy="128" r="7"/>
+    <circle cx="852" cy="150" r="7"/>
+    <circle cx="890" cy="172" r="7"/>
+    <circle cx="858" cy="196" r="7"/>
+    <circle cx="884" cy="220" r="7"/>
+    <circle cx="916" cy="112" r="7"/>
+    <circle cx="924" cy="146" r="7"/>
+    <circle cx="920" cy="190" r="7"/>
+    <circle cx="950" cy="128" r="7"/>
+    <circle cx="954" cy="168" r="7"/>
+    <circle cx="948" cy="208" r="7"/>
+  </g>
+
+  <g stroke-width="2" stroke-linecap="round">
+    <line x1="998" y1="112" x2="1094" y2="112" stroke="#c084fc" stroke-opacity="0.35"/>
+    <line x1="998" y1="160" x2="1146" y2="160" stroke="#60a5fa" stroke-opacity="0.35"/>
+    <line x1="998" y1="208" x2="1120" y2="208" stroke="#2dd4bf" stroke-opacity="0.35"/>
+  </g>
+
+  <g fill="#e4e4e7">
+    <rect x="984" y="76" width="14" height="24" rx="4"/>
+    <rect x="984" y="124" width="14" height="24" rx="4"/>
+    <rect x="984" y="172" width="14" height="24" rx="4"/>
+    <rect x="984" y="220" width="14" height="24" rx="4"/>
+  </g>
+
+  <g fill="#c084fc">
+    <circle cx="1034" cy="112" r="8"/>
+    <circle cx="1060" cy="112" r="8"/>
+    <circle cx="1086" cy="112" r="8"/>
+  </g>
+  <g fill="#60a5fa">
+    <circle cx="1034" cy="160" r="8"/>
+    <circle cx="1060" cy="160" r="8"/>
+    <circle cx="1086" cy="160" r="8"/>
+    <circle cx="1112" cy="160" r="8"/>
+    <circle cx="1138" cy="160" r="8"/>
+  </g>
+  <g fill="#2dd4bf">
+    <circle cx="1034" cy="208" r="8"/>
+    <circle cx="1060" cy="208" r="8"/>
+    <circle cx="1086" cy="208" r="8"/>
+    <circle cx="1112" cy="208" r="8"/>
+  </g>
+
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="18" text-anchor="end">
+    <text x="1216" y="117" fill="#c084fc">opus ≤ 3</text>
+    <text x="1216" y="165" fill="#60a5fa">sonnet</text>
+    <text x="1216" y="213" fill="#2dd4bf">haiku</text>
+  </g>
+  <text x="900" y="270" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="18" fill="#a1a1aa">all inherit opus</text>
+  <text x="1125" y="270" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="18" fill="#a1a1aa">each on its tier</text>
+</svg>

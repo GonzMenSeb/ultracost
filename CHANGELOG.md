@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.8 - tierguard
+
+- The tierguard-eval pane matches the approved design: aligned columns, Opus, Sonnet and Haiku in their tier colors, passing checks with their detail (gate approval time, agent and request counts, peak Opus), an agent table with approved and ran-on model and effort, and key hints at the bottom.
+- README rewritten for people looking to keep ultracode workflows under control: the problem, install, how the rules save tokens, and how to know they were enforced, with new diagrams and real captures in `assets/`. The reference moved to `docs/reference.md`.
+- Documented that Claude Code shows one plugin band above the prompt, so another plugin's band can hide tierguard's; `/tierguard` still opens the pane.
+
 ## 0.4.7 - tierguard
 
 - At most 3 Opus agents may run at once in a workflow. The gate bounds the concurrency from the script (array literals, `parallel`, `pipeline`, `Promise.allSettled`, `.map` over known sizes, `.slice`, `.then` chains, local helpers; `Promise.all`, `race` and `any` over more than one Opus agent count as unknown) and denies every Opus stage involved with the new code `FANOUT` when the bound is above 3 or cannot be computed. Sonnet and Haiku fan-outs are not limited. `FANOUT` is not checked on a Sonnet or Haiku session.

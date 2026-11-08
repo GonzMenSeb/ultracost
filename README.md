@@ -1,195 +1,172 @@
-# tierguard
+<p align="center">
+  <img src="assets/banner.svg" alt="tierguard. Every ultracode workflow on the right model. Opus only where judgment pays, never more than 3 at once.">
+</p>
 
-tierguard is a Claude Code plugin that checks every `Workflow` launch before it runs. It is a strict-subset static gate: it reads the script, and it denies the launch if any `agent()` call breaks the delegation policy. It also prints the policy text at session start so Claude drafts compliant scripts the first time. Every gate decision is written to a record file, and a second part of the plugin, tierguard-eval, shows live in the terminal whether each running workflow follows the plan the gate approved.
+<p align="center">
+  A Claude Code plugin that keeps ultracode workflows from running every subagent on Opus.
+</p>
 
-It is a fork of [danielkremen818/ultracost](https://github.com/danielkremen818/ultracost), MIT licensed. The engine was rewritten. The hook wiring pattern, test discipline and attribution were kept.
+<p align="center">
+  <a href="https://github.com/GonzMenSeb/ultracost/actions/workflows/ci.yml"><img src="https://github.com/GonzMenSeb/ultracost/actions/workflows/ci.yml/badge.svg" alt="CI status"></a>
+  <img src="https://img.shields.io/badge/dependencies-0-4ade80" alt="Zero dependencies">
+  <img src="https://img.shields.io/badge/node-%3E%3D18-60a5fa" alt="Node 18 or later">
+  <img src="https://img.shields.io/badge/Claude%20Code-2.1.319-c084fc" alt="Tested on Claude Code 2.1.319">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-a1a1aa" alt="MIT license"></a>
+</p>
 
-## Why
+## The problem
 
-Workflow agents inherit the main session's model and effort unless the script pins them. Every stage then runs at top-tier cost and latency. tierguard makes each stage name a model and an effort that fit who owns the decision.
+With ultracode on, your session runs Opus 5.5 or Fable. A workflow fans out to many subagents, and each one inherits the session's model and effort unless its stage pins them. So a single multi-step task can start a dozen top-tier agents, most of them doing work a cheaper model handles just as well.
+
+Pinning models is not enough on its own. In this project's own history, a workflow launched 10 research agents at once, all on Opus: six web-research and four code-mapping agents, every one labeled `synth:`. The label claimed synthesis. The work was reading.
+
+## What tierguard does
+
+<p align="center">
+  <img src="assets/flow.svg" alt="Flow: at session start tierguard loads the policy into Claude's context; when Claude launches a workflow the gate checks every agent() call and passes or denies the launch; while the workflow runs, tierguard-eval checks each agent against what the gate approved and shows the run green or red.">
+</p>
+
+1. **At session start** it gives Claude the delegation policy, so Claude writes compliant workflow scripts the first time.
+2. **Before launch** a gate reads the workflow script and denies it if any `agent()` call breaks the policy. It never runs the script and makes no model call.
+3. **During the run** tierguard-eval watches the agents the workflow spawns and shows, above the prompt, whether the run matches what the gate approved.
+
+Every gate decision and every run is written to a small JSON file, so you can check afterwards what happened.
 
 ## Install
 
-From the marketplace:
+In Claude Code:
 
 ```
 /plugin marketplace add GonzMenSeb/ultracost
 /plugin install tierguard@ultracost
 ```
 
-From a local copy:
+The marketplace is `ultracost`, the plugin is `tierguard`. Start a new session afterwards so the policy loads at session start.
 
-```
-claude --plugin-dir <path-to-this-repo>
-```
+Two things people trip on:
 
-## Prerequisites
+- **Node 18 or later must be on `PATH`.** The hooks run with whatever `node` is found there.
+- **`dontAsk` mode refuses every launch** unless `permissions.allow` has a `Workflow` entry. tierguard never allows a launch itself; it only denies. tierguard warns you at session start when your settings files set `dontAsk` without a `Workflow` allow rule. Details are in the [reference](docs/reference.md).
 
-- Claude Code 2.1.295 or later (needed for `onFailure`). The hook input shapes are pinned to 2.1.319, and so is the tierguard-eval module, which needs a Claude Code with hooks modules.
-- Node 18 or later on `PATH`. Hooks run with whatever `node` is found there.
-- If `permissions.defaultMode` is `dontAsk`, add a `Workflow` entry to `permissions.allow`. The gate never returns `allow`. On a clean script it returns no decision, and your permission rules decide. Without the rule, `dontAsk` refuses every launch.
+The gate needs Claude Code 2.1.295 or later. tierguard is pinned to and live-tested on 2.1.319.
 
-## The policy in brief
+### See it work
 
-Every `agent()` label starts with a class prefix such as `build:`. The class decides which (model, effort) pairs are allowed.
+1. Turn on ultracode: `/effort ultracode`.
+2. Give Claude a multi-step task, or ask it outright to use a workflow.
+3. When Claude launches the workflow, a `■ tierguard-eval` row appears above the prompt. Green means the run matches what the gate approved.
 
-- `decide:`, `judge:`, `synth:`, `design:` run on Opus. Opus is for design, decisions, synthesis and complex reviews.
-- `investigate:` (web research, code mapping, any reading that reports findings) runs on Sonnet only.
-- `judge:` may run on Sonnet for one yes/no review: its inline `schema.properties` must have exactly `pass` (`type: 'boolean'`), `evidence` (`type: 'string'`) and `blocked_on`. Findings lists, scores and several verdicts need Opus.
-- `decide:`, `synth:` and `design:` may run on Sonnet only for the simpler agents of a big fan-out: one that can run more than 3 agents at once, all models counted, or whose size is unknown.
-- `build:`, `fix:`, `combine:` run on Sonnet or Opus.
-- `code:`, `grunt:` run on Sonnet, or on Haiku at `xhigh` only.
-- At most 3 Opus agents run at once in a workflow. The gate computes an upper bound from the script alone (array literals, `parallel`, `pipeline`, `Promise.allSettled`, `.map` over lists of known size, `.slice`, `.then` chains, local helpers; `Promise.all`, `race` and `any` over more than one Opus agent cannot be counted, because the other agents keep running after the first one settles). If the bound is above 3, or cannot be computed, every Opus stage involved is denied with `FANOUT`. Sonnet and Haiku fan-outs of any size are allowed. To run more Opus work, keep the 3 most complex on Opus with `slice(0, 3)` and the rest on Sonnet with `slice(3)`, or batch: `for (let i = 0; i < items.length; i += 3) await parallel(items.slice(i, i + 3).map(...))`.
-- A `decide:`, `judge:` or `design:` label, or a `synth:` label inside a fan-out, whose name contains research, investigate, map, explore, survey, scan, search, find, audit, inventory or readiness is denied with `LABEL`: that work is `investigate:` on Sonnet. The words are whole words (`finding` does not match `find`) and live in `policy/default.json` under `labelCheck`. A single `synth:` stage that names its research input, such as `synth: research synthesis`, is allowed.
-- Efforts are `medium`, `high` or `xhigh`. Never `low`, never `max`.
-- Models are the aliases `opus`, `sonnet` and `haiku` only. Full ids, Fable and Mythos are denied.
-- Every Sonnet and Haiku stage needs an inline `schema` with a `blocked_on` property, so the agent reports an open question instead of deciding it.
+Claude Code shows only one plugin row above the prompt. If another plugin draws there (Cognee's memory row does), tierguard's row is hidden: turn that plugin's row off, or run `/tierguard` to open the pane directly.
 
-The classes and pairs live in `policy/default.json`. The guidance Claude reads lives in `policy/guidance.md`. This README does not repeat the full table.
+<p align="center">
+  <img src="assets/eval-green.svg" alt="The Claude Code prompt while a workflow runs, with a row above it: a green square, the title tierguard-eval and the summary 1 running.">
+</p>
 
-### Session cap
+## The rules
 
-No stage may use a model above the main session's model (haiku < sonnet < opus). The gate reads the session model from the main thread's `api-request` row written after the last main-thread assistant row. Claude Code writes that row when each request is built, so it names the model of the request in flight, including right after `/model`. If there is no such row, the gate falls back to the last main-thread assistant row, which is normally the previous response. `api-request` rows depend on `tengu_elegant_meadow` (env `CLAUDE_CODE_ELEGANT_MEADOW`, default true). Without them, a `/model` command after the last main-thread assistant row makes the gate use the lower of that row's model and the command's model. If that row is `<synthetic>`, has an ambiguous model name or is absent, the command's model is used as is. A Fable session counts as Opus. Torn or unparsable lines are skipped, and the gate uses the last readable main-thread row. Anything else unreadable counts as Sonnet: an empty `transcript_path`, a diskless or remote session, or a `<synthetic>` row or ambiguous model name with no `api-request` row and no `/model` command. The model name Claude Code reports after a server-side refusal fallback is unverified.
+### Who owns the decision picks the model
 
-On a Sonnet session, the Opus classes run on Sonnet instead, with no verdict schema or fan-out needed, and Opus pairs are denied. `FANOUT` is not checked on a Sonnet or Haiku session, because it counts only Opus agents. On a Haiku session, only Haiku pairs are allowed. If the policy lists none, every launch is denied.
+<p align="center">
+  <img src="assets/tiers.svg" alt="Who owns the decision maps to the model: open decisions, reviews, synthesis and design go to Opus; investigation, decided implementation and fixes with a known cause go to Sonnet; fully specified, mechanically checkable work goes to Haiku or Sonnet.">
+</p>
 
-## Deny codes
+Every `agent()` call carries a label that starts with a class, such as `decide:` or `build:`, and pins a model and an effort. The class says who owns the decision, and the class decides which models are allowed:
 
-| Code | Means |
+- `decide:`, `judge:`, `synth:` and `design:` own open choices, reviews, synthesis and design. They run on Opus.
+- `investigate:` reads and reports findings. It runs on Sonnet only.
+- `build:`, `fix:` and `combine:` carry out work whose design is already decided. They run on Sonnet or Opus.
+- `code:` and `grunt:` do fully specified work with nothing to decide. They run on Sonnet, or on Haiku at `xhigh`.
+
+Opus is spent where a wrong call is expensive. Everything else goes to the cheapest model that does the job as well.
+
+### Each rule and the waste it prevents
+
+| Rule | Waste it prevents |
 |---|---|
-| `SOURCE` | The script cannot be resolved or seen: no source, mixed sources, launch by name, `workflow` referenced. |
-| `PARSE` | Parse error. |
-| `SHAPE` | Misused `agent`, `globalThis`, `eval`, `Function` or `this`. Bad `agent()` arguments, options, literals, label, `agentType`, `schema` or `blocked_on`. |
-| `PAIR` | Unknown class, model not allowed, effort `low`, `max` or not allowed for the class, model above the session model. |
-| `LABEL` | An Opus-class label reads like investigation (see `labelCheck`). |
-| `FANOUT` | More than 3 Opus agents can run at once, or the gate cannot count them: unknown list size, `args`, an agent promise that is never awaited, an agent pushed into an array, recursion. |
-| `ENV` | A runtime env value overrides the pinned model or effort. |
+| Every agent pins a model and an effort. | Agents silently inheriting the session's Opus or Fable. |
+| At most 3 Opus agents run at once in a workflow. The gate counts them from the script; if it cannot count, it denies. | The 10-Opus fan-out. |
+| Investigation is `investigate:`, on Sonnet only. A `decide:`, `judge:` or `design:` label, or a fanned-out `synth:` label, that contains a word like research, map, explore, search, find or audit is denied. | Research dressed up as `decide:` or `synth:` to get Opus. |
+| `judge:` may run on Sonnet for one yes/no review, with a `pass`, `evidence`, `blocked_on` schema. | Opus spent on checks a cheaper model answers just as well. Findings lists and scores stay on Opus. |
+| `decide:`, `synth:` and `design:` may run on Sonnet for the simpler agents of a fan-out of more than 3. | Paying Opus for the long tail of a big fan-out, while the hardest items stay on Opus. |
+| Haiku only for `code:` and `grunt:`, and only at `xhigh`. | Cheap output that has to be redone. Haiku gets work where two agents would produce the same result and a check can confirm it. |
+| Every Sonnet and Haiku agent has a `blocked_on` field in its output schema. | A cheaper agent making a decision it does not own. It reports the open question instead, and Claude re-runs that stage as `decide:`. |
+| Efforts are `medium`, `high` or `xhigh`: never `low`, never `max`. Models are `opus`, `sonnet` and `haiku`: never Fable or Mythos as an agent model. | `max` burning tokens on stages that do not need it, `low` producing work that gets redone, and workers on the most expensive models. |
+| No agent uses a model above the session's. A Fable session counts as Opus. | A workflow reaching past the model you chose for the session. |
 
-A deny gives `file:line CODE message` for each failing stage and lists that class's allowed pairs, as long as the reason fits Claude Code's 2,000-character, 20-line limit. A stage with no usable class gets the table of all classes' allowed pairs instead. When the reason is too long, it falls back in this order: one line per stage with the file name on each line; then one line per stage with the file name moved to the header and each line starting with `:line`; then identical problems merged across stages into one line with no stage label, listing every line number or range, first with the file name on each line and then with it in the header; then only the first merged problems, each clipped to 280 characters, followed by `…and N more at lines X (CODES)`. The reason ends with: "If this is your second deny for the same workflow, stop and ask the user."
+The fix the gate suggests when a fan-out has too many Opus agents: keep the 3 most complex on Opus and run the rest on Sonnet.
 
-### Launch by name
+```js
+await parallel([
+  ...ranked.slice(0, 3).map(q => () => agent(`Design the answer to: ${q.summary}`, {
+    label: `design: ${q.key}`, model: 'opus', effort: 'high'
+  })),
+  ...ranked.slice(3).map(q => () => agent(`Design the answer to: ${q.summary}`, {
+    label: `design: ${q.key}`, model: 'sonnet', effort: 'high',
+    schema: {
+      type: 'object',
+      properties: {
+        design: { type: 'string' },
+        blocked_on: { type: ['string', 'null'], description: 'An open decision this stage must not make, or null' }
+      },
+      required: ['design', 'blocked_on']
+    }
+  }))
+])
+```
 
-Launches by `name` are always denied, because the gate cannot see the script. The message is:
+For Opus work over a list whose size is only known at run time, the alternative is a loop that runs 3 at a time. The full rules, the deny codes and how the gate counts concurrency are in the [reference](docs/reference.md).
 
-> Launching a workflow by name is not allowed. For a saved workflow, relaunch with scriptPath pointing at its file. For a built-in workflow, write your own compliant workflow for the same job and launch it with script.
+## When the gate says no
 
-Exactly one of `script`, `scriptPath` or `name` may be given. Mixed sources are denied. Claude Code itself rejects an unknown `name` and a bare `resumeFromRunId` before any hook runs.
+<p align="center">
+  <img src="assets/terminal-deny.svg" alt="The deny reason Claude sees: tierguard blocked this Workflow launch (2 problems). Line 3 of ten-opus.js gets LABEL and FANOUT: the synth: research label reads like investigation, and up to 10 Opus agents can run at once where the limit is 3, with the slice(0, 3) fix. It ends: If this is your second deny for the same workflow, stop and ask the user.">
+</p>
 
-### Child workflows
+The deny shows in your terminal, and its reason goes to Claude. Each line names the script line, a code such as `FANOUT` or `LABEL` and what is wrong. The reason then lists the allowed models and efforts for each failing class. Claude reads it, fixes the script and launches again. The reason ends with "If this is your second deny for the same workflow, stop and ask the user," so a second deny turns into a question for you rather than a loop. Problems only you can fix, such as an environment variable that overrides the pinned model, are flagged so Claude tells you instead of relaunching.
 
-Any reference to `workflow` is denied. Inline the child instead. This closes child-file races, aliasing and cycles.
+## Know it was enforced
 
-## Records
+A passing gate prints nothing. tierguard-eval is how you see that the rules held. It uses no model; it runs four checks on each running workflow:
 
-For every `Workflow` launch the gate writes `<configDir>/tierguard/sessions/<session_id>/<tool_use_id>.gate.json`. `<configDir>` is `CLAUDE_CONFIG_DIR` (trimmed) or `~/.claude`. `session_id` and `tool_use_id` must match `^[A-Za-z0-9_-]{1,128}$`. A bad `session_id` uses the directory `unknown`. A bad `tool_use_id` on a clean launch blocks it, because no record the mod can find could be written. A passing gate prints nothing, so this file is the proof that the gate ran.
+1. **Approved by the gate.** The gate passed this launch, and the script that ran is the exact script the gate read.
+2. **Every agent matches the plan.** Each agent's label matches a stage the gate approved, and it runs on that stage's model.
+3. **Every request as approved.** Each request an agent sends uses the approved model and exactly the approved effort.
+4. **At most 3 Opus at once.** The Opus agents running in the workflow never exceed the limit.
 
-| Field | Content |
-|---|---|
-| `v`, `kind` | `1` and `"gate"` |
-| `at` | ISO time of the decision |
-| `session_id`, `tool_use_id` | the ids from the hook input |
-| `decision` | `"pass"` or `"deny"` |
-| `fingerprint` | SHA-256 hex of the resolved script source, or `null` |
-| `scriptPath` | the launch's `scriptPath`, or `null` |
-| `sessionModel`, `maxOpus` | the session model (`opus`, `sonnet`, `haiku` or `null`) and the computed Opus bound (`null` when unknown) |
-| `stages` | per `agent()`: `index`, `line`, `label`, `class`, `model`, `effort`, `inFanout`, `bigFanout`, `verdict` |
-| `errors` | per problem: `code`, `line`, `message` |
+A run is green while all four hold. Otherwise it turns red and names the first failure.
 
-tierguard-eval writes `<configDir>/tierguard/sessions/<session_id>/<tool_use_id>.eval.json` for each workflow run it saw, next to the gate's file for the same launch. It holds the run's four checks, the failures, one entry per agent and how the run ended, and is rewritten whole on every change. A run with no known launch is written as `<run id>.eval.json`.
+<p align="center">
+  <img src="assets/eval-red.svg" alt="The same row when a run breaks the plan: a red square, the title tierguard-eval and the summary 1 running, 1 red.">
+</p>
 
-One small file per launch keeps every file well under the 4 MiB limit of the mod's file API.
+Select the row, or run `/tierguard`, to open the pane: one row per running workflow, and on Enter the four checks with ✓ or ✗ and one line per agent with the model and effort the gate approved and what it actually ran on.
 
-## tierguard-eval
+<p align="center">
+  <img src="assets/eval-pane.svg" alt="The tierguard-eval pane. Above, the run list: one green run with 2 sonnet agents, as approved. Below, its detail after Enter: the four checks all passing with the gate approval time and the peak Opus count, then a table of two grunt agents approved for sonnet at medium that ran on sonnet at medium.">
+</p>
 
-tierguard-eval is a hooks module in the same plugin (`hooks/eval.tsx`). It never denies or rewrites anything. It watches the agents a workflow spawns and the requests they send, and judges each running workflow with four deterministic checks. It uses no model.
+Both parts leave a record in `~/.claude/tierguard/sessions/<session_id>/` (or under `CLAUDE_CONFIG_DIR`): `<tool_use_id>.gate.json` for each gate decision, pass or deny, and `<tool_use_id>.eval.json` for each run tierguard-eval saw.
 
-A run is green only while all four hold. Otherwise it is red and names the first failure.
+If a workflow is running, there is no tierguard-eval row and `/tierguard` is not a command, tierguard is not loaded in that session.
 
-1. Approved by the gate: a `pass` record exists for the launch and its fingerprint equals the one the mod computed from the script.
-2. Every agent matches the plan: its label matches an approved stage's label (each `${…}` matches any text) and the model it resolved to is that stage's model.
-3. Every request as approved: each request the agent sends has the approved model and exactly the approved effort. An effort lowered by Claude Code itself (Haiku `xhigh` sent as `high`) counts as a failure.
-4. At most 3 Opus at once: the Opus agents running in the run never exceed the limit.
+## Tuning
 
-What it shows:
+The policy is one file, [`policy/default.json`](policy/default.json):
 
-- A band above the prompt, only while at least one workflow run is active: a square (red if any active run is red, else green), the bold title `tierguard-eval` and a dim summary such as `2 running · 1 red`. Selecting it opens the pane. `/tierguard` opens it too.
-- A pane with one row per active run. Enter on a row shows the four checks with ✓ or ✗, then one row per agent with its approved model and effort, what it ran on, and the reason when red. Esc goes back, then closes.
+- `classes`: what each class owns and its allowed model and effort pairs, plus `fanoutPairs` and `verdictPairs` for the Sonnet exceptions.
+- `limits`: `maxConcurrentOpus` (3) and `bigFanout` (3).
+- `labelCheck`: the words that mark a label as investigation, and the classes they apply to.
 
-What red means: the run does not match what the gate approved. "Not approved by the gate" means no passing record exists for that launch, or the script that ran is not the script the gate saw. Look at the run's `.gate.json` and `.eval.json`.
+To change it, edit the file in your own copy, bump the patch version in `package.json`, `.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json`, and run `npm test`. A broken policy blocks every launch. The [reference](docs/reference.md) describes every key.
 
-Limits:
+## Limits
 
-- It shows only running workflows. A run leaves the band and the pane when it ends and stays in its `.eval.json`. A launch the gate refused is not a run: it is only in the gate's record. Workflows still being drafted are not shown.
-- If a workflow is running and there is no `tierguard-eval` button, tierguard is not loaded in that session.
+- Whether a label is honest is only partly enforceable. The word check catches the common case; a misleading label without those words passes.
+- Only `Workflow` launches are gated. Agent tool calls are not.
+- The threat model is a cooperative Claude writing workflow scripts. tierguard is not a sandbox, and deliberate evasion is out of scope.
+- tierguard-eval observes and reports. It never stops a running workflow.
 
-## Environment checks
-
-The gate denies (ENV) when:
-
-- `CLAUDE_CODE_WORKFLOW_SUBAGENT_MODEL` is set to anything other than empty or `inherit`.
-- `CLAUDE_CODE_SUBAGENT_MODEL_FORCE` is truthy (`1`, `true`, `yes` or `on`, as Claude Code reads it; any other value, such as a model name, leaves it off).
-- `CLAUDE_CODE_EFFORT_LEVEL` is set to any non-empty value. This includes `auto` and `unset`, which also override per-agent effort.
-
-Values are compared trimmed and case-insensitively. Each message names the variable, says it may come from the environment or a settings `env` block, and tells Claude to ask the user to remove it and restart Claude Code instead of relaunching.
-
-Not checked. In Claude Code 2.1.319 these do not override an explicit `agent()` effort:
-
-- `CLAUDE_CODE_SUBAGENT_EFFORT`
-- `effortLevel` in settings
-- `modelSettings.<model>.effortLevel`
-- the session `/effort` level, including ultracode
-
-These clamp an explicit effort downward, so the agent can run lower than declared:
-
-- `maxEffortLevel`
-- `modelSettings.<model>.maxEffortLevel`
-- an organization per-model max effort
-
-Not checked, and not visible to tierguard:
-
-- `ANTHROPIC_DEFAULT_*` model variables. With `ANTHROPIC_DEFAULT_HAIKU_MODEL` set, `haiku` can resolve to a model without `xhigh`.
-- `availableModels`
-- a hooks-module request effort override
-- the automatic downgrade after an API 400 "Invalid effort level"
-- skill or ultrathink effort layers inside an agent's own turns
-
-On first-party Anthropic, `haiku` resolves to `claude-haiku-5-5`, which supports `xhigh`. On Bedrock, Vertex, Foundry, Mantle, `anthropic_aws`, `anthropic_google_cloud` and gateway providers, or with `ANTHROPIC_DEFAULT_HAIKU_MODEL` set, `haiku` can resolve to `claude-haiku-4-5`, which has no `xhigh`. Claude Code then sends `high`. The gate does not check this. tierguard-eval does: a request sent at a lower effort than approved turns the run red.
-
-To see the effort an agent actually ran at, read `params.output_config.effort` on the `api-request` rows in its `agent-*.jsonl` transcript. `agent-*.meta.json` does not record effort.
-
-`CLAUDE_CODE_SUBAGENT_MODEL` is allowed. Since Claude Code 2.1.251 it ranks below the per-call model.
-
-## Scope and limits
-
-Only `Workflow` launches are gated. Agent tool calls are not gated.
-
-Not enforceable:
-
-- Whether a class label is honest. The `LABEL` word check catches the common case; a label without those words passes.
-- Whether a lower-tier agent really refrains from deciding.
-- The window between the gate reading a `scriptPath` file and the runtime reading it.
-- Runtime model substitution.
-- Whether the declared effort is the effort the agent actually runs at.
-- A sibling hook rewriting the tool input.
-- How many Opus agents run at once, beyond the static bound. The bound is computed from the script text.
-
-The `scriptPath` read window, runtime model substitution and the effort actually sent are not blocked, but tierguard-eval observes them while a workflow runs and shows red when they differ from what the gate approved. Label honesty and whether an agent refrains from deciding are carried by the policy text only.
-
-## Threat model
-
-The subject is a cooperative Claude drafting Workflow scripts. The realistic failures are omission, helper patterns such as `.map(agent)`, and launches the gate cannot see. tierguard is not a sandbox. Deliberate evasion is out of scope. Known residual paths are constructor chains, `Reflect`, `Proxy` and computed keys.
-
-## Failure behavior
-
-The gate fails closed. A bad stdin, a broken policy, a crash or a timeout blocks the launch (exit 2 with a message on stderr, plus `onFailure: "block"`). A clean script produces no output and exit 0. A violation produces a `deny` decision and exit 0. The gate never returns `allow` or `ask`, and never rewrites input.
-
-The gate writes one record file per decision, pass or deny (see Records). If the record of a clean launch cannot be written, the gate fails closed: exit 2, with the path and the error on stderr, and the launch is blocked. On a deny, the deny stands and a write error is ignored. Nothing is rotated or deleted. tierguard makes no model call.
-
-Kill switch: `/plugin disable tierguard`, or set `disableAllHooks`. Both are visible settings changes.
-
-## Changing the policy
-
-Edit `policy/default.json`, then bump the patch version in `package.json`, `.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json`. A test checks the policy is well-formed and the versions match. A broken policy is an internal error and blocks every launch.
+The full list is in the [reference](docs/reference.md).
 
 ## Development
 
@@ -197,10 +174,10 @@ Edit `policy/default.json`, then bump the patch version in `package.json`, `.cla
 npm test
 ```
 
-Tests use `node:test` on Node 18, which is also the CI runtime. There are no dependencies. `acorn` is vendored in `vendor/acorn.mjs`.
+Tests run on Node 18 with `node:test`, which is also the CI runtime. There are no dependencies; acorn is vendored in `vendor/acorn.mjs`. The tierguard-eval module is checked with `claude plugin validate .` and `claude plugin test .`. To try a working copy, start Claude Code with `claude --plugin-dir <path-to-this-repo>`.
 
-The tierguard-eval module is checked with `claude plugin validate .` and `claude plugin test .`.
+## Credits and license
 
-## License
+tierguard is a fork of [danielkremen818/ultracost](https://github.com/danielkremen818/ultracost). The engine was rewritten; the hook wiring pattern, test discipline and attribution were kept. It includes acorn 8.19.0 (MIT).
 
-MIT. See `LICENSE` and `NOTICE`.
+MIT. See [`LICENSE`](LICENSE) and [`NOTICE`](NOTICE).
