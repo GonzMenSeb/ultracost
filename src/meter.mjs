@@ -74,7 +74,14 @@ export function noteReading(meter, rateLimits, at, prices) {
 const newest = (list) => [...list].sort((a, b) => b.at - a.at).slice(0, MAX_INTERVALS)
 
 export function intervalsOf(meter, kind, now) {
-  return newest([...meter.others[kind], ...meter.mine[kind]].filter((i) => i.at >= now - MAX_AGE_MS))
+  const seen = new Set()
+  const fresh = [...meter.others[kind], ...meter.mine[kind]].filter((i) => {
+    const id = `${i.at}:${i.d}:${i.u}:${i.c}`
+    if (i.at < now - MAX_AGE_MS || seen.has(id)) return false
+    seen.add(id)
+    return true
+  })
+  return newest(fresh)
 }
 
 const validInterval = (i) => i !== null && typeof i === 'object' && finite(i.d, i.u, i.c, i.at) && i.d > 0 && i.u > 0 && i.c >= 0

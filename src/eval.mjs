@@ -1,5 +1,5 @@
 import { priceFamily } from './prices.mjs'
-import { createMeter, noteRequest, noteReading } from './meter.mjs'
+import { createMeter, mergeStored, noteRequest, noteReading } from './meter.mjs'
 import { seedOf } from './stats.mjs'
 
 export const EVAL_VERSION = 1
@@ -327,6 +327,10 @@ export function noteUsage(state, { agentId, effort, usage, prices }) {
 
 export function noteMeterReading(state, rateLimits, at, prices) {
   return { ...state, meter: noteReading(state.meter, rateLimits, at, prices) }
+}
+
+export function noteStored(state, stored, sessionKey) {
+  return { ...state, meter: mergeStored(state.meter, stored, sessionKey) }
 }
 
 export function noteSaved(state, key, saved) {

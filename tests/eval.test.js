@@ -4,7 +4,7 @@ import { sha256Hex } from '../src/fingerprint.mjs'
 import { recordPath } from '../src/record.mjs'
 import { readFileSync } from 'node:fs'
 import { loadPrices } from '../src/prices.mjs'
-import { agentPieces, finishedRuns, noteMainStep, noteMeterReading, noteSaved, noteUsage } from '../src/eval.mjs'
+import { agentPieces, finishedRuns, noteMainStep, noteMeterReading, noteSaved, noteStored, noteUsage } from '../src/eval.mjs'
 import {
   activeRuns,
   bandText,
@@ -720,4 +720,11 @@ test('the eval record carries the savings block', () => {
   assert.deepEqual(rec.savings.saved, { status: 'estimated' })
   assert.equal(typeof rec.savings.seed, 'number')
   assert.deepEqual(rec.savings.usage, [{ agent_id: 'a1', usage: [{ family: 'sonnet', effort: 'high', input: 1, output: 2, cacheRead: 3, cacheWrite: 4, requests: 1 }] }])
+})
+
+test('stored meter values are merged into the eval state', () => {
+  const value = { v: 1, five_hour: [{ d: 1, u: 1, c: 0, at: 5 }], seven_day: [] }
+  const s = noteStored(createState(), { 'meter:other': value, 'meter:mine': value }, 'meter:mine')
+  assert.equal(s.meter.others.five_hour.length, 1)
+  assert.equal(s.meter.mine.five_hour.length, 1)
 })

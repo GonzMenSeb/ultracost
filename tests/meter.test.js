@@ -116,3 +116,10 @@ test('this session reloads its own stored intervals without duplicating them', (
   const fresh = mergeStored(createMeter(), { 'meter:own': value }, 'meter:own')
   assert.equal(fresh.mine.five_hour.length, 1)
 })
+
+test('the same interval stored under two session keys counts once', () => {
+  const same = { v: 1, five_hour: [iv(10), iv(11)], seven_day: [] }
+  let m = mergeStored(createMeter(), { 'meter:a': same, 'meter:b': same }, 'meter:own')
+  m = { ...m, mine: { five_hour: [iv(10)], seven_day: [] } }
+  assert.deepEqual(intervalsOf(m, 'five_hour', SOON).map((i) => i.at), [11, 10])
+})
