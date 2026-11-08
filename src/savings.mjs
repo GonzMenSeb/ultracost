@@ -86,13 +86,14 @@ function emptySaved(base) {
     tokens: null,
     limits: null,
     agents: base.agents.map((a) => ({ agentId: a.agentId, dollars: null, five_hour: null })),
+    groups: base.groups.map((g) => ({ key: g.key, dollars: null, five_hour: null, used: 0, total: g.agentIds.length })),
     coverage: base.coverage,
     sources: { measuredPairs: 0, chained: [], priors: [] },
     transitions: [],
   }
 }
 
-export function estimateRun({ agents, baseline, ratios, prices, meter, seed, draws = 4000, running = false }) {
+export function estimateRun({ agents, baseline, ratios, prices, meter, seed, draws = 4000, running = false, groups = [] }) {
   const to = baseline ? configOf(baseline.family, baseline.effort) : null
   const baseFamily = to && prices.families[baseline.family] ? baseline.family : null
   const base = {
@@ -100,6 +101,7 @@ export function estimateRun({ agents, baseline, ratios, prices, meter, seed, dra
     subscription: meter?.subscription ?? null,
     baseline: baseFamily ? { family: baseline.family, effort: baseline.effort } : null,
     agents,
+    groups,
     coverage: { used: 0, total: agents.length, unpriced: 0, noRatio: [] },
   }
   if (!baseFamily) return { ...emptySaved(base), why: 'no-baseline' }
@@ -172,6 +174,10 @@ export function estimateRun({ agents, baseline, ratios, prices, meter, seed, dra
   const savedOutput = new Float64Array(draws)
   const agentDollars = used.map(() => new Float64Array(draws))
   const agentPoints = used.map(() => new Float64Array(draws))
+  const usedAt = new Map(used.map((a, i) => [a.agentId, i]))
+  const members = groups.map((g) => g.agentIds.map((id) => usedAt.get(id)).filter((i) => i !== undefined))
+  const groupDollars = groups.map(() => new Float64Array(draws))
+  const groupPoints = groups.map(() => new Float64Array(draws))
   const pointsDraws = windows.map(() => new Float64Array(draws))
   const zT = new Float64Array(keys.length)
   const eps = new Float64Array(n)
@@ -232,6 +238,12 @@ export function estimateRun({ agents, baseline, ratios, prices, meter, seed, dra
         pointsDraws[j][k] += pts
       }
     }
+    for (let g = 0; g < groups.length; g++) {
+      for (const i of members[g]) {
+        groupDollars[g][k] += dollarsBy[i]
+        groupPoints[g][k] += agentPoints[i][k]
+      }
+    }
   }
 
   const readings = { five_hour: validIntervals(meter?.five_hour).length, seven_day: validIntervals(meter?.seven_day).length }
@@ -262,6 +274,13 @@ export function estimateRun({ agents, baseline, ratios, prices, meter, seed, dra
         five_hour: i === undefined || !windows[0]?.shown ? null : median(agentPoints[i]),
       }
     }),
+    groups: groups.map((g, gi) => ({
+      key: g.key,
+      dollars: members[gi].length ? median(groupDollars[gi]) : null,
+      five_hour: members[gi].length && windows[0]?.shown ? median(groupPoints[gi]) : null,
+      used: members[gi].length,
+      total: g.agentIds.length,
+    })),
     coverage: base.coverage,
     sources,
     transitions: keys.map((from) => {

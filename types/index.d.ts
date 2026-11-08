@@ -4,6 +4,7 @@ export type EvalGateStage = {
   class: string | null
   model: string | null
   effort: string | null
+  phase?: string | null
 }
 
 export type EvalGate = {
@@ -12,6 +13,7 @@ export type EvalGate = {
   maxOpus: number | null
   sessionModel: string | null
   at?: string | null
+  phases?: string[]
   stages: EvalGateStage[]
 }
 
@@ -73,6 +75,7 @@ export type Saved = {
     readings: { five_hour: number; seven_day: number }
   } | null
   agents: { agentId: string; dollars: number | null; five_hour: number | null }[]
+  groups?: { key: string; dollars: number | null; five_hour: number | null; used: number; total: number }[]
   coverage: { used: number; total: number; unpriced: number; noRatio: string[] }
   sources: {
     measuredPairs: number
@@ -139,6 +142,21 @@ export type EvalAgentView = {
   approvedEffort: string | null
   ranModel: string
   ranEffort: string | null
+  phase: string | null
+}
+
+export type EvalPhaseView = {
+  key: string
+  title: string
+  state: 'not started' | 'did not run' | 'running' | 'done'
+  total: number
+  done: number
+  red: number
+  ok: boolean
+  open: boolean
+  counts: { opus: number; sonnet: number; haiku: number }
+  agentIds: string[]
+  agents: EvalAgentView[]
 }
 
 export type EvalState = {
@@ -147,7 +165,7 @@ export type EvalState = {
   launches: Record<string, EvalLaunch>
   runs: Record<string, EvalRun>
   early: Record<string, { sent: EvalSent[]; done: boolean; usage: Record<string, EvalUsage> }>
-  ui: { run: string | null }
+  ui: { run: string | null; folds?: Record<string, boolean>; focus?: string | null }
   main: EvalBaseline
   meter: EvalMeter
 }

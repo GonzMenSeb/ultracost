@@ -205,3 +205,41 @@ test('4,000 draws over 50 agents finish in under a second', () => {
   const ms = performance.now() - t
   assert.ok(ms < 1000, `${ms.toFixed(0)} ms`)
 })
+
+test('a group saves what its agents save, per draw', () => {
+  const agents = split(sum('w1'), 3)
+  const groups = [
+    { key: 'all', agentIds: ['a0', 'a1', 'a2'] },
+    { key: 'one', agentIds: ['a1'] },
+    { key: 'none', agentIds: ['missing', 'gone'] },
+    { key: 'empty', agentIds: [] },
+  ]
+  const s = run({ agents, groups })
+  const by = Object.fromEntries(s.groups.map((g) => [g.key, g]))
+  assert.ok(Math.abs(by.all.dollars - s.dollars.mid) < 1e-9)
+  assert.ok(Math.abs(by.one.dollars - s.agents[1].dollars) < 1e-9)
+  assert.deepEqual([by.all.used, by.all.total, by.one.used, by.one.total], [3, 3, 1, 1])
+  assert.deepEqual(by.none, { key: 'none', dollars: null, five_hour: null, used: 0, total: 2 })
+  assert.deepEqual(by.empty, { key: 'empty', dollars: null, five_hour: null, used: 0, total: 0 })
+})
+
+test('group limit points are the sum of the agent points', () => {
+  const agents = split(sum('w1'), 2)
+  const s = run({ agents, groups: [{ key: 'all', agentIds: ['a0', 'a1'] }], meter: { subscription: true, five_hour: intervals(6), seven_day: intervals(2) } })
+  assert.ok(s.agents[0].five_hour !== null)
+  assert.ok(Math.abs(s.groups[0].five_hour - (s.agents[0].five_hour + s.agents[1].five_hour)) < 0.05 * s.groups[0].five_hour)
+  const learning = run({ agents, groups: [{ key: 'all', agentIds: ['a0', 'a1'] }], meter: { subscription: true, five_hour: intervals(2), seven_day: intervals(2) } })
+  assert.equal(learning.groups[0].five_hour, null)
+})
+
+test('no groups leaves the figures as they were and returns an empty list', () => {
+  const s = run()
+  assert.deepEqual(s.groups, [])
+  assert.deepEqual(run({ groups: [{ key: 'g', agentIds: ['a1'] }] }).dollars, s.dollars)
+})
+
+test('groups come back unknown when nothing can be estimated', () => {
+  const s = run({ baseline: null, groups: [{ key: 'g', agentIds: ['a1'] }] })
+  assert.equal(s.status, 'unknown')
+  assert.deepEqual(s.groups, [{ key: 'g', dollars: null, five_hour: null, used: 0, total: 1 }])
+})

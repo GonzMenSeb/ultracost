@@ -33,7 +33,7 @@ const RATIOS = {
 }
 const data = (name: 'prices' | 'ratios') => JSON.stringify(name === 'prices' ? PRICES : RATIOS)
 
-const gateRecord = (toolUseId: string) =>
+const gateRecord = (toolUseId: string, over: Record<string, unknown> = {}) =>
   JSON.stringify({
     v: 1,
     kind: 'gate',
@@ -47,6 +47,7 @@ const gateRecord = (toolUseId: string) =>
     maxOpus: 0,
     stages: [{ index: 0, line: 2, label: 'investigate: map', class: 'investigate', model: 'sonnet', effort: 'high', inFanout: false, bigFanout: false, verdict: false }],
     errors: [],
+    ...over,
   })
 
 const limits = (five: number) => [
@@ -60,10 +61,10 @@ const drain = async (stream: AsyncGenerator<unknown, unknown>) => {
   return r.value
 }
 
-type Options = { subscription: boolean; gate?: boolean; agents?: number; readings?: number; finish?: boolean; complete?: boolean; preload?: Record<string, unknown>; now?: number }
+type Options = { subscription: boolean; gate?: boolean; agents?: number; readings?: number; finish?: boolean; complete?: boolean; preload?: Record<string, unknown>; now?: number; record?: Record<string, unknown> }
 
 async function flow($: any, on: any, options: Options) {
-  const { subscription, gate = true, agents = 1, readings = 6, finish = true, complete = true, preload = {}, now = 5000 } = options
+  const { subscription, gate = true, agents = 1, readings = 6, finish = true, complete = true, preload = {}, now = 5000, record = {} } = options
   const writes: Record<string, string> = {}
   const toasts: string[] = []
   const store: Record<string, unknown> = { ...preload }
@@ -94,7 +95,7 @@ async function flow($: any, on: any, options: Options) {
     if (path.endsWith('/policy/default.json')) return { value: JSON.stringify({ limits: { maxConcurrentOpus: 3 } }) }
     if (path.endsWith('/data/prices.json')) return { value: data('prices') }
     if (path.endsWith('/data/ratios.json')) return { value: data('ratios') }
-    if (gate && path === `${CONFIG}/ultraguard/sessions/${SESSION}/${toolUseId}.gate.json`) return { value: gateRecord(toolUseId) }
+    if (gate && path === `${CONFIG}/ultraguard/sessions/${SESSION}/${toolUseId}.gate.json`) return { value: gateRecord(toolUseId, record) }
     return { deny: `ENOENT ${path}` }
   })
   on('tool.call', (_: any, e: any) => {
@@ -204,14 +205,14 @@ test('the run list labels the saved column and keeps red reasons', async ($, on)
   const w = await flow($, on, { subscription: false, gate: false, finish: false })
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
   expect(await ui.find({ type: 'Text', text: /saved at API prices/ })).toBeDefined()
-  expect((await ui.find({ type: 'Button', key: `run:${w.id()}` }))?.text).toContain('not approved by the gate')
+  expect((await ui.find({ type: 'Box', key: `box:${w.id()}` }))?.text).toContain('not approved by the gate')
   await ui.unmount()
 })
 
 test('a running run shows its saving so far', async ($, on) => {
   const w = await flow($, on, { subscription: true, finish: false })
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  expect((await ui.find({ type: 'Button', key: `run:${w.id()}` }))?.text).toContain('so far')
+  expect((await ui.find({ type: 'Box', key: `box:${w.id()}` }))?.text).toContain('so far')
   await ui.press({ key: `run:${w.id()}` })
   expect(await ui.find({ type: 'Text', text: /ultraguard saved so far/ })).toBeDefined()
   await ui.unmount()
@@ -224,7 +225,7 @@ test('a finished run stays listed under "finished this session" and opens', asyn
   expect(await ui.find({ type: 'Text', text: /No workflow is running/ })).toBeDefined()
   const d = new Date(w.clock.now())
   const clock = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
-  const row = await ui.find({ type: 'Button', key: `run:${w.id()}` })
+  const row = await ui.find({ type: 'Box', key: `box:${w.id()}` })
   expect(row?.text).toContain(`done ${clock}`)
   await ui.press({ key: `run:${w.id()}` })
   expect(await ui.find({ type: 'Text', text: /Approved by the gate/ })).toBeDefined()
@@ -289,4 +290,83 @@ test('the saved block wraps instead of cutting, and a narrow pane shortens the s
   const wide = await $.ui.mount({ ...PANE, props: { ...PANE.props, bodyColumns: 140 }, surface: 'terminal' })
   expect((await wide.find({ type: 'Text', text: /^\s*agent\s/ }))?.text).toContain('saved at API prices')
   await wide.unmount()
+})
+
+test('a phase header shows what its agents saved, and the unit follows the limit figure', async ($, on) => {
+  const record = {
+    phases: ['Investigate', 'Decide'],
+    stages: [{ index: 0, line: 2, label: 'investigate: map', class: 'investigate', model: 'sonnet', effort: 'high', inFanout: false, bigFanout: false, verdict: false, phase: 'Investigate' }],
+  }
+  const api = await flow($, on, { subscription: false, record })
+  const ui = await detail($, api.id())
+  const header = await ui.find({ type: 'Button', key: 'phase:Investigate' })
+  expect(header?.text).toMatch(/Investigate\s+done · 1 agent · sonnet 1\s+\$\d+\.\d\d/)
+  expect((await ui.find({ type: 'Text', text: /Decide/ }))?.text).toContain('did not run')
+  await ui.unmount()
+})
+
+test('a subscription phase header shows its share of the 5-hour limit', async ($, on) => {
+  const record = {
+    phases: ['Investigate'],
+    stages: [{ index: 0, line: 2, label: 'investigate: map', class: 'investigate', model: 'sonnet', effort: 'high', inFanout: false, bigFanout: false, verdict: false, phase: 'Investigate' }],
+  }
+  const w = await flow($, on, { subscription: true, record })
+  const ui = await detail($, w.id())
+  expect((await ui.find({ type: 'Button', key: 'phase:Investigate' }))?.text).toMatch(/Investigate\s+done · 1 agent · sonnet 1\s+\S+%/)
+  await ui.unmount()
+})
+
+test('on a wide pane the phase figure lines up under the saved column title', async ($, on) => {
+  const record = {
+    phases: ['Investigate'],
+    stages: [{ index: 0, line: 2, label: 'investigate: map', class: 'investigate', model: 'sonnet', effort: 'high', inFanout: false, bigFanout: false, verdict: false, phase: 'Investigate' }],
+  }
+  const w = await flow($, on, { subscription: false, record })
+  const ui = await detail($, w.id())
+  const title = (await ui.find({ type: 'Text', text: /saved at API prices/ }))?.text ?? ''
+  const phaseRow = (await ui.find({ type: 'Button', key: 'phase:Investigate' }))?.text ?? ''
+  const agentRow = (await ui.find({ type: 'Text', text: /^ {4}✓ investigate: map/ }))?.text ?? ''
+  expect(title.indexOf('saved at API prices')).toBeGreaterThan(0)
+  expect(phaseRow.indexOf('$')).toBe(title.indexOf('saved at API prices'))
+  expect(agentRow.indexOf('$')).toBe(title.indexOf('saved at API prices'))
+  await ui.unmount()
+})
+
+test('on a narrow pane the phase figure follows the title so a long header cannot cut it off', async ($, on) => {
+  const record = {
+    phases: ['Investigate the repository'],
+    stages: [{ index: 0, line: 2, label: 'investigate: map', class: 'investigate', model: 'sonnet', effort: 'high', inFanout: false, bigFanout: false, verdict: false, phase: 'Investigate the repository' }],
+  }
+  const w = await flow($, on, { subscription: false, record })
+  const ui = await $.ui.mount({ ...PANE, props: { ...PANE.props, bodyColumns: 60 }, surface: 'terminal' })
+  await ui.press({ key: `run:${w.id()}` })
+  expect((await ui.find({ type: 'Button', key: 'phase:Investigate the repository' }))?.text).toMatch(/Investigate the repository\s+\$\d+\.\d\d\s+done · 1 agent · sonnet 1$/)
+  await ui.unmount()
+})
+
+const order = async (ui: any, first: RegExp, second: RegExp) => {
+  const texts: string[] = (await ui.findAll({ type: 'Text' })).map((t: any) => String(t.text ?? ''))
+  return [texts.findIndex(t => first.test(t)), texts.findIndex(t => second.test(t))]
+}
+
+test('the flat table keeps the saved block above it, the phase tree sits above the saved block', async ($, on) => {
+  const flat = await flow($, on, { subscription: false })
+  const flatUi = await detail($, flat.id())
+  const [saved, header] = await order(flatUi, /^ultraguard saved/, /^ {2}agent/)
+  expect(saved).toBeGreaterThan(-1)
+  expect(header).toBeGreaterThan(saved)
+  await flatUi.unmount()
+})
+
+test('with phases the tree comes before the saved block', async ($, on) => {
+  const record = {
+    phases: ['Investigate'],
+    stages: [{ index: 0, line: 2, label: 'investigate: map', class: 'investigate', model: 'sonnet', effort: 'high', inFanout: false, bigFanout: false, verdict: false, phase: 'Investigate' }],
+  }
+  const w = await flow($, on, { subscription: false, record })
+  const ui = await detail($, w.id())
+  const [header, saved] = await order(ui, /^ {6}agent/, /^ultraguard saved/)
+  expect(header).toBeGreaterThan(-1)
+  expect(saved).toBeGreaterThan(header)
+  await ui.unmount()
 })

@@ -231,6 +231,7 @@ function gateRecord({ input, toolInput, resolved, analysis, fan, sm, errors, dec
         inFanout: fan.stages[index].inFanout,
         bigFanout: fan.stages[index].bigFanout,
         verdict: st.verdict === true,
+        phase: typeof st.phase === 'string' ? st.phase : null,
       }))
     : [];
   return {
@@ -244,6 +245,7 @@ function gateRecord({ input, toolInput, resolved, analysis, fan, sm, errors, dec
     scriptPath: typeof toolInput?.scriptPath === 'string' ? toolInput.scriptPath : null,
     sessionModel: sm ?? null,
     maxOpus: fan && Number.isFinite(fan.maxOpus) ? fan.maxOpus : null,
+    phases: fan && Array.isArray(analysis.phases) ? analysis.phases : [],
     stages,
     errors: errors.map((e) => ({ code: e.code, line: e.line ?? null, message: e.message })),
   };

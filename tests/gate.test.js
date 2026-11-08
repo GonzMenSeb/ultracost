@@ -703,9 +703,26 @@ test('a clean launch writes a pass record with the script fingerprint', () => {
   assert.deepEqual(rec.errors, []);
   assert.ok(!Number.isNaN(Date.parse(rec.at)));
   assert.deepEqual(rec.stages, [
-    { index: 0, line: 1, label: 'build: stage', class: 'build', model: 'sonnet', effort: 'high', inFanout: false, bigFanout: false, verdict: false },
+    { index: 0, line: 1, label: 'build: stage', class: 'build', model: 'sonnet', effort: 'high', inFanout: false, bigFanout: false, verdict: false, phase: null },
   ]);
-  assert.deepEqual(Object.keys(rec), ['v', 'kind', 'at', 'session_id', 'tool_use_id', 'decision', 'fingerprint', 'scriptPath', 'sessionModel', 'maxOpus', 'stages', 'errors']);
+  assert.deepEqual(rec.phases, []);
+  assert.deepEqual(Object.keys(rec), ['v', 'kind', 'at', 'session_id', 'tool_use_id', 'decision', 'fingerprint', 'scriptPath', 'sessionModel', 'maxOpus', 'phases', 'stages', 'errors']);
+});
+
+test('the record carries each stage phase and the declared phases', () => {
+  const script = [
+    "export const meta = { name: 'x', description: 'y', phases: [{ title: 'Collect' }, { title: 'Decide' }] }",
+    "phase('Collect')",
+    `await agent('p', { label: 'build: one', model: 'sonnet', effort: 'high', ${schema} })`,
+    `await agent('p', { label: 'build: two', model: 'sonnet', effort: 'high', phase: 'Decide', ${schema} })`,
+    `await agent('p', { label: 'build: three', model: 'sonnet', effort: 'high', phase: name, ${schema} })`,
+    '',
+  ].join('\n');
+  const r = run(launch(script));
+  clean(r);
+  const rec = gateRecordOf(r);
+  assert.deepEqual(rec.phases, ['Collect', 'Decide']);
+  assert.deepEqual(rec.stages.map((s) => [s.label, s.phase]), [['build: one', 'Collect'], ['build: two', 'Decide'], ['build: three', null]]);
 });
 
 test('the record is written exactly where recordPath says, one file per launch', () => {

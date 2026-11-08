@@ -1,3 +1,5 @@
+import { savedColor } from './palette.mjs'
+
 const FAMILY_STYLES = new Set(['opus', 'sonnet', 'haiku', 'fable'])
 const AMOUNT_COLUMN = 36
 const DASH = '—'
@@ -5,6 +7,7 @@ const DASH = '—'
 const seg = (text, style = 'plain') => ({ text, style })
 const dim = (text) => seg(text, 'dim')
 const bold = (text) => seg(text, 'bold')
+const savedSeg = (text, pct) => ({ text, style: 'saved', pct })
 const capitalize = (s) => s.charAt(0).toUpperCase() + s.slice(1)
 const familySeg = (family) => seg(capitalize(family), FAMILY_STYLES.has(family) ? family : 'plain')
 const textOf = (line) => line.reduce((n, s) => n + s.text.length, 0)
@@ -23,8 +26,8 @@ export function fmtTokens(n) {
 
 const fiveHourOf = (saved) => (saved?.subscription === true && saved.limits?.five_hour) || null
 
-function figure(amount, label, range, pm, tail) {
-  const left = [seg('  '), bold(amount), seg(label)]
+function figure(amount, label, range, pm, tail, pct) {
+  const left = [seg('  '), pct === undefined ? bold(amount) : savedSeg(amount, pct), seg(label)]
   const pad = Math.max(AMOUNT_COLUMN - textOf(left), 2)
   return { range, line: [...left, seg(' '.repeat(pad)), dim(`± ${pm}`), ...tail] }
 }
@@ -37,7 +40,7 @@ function limitRows(saved) {
     ['seven_day', 'weekly', 'your weekly limit']
   ].map(([key, name, label]) => {
     const range = limits[key]
-    if (range) return figure(fmtPct(range.mid), ` of ${label}`, range, range.pm.toFixed(1), [])
+    if (range) return figure(fmtPct(range.mid), ` of ${label}`, range, range.pm.toFixed(1), [], range.mid)
     const readings = limits.readings?.[key] ?? 0
     return { line: [dim(`  ${name} limit: learning how fast your limit fills, ${readings} of 5 readings so far`)] }
   })
@@ -59,7 +62,8 @@ function tokensLine(saved) {
   const n = fmtTokens(saved.tokens.saved)
   if (saved.tokens.saved >= 0) return [seg('  '), bold(n), seg(' fewer tokens')]
   const families = [...new Set(saved.transitions.filter((t) => t.source !== 'identical').map((t) => t.from.split(':')[0]))]
-  const who = families.length ? families.flatMap((f, i) => (i ? [seg(' and '), familySeg(f)] : [familySeg(f)])) : [seg('the agents')]
+  const joiner = (i) => (i === families.length - 1 ? ' and ' : ', ')
+  const who = families.length ? families.flatMap((f, i) => (i ? [seg(joiner(i)), familySeg(f)] : [familySeg(f)])) : [seg('the agents')]
   return [seg('  '), bold(n), seg(' more tokens: '), ...who, seg(' read and wrote more, at a lower price per token')]
 }
 
@@ -124,15 +128,30 @@ export function savedBlock(saved) {
 
 export function agentColumn(saved) {
   const limit = fiveHourOf(saved)
+  const field = limit ? 'five_hour' : 'dollars'
   const byId = new Map((saved?.agents ?? []).map((a) => [a.agentId, a]))
+  const byKey = new Map((saved?.groups ?? []).map((g) => [g.key, g]))
+  const show = (value) => (value === null || value === undefined ? DASH : limit ? fmtPct(value) : fmtUsd(value))
+  const tint = (value) => (limit && typeof value === 'number' ? savedColor(value) : undefined)
+  const missingOf = (phase) => phase.agents.some((a) => a.done && (byId.get(a.agentId)?.[field] ?? null) === null)
   return {
     header: limit ? 'saved of 5-hour limit' : 'saved at API prices',
-    cell(agentId) {
-      const value = byId.get(agentId)?.[limit ? 'five_hour' : 'dollars']
-      if (value === null || value === undefined) return DASH
-      return limit ? fmtPct(value) : fmtUsd(value)
+    cell: (agentId) => show(byId.get(agentId)?.[field]),
+    color: (agentId) => tint(byId.get(agentId)?.[field]),
+    group(phase) {
+      return missingOf(phase) ? DASH : show(byKey.get(phase.key)?.[field])
+    },
+    groupColor(phase) {
+      return missingOf(phase) ? undefined : tint(byKey.get(phase.key)?.[field])
     }
   }
+}
+
+export function phaseLayout(labels, bodyColumns, column) {
+  const wanted = Math.min(34, Math.max(12, ...labels.map((l) => l.length + 4)))
+  const field = column ? Math.max(12, Math.min(wanted, bodyColumns - 6 - 36 - 7)) : wanted
+  const savedAt = 6 + field + 36
+  return { field, savedAt, roomy: column !== null && savedAt + column.header.length <= bodyColumns }
 }
 
 export function listHeader(views) {
@@ -148,8 +167,9 @@ export function listCell(view) {
   const range = limit || saved.dollars
   if (!range) return [dim(DASH)]
   const amount = limit ? fmtPct(range.mid) : fmtUsd(range.mid)
-  if (saved.running) return [bold(amount), dim(' so far')]
-  return [bold(amount), dim(` ± ${limit ? range.pm.toFixed(1) : fmtUsd(range.pm)}`)]
+  const figureSeg = limit ? savedSeg(amount, range.mid) : bold(amount)
+  if (saved.running) return [figureSeg, dim(' so far')]
+  return [figureSeg, dim(` ± ${limit ? range.pm.toFixed(1) : fmtUsd(range.pm)}`)]
 }
 
 export function toastText(view) {

@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.4.11 - ultraguard
+
+- The workflow detail in ultraguard-eval groups agents under the workflow's phases, like Claude Code's own workflow view: a foldable row per phase (caret, a green or red circle, title, state, model mix, red count and the saved figure of its agents) with the agents indented below, a green ✓ or a red ✗ per agent, and the red reason on its own line. Enter folds a phase, `a` opens or folds all, `b` goes back. Workflows without phases keep the flat table. The tree sits above the saved block.
+- The gate reads the phases from the script (the `meta.phases` titles, each agent's literal `phase` option, else the nearest earlier `phase('…')` call) and writes `phases` and each stage's `phase` to the gate record. An agent that cannot be placed goes under "phase unknown". The eval record gains `phases` and each agent's `phase`.
+- `estimateRun` takes `groups` and returns per-group medians of per-draw sums, so a phase shows what its agents saved.
+- When the pane is narrow, the label column gives room to the saved figure first.
+- The tokens line joins families with commas: "Haiku, Opus and Sonnet read and wrote more…".
+- The focused run in the ultraguard-eval list is drawn inside a rounded outline with a bold name instead of the engine's inverted fill. The row's button is now only its circle (the engine still inverts that one cell), so Enter on the focused row opens it and a click on the circle does; every row keeps the room of the outline, three lines tall, so the list does not move when the focus does.
+- New colors, only in characters: models and efforts run gold, orange and red (Haiku, Sonnet, Opus), deepening with effort, with the model bold and the effort dim; the saved percentage of the 5-hour limit runs from aqua at 1% through azure at 10% to violet at 20%, on the list, the detail, the agent rows and the phase rows. See `src/palette.mjs`.
+- Status glyphs are hollow: `□` for a run and `○` for a phase, in green or red. Check marks are unchanged.
+- The finish toast stays plain text, because `$.ui.toast` takes only a string.
+- The README picture shows a real workflow on a Fable session with an Opus, a Sonnet and a Haiku role, and two more agents, so it shows every agent of a workflow.
+
 ## 0.4.10 - ultraguard
 
 - Renamed the project to ultraguard: the plugin, the marketplace, the repository, the `/ultraguard` command, the `ultraguard-eval` module and the record directory `<configDir>/ultraguard/sessions/`. Records written under the previous directory are not read; move them to the new one to keep them.
