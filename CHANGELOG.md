@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.12 - ultraguard
+
+- `code:` and `grunt:` allow Haiku at `medium`, `high` and `xhigh`, not only `xhigh`. A replay of the 10 latest workflows on Haiku 5.5 matched the recorded answer on all 30 runs of five fixed-shape tasks at `medium` and `xhigh`, at 6 to 11 times less cost per run than Sonnet.
+- The guidance steers fixed-shape work to Haiku `medium`: the spec names the inputs, the output fields and how to compute them, and a script can check the result. Discovery, open-ended review, multi-source web extraction and anything that weighs evidence stay on Sonnet or above, and `judge:` has no Haiku pair.
+- `grunt:` owns fixed-shape, zero-decision work, and `investigate:` owns reading where the agent decides what the evidence means. A `LABEL` deny now adds that a fixed list, table or count over named inputs is `grunt:`; the new optional `labelCheck.fixed` names that class.
+- The Haiku session cap and the Haiku effort check read the efforts from the policy instead of a fixed `xhigh`.
+- A policy that lists `haiku` for a class without `sonnet` is rejected: a Sonnet session would drop the Haiku pair and leave the class with no pair.
+- The hand-written class table is gone from `policy/guidance.md`, because the generated table carries it, and the session context stays under 7,600 of its 8,000 characters.
+
 ## 0.4.11 - ultraguard
 
 - The workflow detail in ultraguard-eval groups agents under the workflow's phases, like Claude Code's own workflow view: a foldable row per phase (caret, a green or red circle, title, state, model mix, red count and the saved figure of its agents) with the agents indented below, a green ✓ or a red ✗ per agent, and the red reason on its own line. Enter folds a phase, `a` opens or folds all, `b` goes back. Workflows without phases keep the flat table. The tree sits above the saved block.

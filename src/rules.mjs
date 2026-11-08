@@ -27,6 +27,9 @@ function checkPairs(path, cls, key, pairs) {
       throw new Error(`policy ${path}: ${label} model "${model}" has duplicate efforts`)
     }
   }
+  if (key === 'pairs' && has(pairs, 'haiku') && !has(pairs, 'sonnet')) {
+    throw new Error(`policy ${path}: ${label} lists haiku without sonnet`)
+  }
 }
 
 function checkLimits(path, limits) {
@@ -57,7 +60,7 @@ export function loadPolicy(path = POLICY_PATH) {
 function checkLabelCheck(path, lc, classes) {
   if (!lc || typeof lc !== 'object' || Array.isArray(lc)) throw new Error(`policy ${path}: labelCheck must be an object`)
   for (const key of Object.keys(lc)) {
-    if (!['words', 'classes', 'fanoutClasses', 'use'].includes(key)) throw new Error(`policy ${path}: labelCheck has unknown key "${key}"`)
+    if (!['words', 'classes', 'fanoutClasses', 'use', 'fixed'].includes(key)) throw new Error(`policy ${path}: labelCheck has unknown key "${key}"`)
   }
   if (!Array.isArray(lc.words) || lc.words.length === 0 || !lc.words.every((w) => typeof w === 'string' && /^[a-z]+$/.test(w))) {
     throw new Error(`policy ${path}: labelCheck.words must be a non-empty list of lowercase words`)
@@ -69,6 +72,9 @@ function checkLabelCheck(path, lc, classes) {
     }
   }
   if (typeof lc.use !== 'string' || !has(classes, lc.use)) throw new Error(`policy ${path}: labelCheck.use must name an existing class`)
+  if (lc.fixed !== undefined && (typeof lc.fixed !== 'string' || !has(classes, lc.fixed))) {
+    throw new Error(`policy ${path}: labelCheck.fixed must name an existing class`)
+  }
 }
 
 export function labelWord(policy, stage, inFanout) {
@@ -84,8 +90,12 @@ export function limitsOf(policy) {
   return { ...DEFAULT_LIMITS, ...(policy.limits || {}) }
 }
 
-function listsHaiku(policy) {
-  return Object.values(policy.classes).some((c) => has(c.pairs, 'haiku'))
+export function haikuEfforts(policy) {
+  const listed = new Set()
+  for (const c of Object.values(policy.classes)) {
+    if (has(c.pairs, 'haiku')) for (const e of c.pairs.haiku) listed.add(e)
+  }
+  return EFFORTS.filter((e) => listed.has(e))
 }
 
 function mergePairs(...maps) {
@@ -112,7 +122,10 @@ export function effectivePairs(policy, cls, sessionModel, ctx = {}) {
   }
   if (Object.keys(out).length > 0) return out
   if (session === 'sonnet') return { sonnet: [...EFFORTS] }
-  if (session === 'haiku' && listsHaiku(policy)) return { haiku: ['xhigh'] }
+  if (session === 'haiku') {
+    const efforts = haikuEfforts(policy)
+    if (efforts.length > 0) return { haiku: efforts }
+  }
   return {}
 }
 
@@ -158,7 +171,9 @@ function globalErrors(stage, sessionModel, base, classless, policy) {
   if (stage.model === 'haiku' && EFFORTS.includes(stage.effort)) {
     const allowed = Object.keys(policy.classes).some((c) => has(effectivePairs(policy, c, sessionModel), 'haiku'))
     if (!allowed) push('model "haiku" is not allowed under the current policy; see the allowed pairs per class.')
-    else if (stage.effort !== 'xhigh') push(`model "haiku" is only allowed with effort "xhigh", not "${stage.effort}".`)
+    else if (!haikuEfforts(policy).includes(stage.effort)) {
+      push(`model "haiku" is only allowed with effort ${haikuEfforts(policy).map((e) => `"${e}"`).join(', ')}, not "${stage.effort}".`)
+    }
   }
   return out
 }
@@ -212,10 +227,12 @@ export function rules(stages, policy, ctx) {
     const word = labelWord(policy, stage, Boolean(fanStages[i] && fanStages[i].inFanout))
     if (word) {
       const use = policy.labelCheck.use
+      const fixed = policy.labelCheck.fixed
+      const fixedHint = fixed ? ` A fixed list, table or count over named inputs is ${fixed}: on ${formatPairs(effectivePairs(policy, fixed, sessionModel))}.` : ''
       errors.push({
         code: 'LABEL',
         ...base,
-        message: `"${stage.label}" reads like investigation ("${word}"). Investigation runs as ${use}: on ${formatPairs(effectivePairs(policy, use, sessionModel))}. Keep ${stage.class}: for a stage that owns the ${stage.class === 'judge' ? 'review' : stage.class === 'synth' ? 'synthesis' : stage.class === 'design' ? 'design' : 'decision'} itself, and name it by that.`,
+        message: `"${stage.label}" reads like investigation ("${word}"). Investigation runs as ${use}: on ${formatPairs(effectivePairs(policy, use, sessionModel))}.${fixedHint} Keep ${stage.class}: for a stage that owns the ${stage.class === 'judge' ? 'review' : stage.class === 'synth' ? 'synthesis' : stage.class === 'design' ? 'design' : 'decision'} itself, and name it by that.`,
         ...(mayMoveToSonnet(stage) ? { needsBlockedOn: true } : {})
       })
     }

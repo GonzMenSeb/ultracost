@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="960" height="698" viewBox="0 0 960 698" role="img" aria-labelledby="t d">
   <title id="t">Who owns the decision picks the model</title>
-  <desc id="d">Opus: decide, synth, design, and judge for reviews with findings; at most 3 at once. Sonnet: investigate (never Opus), build, fix and combine (Opus also allowed), judge as one yes/no review, and the simpler agents of a fan-out of more than 3. Haiku at xhigh: code and grunt (Sonnet also allowed), mechanical and checkable.</desc>
+  <desc id="d">Opus: decide, synth, design, and judge for reviews with findings; at most 3 at once. Sonnet: investigate (never Opus), build, fix and combine (Opus also allowed), judge as one yes/no review, and the simpler agents of a fan-out of more than 3. Haiku at medium, high or xhigh: code and grunt (Sonnet also allowed), fixed-shape and checkable.</desc>
   <rect x="0.5" y="0.5" width="959" height="697" rx="16" fill="#16161a" stroke="#2a2a31"/>
   <text x="24" y="46" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="18" font-weight="700" fill="#e4e4e7">Who owns the decision picks the model</text>
   <text x="24" y="70" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="14" fill="#a1a1aa">Every <tspan fill="#e4e4e7" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="13">agent()</tspan> label starts with a class. The class sets which models and efforts the gate allows.</text>
@@ -20,7 +20,7 @@
   <text x="692" y="130" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="20" font-weight="700" fill="#2dd4bf">Haiku</text>
   <text x="692" y="152" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="14" fill="#a1a1aa">Mechanical, checkable work</text>
   <rect x="824" y="112" width="92" height="26" rx="13" fill="none" stroke="#2dd4bf" stroke-width="1.2"/>
-  <text x="870.0" y="129.5" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="13" fill="#2dd4bf">xhigh only</text>
+  <text x="870.0" y="129.5" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="13" fill="#2dd4bf">any effort</text>
   <line x1="672" y1="170" x2="936" y2="170" stroke="#2dd4bf" stroke-opacity="0.25"/>
   <text x="44" y="194" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="15" font-weight="700" fill="#c084fc">decide:</text>
   <text x="44" y="214" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="14" fill="#a1a1aa">Any open choice: approach, software</text>

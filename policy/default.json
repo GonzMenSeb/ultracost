@@ -4,11 +4,12 @@
     "words": ["research", "investigate", "map", "explore", "survey", "scan", "search", "find", "audit", "inventory", "readiness"],
     "classes": ["decide", "judge", "design"],
     "fanoutClasses": ["synth"],
-    "use": "investigate"
+    "use": "investigate",
+    "fixed": "grunt"
   },
   "classes": {
     "investigate": {
-      "owns": "Investigation: web research, code mapping, and any reading that reports findings",
+      "owns": "Investigation: web research, code mapping, and any reading where the agent decides what the evidence means",
       "pairs": { "sonnet": ["medium", "high", "xhigh"] }
     },
     "decide": {
@@ -45,11 +46,11 @@
     },
     "code": {
       "owns": "Very simple, fully specified, mechanically checkable code; blind, well-specified UI implementation",
-      "pairs": { "haiku": ["xhigh"], "sonnet": ["medium", "high", "xhigh"] }
+      "pairs": { "haiku": ["medium", "high", "xhigh"], "sonnet": ["medium", "high", "xhigh"] }
     },
     "grunt": {
-      "owns": "Non-code, zero-decision work: search, extraction, summaries, compaction, repetitive separable groundwork",
-      "pairs": { "haiku": ["xhigh"], "sonnet": ["medium", "high", "xhigh"] }
+      "owns": "Fixed-shape, zero-decision work: tabulate, count or extract named fields from named inputs, run a given command, checks, summaries, compaction",
+      "pairs": { "haiku": ["medium", "high", "xhigh"], "sonnet": ["medium", "high", "xhigh"] }
     }
   }
 }
