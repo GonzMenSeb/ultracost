@@ -14,8 +14,8 @@ const SUPERSEDE =
   'This text explicitly supersedes the built-in Workflow guidance that says "omit `model`", "omit effort" and "use \'low\' for cheap mechanical stages".';
 
 function sandbox() {
-  const home = mkdtempSync(join(tmpdir(), 'tierguard-home-'));
-  const project = mkdtempSync(join(tmpdir(), 'tierguard-project-'));
+  const home = mkdtempSync(join(tmpdir(), 'ultraguard-home-'));
+  const project = mkdtempSync(join(tmpdir(), 'ultraguard-project-'));
   mkdirSync(join(home, '.claude'));
   mkdirSync(join(project, '.claude'));
   const settings = (where, file, data) => {
@@ -275,7 +275,7 @@ test('missing or invalid stdin falls back to the process cwd and still exits 0',
 });
 
 function copyPlugin() {
-  const tmp = mkdtempSync(join(tmpdir(), 'tierguard-session-'));
+  const tmp = mkdtempSync(join(tmpdir(), 'ultraguard-session-'));
   for (const d of ['hooks', 'src', 'vendor', 'policy']) cpSync(join(ROOT, d), join(tmp, d), { recursive: true });
   return tmp;
 }
@@ -286,9 +286,9 @@ test('a broken policy still emits guidance and warns how to disable', () => {
   try {
     writeFileSync(join(tmp, 'policy', 'default.json'), '{ not json');
     const out = runSession({ ...sb, script: join(tmp, 'hooks', 'session.mjs') });
-    assert.match(out.systemMessage, /\/plugin disable tierguard/);
+    assert.match(out.systemMessage, /\/plugin disable ultraguard/);
     assert.match(out.systemMessage, /blocked/);
-    assert.ok(out.hookSpecificOutput.additionalContext.includes('tierguard delegation policy'));
+    assert.ok(out.hookSpecificOutput.additionalContext.includes('ultraguard delegation policy'));
     assert.ok(!out.hookSpecificOutput.additionalContext.includes('Allowed (model, effort) pairs'));
   } finally {
     sb.cleanup();
@@ -303,7 +303,7 @@ test('a broken src module and a missing guidance file never crash the hook', () 
     writeFileSync(join(tmp, 'src', 'rules.mjs'), 'export const = ;');
     rmSync(join(tmp, 'policy', 'guidance.md'));
     const out = runSession({ ...sb, script: join(tmp, 'hooks', 'session.mjs') });
-    assert.match(out.systemMessage, /tierguard/);
+    assert.match(out.systemMessage, /ultraguard/);
   } finally {
     sb.cleanup();
     rmSync(tmp, { recursive: true, force: true });

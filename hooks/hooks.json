@@ -1,5 +1,5 @@
 {
-  "description": "tierguard: per-agent delegation gate for Workflow scripts, plus the delegation policy as session context",
+  "description": "ultraguard: per-agent delegation gate for Workflow scripts, plus the delegation policy as session context",
   "hooks": {
     "SessionStart": [
       {

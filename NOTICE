@@ -1,4 +1,4 @@
-tierguard
+ultraguard
 Fork of ultracost (https://github.com/danielkremen818/ultracost), rewritten as a per-agent delegation gate.
 Includes acorn 8.19.0 (MIT), vendored as vendor/acorn.mjs; see vendor/acorn.LICENSE.
 

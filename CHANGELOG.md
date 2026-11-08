@@ -1,21 +1,25 @@
 # Changelog
 
-## 0.4.9 - tierguard
+## 0.4.10 - ultraguard
 
-- tierguard-eval shows what each tracked run saved against running every agent on the session's model at the session's effort: percent of the 5-hour and weekly limits (subscribers), dollars at API prices (API key users) and tokens; percentages and dollars carry a ± margin of error (90%, 4,000 seeded draws), tokens are a median. A figure it cannot back is shown as unknown, never as 0.
+- Renamed the project to ultraguard: the plugin, the marketplace, the repository, the `/ultraguard` command, the `ultraguard-eval` module and the record directory `<configDir>/ultraguard/sessions/`. Records written under the previous directory are not read; move them to the new one to keep them.
+
+## 0.4.9 - ultraguard
+
+- ultraguard-eval shows what each tracked run saved against running every agent on the session's model at the session's effort: percent of the 5-hour and weekly limits (subscribers), dollars at API prices (API key users) and tokens; percentages and dollars carry a ± margin of error (90%, 4,000 seeded draws), tokens are a median. A figure it cannot back is shown as unknown, never as 0.
 - The estimate is probe-calibrated: the observed run times a ratio between configurations, in three token buckets (output, fresh input, cache reads). Ratios are measured, chained from a measured ratio with a published effort step, or taken from published figures. The error combines the shared ratio (Fieller interval), a between-workflow τ of 0.30 and a per-agent spread.
 - `data/ratios.json` comes from 22 agents replayed on Sonnet at high against their Opus runs, measuring `sonnet:high>opus:high` and `sonnet:high>opus:medium`. `data/replays.json`, `data/published.json` and `data/prices.json` hold the inputs; `node scripts/calibrate.mjs` rebuilds the ratios and `--check` fails when they are stale.
 - Limit percentages use a meter that learns how fast your limit fills from your own `/usage` readings, stored in `$.store` under `meter:<session id>` (at most 200 intervals per window, 30 days). A window's figure shows after 5 readings.
 - The pane gains a "saved" block in the workflow detail, a saved column in the run list, runs kept under "finished this session" until `/clear`, and a toast at run end. The row above the prompt is unchanged.
 - The eval record gains a `savings` block.
 
-## 0.4.8 - tierguard
+## 0.4.8 - ultraguard
 
-- The tierguard-eval pane matches the approved design: aligned columns, Opus, Sonnet and Haiku in their tier colors, passing checks with their detail (gate approval time, agent and request counts, peak Opus), an agent table with approved and ran-on model and effort, and key hints at the bottom.
+- The ultraguard-eval pane matches the approved design: aligned columns, Opus, Sonnet and Haiku in their tier colors, passing checks with their detail (gate approval time, agent and request counts, peak Opus), an agent table with approved and ran-on model and effort, and key hints at the bottom.
 - README rewritten for people looking to keep ultracode workflows under control: the problem, install, how the rules save tokens, and how to know they were enforced, with new diagrams and real captures in `assets/`. The reference moved to `docs/reference.md`.
-- Documented that Claude Code shows one plugin band above the prompt, so another plugin's band can hide tierguard's; `/tierguard` still opens the pane.
+- Documented that Claude Code shows one plugin band above the prompt, so another plugin's band can hide ultraguard's; `/ultraguard` still opens the pane.
 
-## 0.4.7 - tierguard
+## 0.4.7 - ultraguard
 
 - At most 3 Opus agents may run at once in a workflow. The gate bounds the concurrency from the script (array literals, `parallel`, `pipeline`, `Promise.allSettled`, `.map` over known sizes, `.slice`, `.then` chains, local helpers; `Promise.all`, `race` and `any` over more than one Opus agent count as unknown) and denies every Opus stage involved with the new code `FANOUT` when the bound is above 3 or cannot be computed. Sonnet and Haiku fan-outs are not limited. `FANOUT` is not checked on a Sonnet or Haiku session.
 - New class `investigate:` (web research, code mapping, any reading that reports findings): Sonnet only. `judge:` no longer owns "any reading whose output feeds a verdict".
@@ -23,13 +27,13 @@
 - `judge:` may run on Sonnet for one yes/no review, with a verdict schema of exactly `pass` (boolean), `evidence` (string) and `blocked_on`.
 - `decide:`, `synth:` and `design:` may run on Sonnet in a fan-out of more than 3 agents, or of unknown size.
 - `policy/default.json` gains `fanoutPairs`, `verdictPairs`, `limits` (`maxConcurrentOpus`, `bigFanout`) and `labelCheck`.
-- The gate now writes a record per launch, pass or deny, to `<configDir>/tierguard/sessions/<session_id>/<tool_use_id>.gate.json`, with a SHA-256 fingerprint of the script. It fails closed if it cannot write the record of a clean launch. It no longer "keeps no state and writes no files".
-- New tierguard-eval hooks module: a band above the prompt and a pane (`/tierguard`) that show each running workflow green or red from four checks (approved by the gate, every agent matches the plan, every request as approved, at most 3 Opus at once). It writes `<tool_use_id>.eval.json` per run. It observes only and never denies.
+- The gate now writes a record per launch, pass or deny, to `<configDir>/ultraguard/sessions/<session_id>/<tool_use_id>.gate.json`, with a SHA-256 fingerprint of the script. It fails closed if it cannot write the record of a clean launch. It no longer "keeps no state and writes no files".
+- New ultraguard-eval hooks module: a band above the prompt and a pane (`/ultraguard`) that show each running workflow green or red from four checks (approved by the gate, every agent matches the plan, every request as approved, at most 3 Opus at once). It writes `<tool_use_id>.eval.json` per run. It observes only and never denies.
 - The guidance teaches the new classes, the cap, the `slice(0, 3)` split and the batching loop.
 
-## 0.4.6 - tierguard
+## 0.4.6 - ultraguard
 
-- Rewrote the fork of ultracost as `tierguard`, a per-agent delegation gate for Workflow launches.
+- Rewrote the fork of ultracost as `ultraguard`, a per-agent delegation gate for Workflow launches.
 - New static gate: parses the script with vendored acorn and checks every `agent()` for a class label, a literal model and effort, and a `blocked_on` schema on Sonnet and Haiku stages.
 - Allowed (model, effort) pairs live in `policy/default.json`. The session model caps the allowed models.
 - Launches by name, mixed sources and `workflow()` children are denied. Runtime env overrides of model and effort are denied.

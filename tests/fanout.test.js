@@ -452,7 +452,7 @@ test('error messages name the stage and the fix', () => {
 
   const unknown = run(`await parallel(args.items.map(x => () => ${opus('judge: ${x}')}))`)
   assert.equal(unknown.errors.length, 1)
-  assert.ok(unknown.errors[0].message.includes('tierguard cannot count how many opus agents run at once here (the size of args.items is not known)'))
+  assert.ok(unknown.errors[0].message.includes('ultraguard cannot count how many opus agents run at once here (the size of args.items is not known)'))
   assert.ok(unknown.errors[0].message.includes('at most 3'))
   assert.equal(unknown.errors[0].label, 'judge: ${x}')
 })

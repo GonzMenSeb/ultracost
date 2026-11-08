@@ -10,7 +10,7 @@ const read = (p) => JSON.parse(readFileSync(join(ROOT, p), 'utf8'));
 test('package.json, plugin.json, and the marketplace entry share one version', () => {
   const pkg = read('package.json').version;
   const plugin = read('.claude-plugin/plugin.json').version;
-  const marketplace = read('.claude-plugin/marketplace.json').plugins.find((p) => p.name === 'tierguard').version;
+  const marketplace = read('.claude-plugin/marketplace.json').plugins.find((p) => p.name === 'ultraguard').version;
 
   assert.equal(plugin, pkg, `plugin.json (${plugin}) must match package.json (${pkg})`);
   assert.equal(marketplace, pkg, `marketplace entry (${marketplace}) must match package.json (${pkg})`);

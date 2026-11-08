@@ -1,6 +1,6 @@
 {
-  "name": "tierguard",
-  "version": "0.4.9",
+  "name": "ultraguard",
+  "version": "0.4.10",
   "private": true,
   "description": "Per-agent delegation gate for Claude Code dynamic workflows.",
   "type": "module",
@@ -10,7 +10,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/GonzMenSeb/ultracost.git"
+    "url": "git+https://github.com/GonzMenSeb/ultraguard.git"
   },
   "engines": {
     "node": ">=18"

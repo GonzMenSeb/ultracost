@@ -9,10 +9,10 @@ const OPUS = 'claude-opus-5-5'
 const SONNET = 'claude-sonnet-5-5'
 
 const PANE = {
-  plugin: 'tierguard',
+  plugin: 'ultraguard',
   component: 'Pane',
-  requestId: 'tierguard',
-  props: { title: 'tierguard-eval', isFocused: true, bodyColumns: 100, placement: 'dock', scroll: { offset: 0, bodyRows: 40 }, view: {} },
+  requestId: 'ultraguard',
+  props: { title: 'ultraguard-eval', isFocused: true, bodyColumns: 100, placement: 'dock', scroll: { offset: 0, bodyRows: 40 }, view: {} },
 } as const
 
 const bucket = (r: number) => ({ r, lo: r * 0.8, hi: r * 1.25, mu: Math.log(r), sigma: 0.12, agentSd: 0.3 })
@@ -80,7 +80,7 @@ async function flow($: any, on: any, options: Options) {
   on('session.messages', () => ({ value: notices }))
   on('session.usage', () => ({ value: { startedAt: 0, context: { window: 200000 }, rateLimits: subscription ? limits(percent) : [] } }))
   on('session.measure', (_: any, e: any) => ({ changed: e.changed }))
-  on('command.register', () => ({ value: { command: 'tierguard' } }))
+  on('command.register', () => ({ value: { command: 'ultraguard' } }))
   on('turn.complete', () => ({ text: '' }))
   on('ui.log', () => ({ value: undefined }))
   on('ui.toast', (_: any, e: any) => (toasts.push(String(e.text)), { value: undefined }))
@@ -94,7 +94,7 @@ async function flow($: any, on: any, options: Options) {
     if (path.endsWith('/policy/default.json')) return { value: JSON.stringify({ limits: { maxConcurrentOpus: 3 } }) }
     if (path.endsWith('/data/prices.json')) return { value: data('prices') }
     if (path.endsWith('/data/ratios.json')) return { value: data('ratios') }
-    if (gate && path === `${CONFIG}/tierguard/sessions/${SESSION}/${toolUseId}.gate.json`) return { value: gateRecord(toolUseId) }
+    if (gate && path === `${CONFIG}/ultraguard/sessions/${SESSION}/${toolUseId}.gate.json`) return { value: gateRecord(toolUseId) }
     return { deny: `ENOENT ${path}` }
   })
   on('tool.call', (_: any, e: any) => {
@@ -167,7 +167,7 @@ const detail = async ($: any, id: string) => {
 test('the detail shows what a finished run saved, against the session model and effort', async ($, on) => {
   const w = await flow($, on, { subscription: true })
   const ui = await detail($, w.id())
-  expect(await ui.find({ type: 'Text', text: /tierguard saved/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /ultraguard saved/ })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /compared with running every agent on Opus at high effort/ })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /of your 5-hour limit/ })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /of your weekly limit/ })).toBeDefined()
@@ -176,7 +176,7 @@ test('the detail shows what a finished run saved, against the session model and 
   expect(await ui.find({ type: 'Text', text: /from 1 of 1 agents/ })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /saved of 5-hour limit/ })).toBeDefined()
   await ui.unmount()
-  const record = JSON.parse(w.writes[`${CONFIG}/tierguard/sessions/${SESSION}/${w.id()}.eval.json`] ?? '{}')
+  const record = JSON.parse(w.writes[`${CONFIG}/ultraguard/sessions/${SESSION}/${w.id()}.eval.json`] ?? '{}')
   expect(record.savings.baseline).toEqual({ model: OPUS, effort: 'high' })
   expect(record.savings.saved.status).toBe('estimated')
   expect(record.savings.saved.running).toBe(false)
@@ -213,7 +213,7 @@ test('a running run shows its saving so far', async ($, on) => {
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
   expect((await ui.find({ type: 'Button', key: `run:${w.id()}` }))?.text).toContain('so far')
   await ui.press({ key: `run:${w.id()}` })
-  expect(await ui.find({ type: 'Text', text: /tierguard saved so far/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /ultraguard saved so far/ })).toBeDefined()
   await ui.unmount()
 })
 
@@ -236,13 +236,13 @@ test('a finished run stays listed under "finished this session" and opens', asyn
 test('a toast says what the run saved when it ends', async ($, on) => {
   const w = await flow($, on, { subscription: true })
   expect(w.toasts).toHaveLength(1)
-  expect(w.toasts[0]).toMatch(/^tierguard: map finished as approved and saved about .*% of your 5-hour limit$/)
+  expect(w.toasts[0]).toMatch(/^ultraguard: map finished as approved and saved about .*% of your 5-hour limit$/)
 })
 
 test('an API toast says what came off the bill', async ($, on) => {
   const w = await flow($, on, { subscription: false })
   expect(w.toasts).toHaveLength(1)
-  expect(w.toasts[0]).toMatch(/^tierguard: map finished as approved and .*\$\d+\.\d\d off your API bill$/)
+  expect(w.toasts[0]).toMatch(/^ultraguard: map finished as approved and .*\$\d+\.\d\d off your API bill$/)
 })
 
 test('an agent with no usage leaves the coverage line at "from 1 of 2 agents"', async ($, on) => {
@@ -257,7 +257,7 @@ test('a run with no estimate yet still shows the effort an agent ran at', async 
   const ui = await detail($, w.id())
   expect(await ui.find({ type: 'Text', text: /sonnet · high/ })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /sonnet…/ })).toBeUndefined()
-  expect(await ui.find({ type: 'Text', text: /tierguard saved/ })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: /ultraguard saved/ })).toBeUndefined()
   await ui.unmount()
 })
 

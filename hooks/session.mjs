@@ -68,7 +68,7 @@ function dontAskWarning(cwd) {
     }
   }
   if (mode === 'dontAsk' && !allowsWorkflow) {
-    return 'tierguard: your settings set permissions.defaultMode to "dontAsk" and have no "Workflow" allow rule. tierguard never allows a launch by itself, so in a dontAsk session every Workflow launch is refused: add "Workflow" to permissions.allow. Ignore this if you start Claude Code in another permission mode, such as bypassPermissions.';
+    return 'ultraguard: your settings set permissions.defaultMode to "dontAsk" and have no "Workflow" allow rule. ultraguard never allows a launch by itself, so in a dontAsk session every Workflow launch is refused: add "Workflow" to permissions.allow. Ignore this if you start Claude Code in another permission mode, such as bypassPermissions.';
   }
   return null;
 }
@@ -101,7 +101,7 @@ async function run() {
   try {
     guidance = readFileSync(GUIDANCE_PATH, 'utf8').trimEnd();
   } catch (e) {
-    warnings.push(`tierguard: policy/guidance.md could not be read (${e.message}).`);
+    warnings.push(`ultraguard: policy/guidance.md could not be read (${e.message}).`);
   }
 
   try {
@@ -109,7 +109,7 @@ async function run() {
     table = pairsTable(rulesModule.loadPolicy(), rulesModule);
   } catch (e) {
     warnings.push(
-      `tierguard: the policy failed to load (${e.message}). Every Workflow launch will be blocked until it is fixed; to disable the gate run /plugin disable tierguard.`,
+      `ultraguard: the policy failed to load (${e.message}). Every Workflow launch will be blocked until it is fixed; to disable the gate run /plugin disable ultraguard.`,
     );
   }
 
@@ -129,7 +129,7 @@ let output;
 try {
   output = await run();
 } catch (e) {
-  output = { systemMessage: clampMessage(`tierguard: the SessionStart hook failed (${e && e.message ? e.message : e}).`) };
+  output = { systemMessage: clampMessage(`ultraguard: the SessionStart hook failed (${e && e.message ? e.message : e}).`) };
 }
 process.stdout.write(JSON.stringify(output));
 process.exit(0);

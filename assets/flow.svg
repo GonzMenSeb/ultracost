@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="960" height="460" viewBox="0 0 960 460" role="img" aria-labelledby="t d">
-  <title id="t">How a workflow goes through tierguard</title>
-  <desc id="d">Claude drafts a Workflow script with the policy from SessionStart in context. The tierguard gate checks it statically before anything runs. A deny goes back to Claude with fixable reasons; a pass lets the workflow run. tierguard-eval watches every agent spawn and model request and shows a green or red square above the prompt. Both steps write a record file.</desc>
+  <title id="t">How a workflow goes through ultraguard</title>
+  <desc id="d">Claude drafts a Workflow script with the policy from SessionStart in context. The ultraguard gate checks it statically before anything runs. A deny goes back to Claude with fixable reasons; a pass lets the workflow run. ultraguard-eval watches every agent spawn and model request and shows a green or red square above the prompt. Both steps write a record file.</desc>
   <defs>
     <marker id="ad" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="#a1a1aa"/></marker>
     <marker id="ag" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="#4ade80"/></marker>
@@ -37,7 +37,7 @@
     <text x="48" y="158">1 · DRAFT</text>
     <text x="252" y="158">2 · GATE · STATIC</text>
     <text x="516" y="158">3 · RUN</text>
-    <text x="692" y="158">4 · TIERGUARD-EVAL</text>
+    <text x="692" y="158">4 · ULTRAGUARD-EVAL</text>
   </g>
 
   <g font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="16" font-weight="700" fill="#e4e4e7">
@@ -119,13 +119,13 @@
     <text x="500" y="432">checks hold, red names the first failure</text>
   </g>
   <g font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="14">
-    <text x="536" y="377" font-weight="700" fill="#e4e4e7">tierguard-eval</text>
+    <text x="536" y="377" font-weight="700" fill="#e4e4e7">ultraguard-eval</text>
     <text x="640" y="377" fill="#a1a1aa">2 running</text>
   </g>
 
   <g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="13" fill="#a1a1aa">
     <text x="32" y="372">records in</text>
-    <text x="32" y="390">~/.claude/tierguard/</text>
+    <text x="32" y="390">~/.claude/ultraguard/</text>
     <text x="32" y="408">sessions/&lt;id&gt;/</text>
   </g>
 </svg>

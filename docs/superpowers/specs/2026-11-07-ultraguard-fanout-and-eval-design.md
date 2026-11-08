@@ -1,15 +1,15 @@
-# tierguard 0.4.7: fan-out rules and tierguard-eval
+# ultraguard 0.4.7: fan-out rules and ultraguard-eval
 
 ## Why
 
-On 2026-11-07 a workflow launched 10 Opus agents at once: six web-research and four code-mapping agents, all labeled `synth:`. tierguard 0.4.6 almost certainly passed it, because `synth:` allows Opus and the gate cannot tell research from synthesis. Nothing proved the gate had run at all: a passing gate prints nothing and writes nothing, so a pass and a bypass leave the same trace.
+On 2026-11-07 a workflow launched 10 Opus agents at once: six web-research and four code-mapping agents, all labeled `synth:`. ultraguard 0.4.6 almost certainly passed it, because `synth:` allows Opus and the gate cannot tell research from synthesis. Nothing proved the gate had run at all: a passing gate prints nothing and writes nothing, so a pass and a bypass leave the same trace.
 
 Two goals:
 
 1. Opus is for design, decisions, synthesis and complex reviews. Investigation and the simpler agents of a big fan-out run on Sonnet. No more than 3 Opus agents run at once.
-2. Know for a fact, while a workflow runs, whether tierguard's rules were applied to it: a log on disk and a live indicator in the terminal.
+2. Know for a fact, while a workflow runs, whether ultraguard's rules were applied to it: a log on disk and a live indicator in the terminal.
 
-Anti-goals: tierguard must not spend tokens to save tokens. Everything here is plain code. There is no model call anywhere in tierguard, and none is added (the user declined a Haiku label check).
+Anti-goals: ultraguard must not spend tokens to save tokens. Everything here is plain code. There is no model call anywhere in ultraguard, and none is added (the user declined a Haiku label check).
 
 ## Part 1: policy
 
@@ -75,7 +75,7 @@ await parallel([
 
 ### Label word check (added after the vps-infrastructure run `whgu91mby`)
 
-A run launched at 2026-11-08 03:55Z passed tierguard 0.4.6 with 6 Opus agents, two of them investigation labeled `decide: ovh extra ip research` and `judge: migration readiness`. The rules above alone would pass it too (never more than 3 Opus at once). The user chose a deterministic word check over a model-based label check:
+A run launched at 2026-11-08 03:55Z passed ultraguard 0.4.6 with 6 Opus agents, two of them investigation labeled `decide: ovh extra ip research` and `judge: migration readiness`. The rules above alone would pass it too (never more than 3 Opus at once). The user chose a deterministic word check over a model-based label check:
 
 - A `decide:`, `judge:` or `design:` label whose name (after the prefix, with `${…}` removed) contains, as a whole word, research, investigate, map, explore, survey, scan, search, find, audit, inventory or readiness is denied with the new code `LABEL`, on any session model.
 - `synth:` is checked only when the stage is in a fan-out, so a single `synth: research synthesis` passes (Opus synthesizes research).
@@ -87,7 +87,7 @@ A run launched at 2026-11-08 03:55Z passed tierguard 0.4.6 with 6 Opus agents, t
 
 ## Part 2: the gate's record (traceability)
 
-The gate (classic `PreToolUse` hook, `hooks/gate.mjs`) writes one JSON file per decision, pass or deny, to `<configDir>/tierguard/sessions/<session_id>/<tool_use_id>.gate.json`, where `<configDir>` is `CLAUDE_CONFIG_DIR` (trimmed) or `~/.claude`. One small file per launch keeps every file far below the mod's 4 MiB `$.fs` limit, and the mod reads exactly the file it needs. `session_id` and `tool_use_id` must match `^[A-Za-z0-9_-]{1,128}$`; otherwise the gate uses `unknown` for the directory or fails closed on a pass (it cannot write a record the mod can find). This replaces "keeps no state and writes no files".
+The gate (classic `PreToolUse` hook, `hooks/gate.mjs`) writes one JSON file per decision, pass or deny, to `<configDir>/ultraguard/sessions/<session_id>/<tool_use_id>.gate.json`, where `<configDir>` is `CLAUDE_CONFIG_DIR` (trimmed) or `~/.claude`. One small file per launch keeps every file far below the mod's 4 MiB `$.fs` limit, and the mod reads exactly the file it needs. `session_id` and `tool_use_id` must match `^[A-Za-z0-9_-]{1,128}$`; otherwise the gate uses `unknown` for the directory or fails closed on a pass (it cannot write a record the mod can find). This replaces "keeps no state and writes no files".
 
 ```json
 {"v":1,"kind":"gate","at":"<ISO>","session_id":"…","tool_use_id":"toolu_…","decision":"pass"|"deny",
@@ -101,7 +101,7 @@ The gate (classic `PreToolUse` hook, `hooks/gate.mjs`) writes one JSON file per 
 - If the write fails on a pass, the gate fails closed (exit 2, stderr names the path and error). On a deny the deny stands and the write error is ignored.
 - Writes create the directory. Nothing is rotated or deleted.
 
-## Part 3: tierguard-eval (the mod)
+## Part 3: ultraguard-eval (the mod)
 
 The same plugin gains a hooks module. `hooks/hooks.json` keeps its `hooks` and adds `"modules": ["./eval.tsx"]` (verified on 2.1.319: both kinds load from one plugin, and a module can import the plugin's `.mjs` files). `plugin.json` gains `"types": "./types/index.d.ts"` for the module's `$.state` contract.
 
@@ -129,8 +129,8 @@ A spawn for a run with no known launch is red with "not approved by the gate".
 
 ### What it draws
 
-- **Band** (`ui.render` on `AbovePrompt`): shown only while at least one workflow run is active; it yields to a survey. One `Button`: a square and the bold title `tierguard-eval`, followed by a dim summary (`2 running · 1 red`). The square is red if any active run is red, else green.
-- **Pane** (`$.ui.open({ id: 'tierguard', title: 'tierguard-eval' })`), opened by the button or `/tierguard`:
+- **Band** (`ui.render` on `AbovePrompt`): shown only while at least one workflow run is active; it yields to a survey. One `Button`: a square and the bold title `ultraguard-eval`, followed by a dim summary (`2 running · 1 red`). The square is red if any active run is red, else green.
+- **Pane** (`$.ui.open({ id: 'ultraguard', title: 'ultraguard-eval' })`), opened by the button or `/ultraguard`:
   - Level 2: a flat list, one row per active run: square, workflow summary, short run id, Opus and Sonnet counts, and `as approved` or the first failure. All rows at the same indentation; the selected row is highlighted.
   - Level 3 (enter on a row): the four checks with ✓/✗, then one row per agent: square, label, approved model · effort, ran on model · effort, and the reason when red. Esc goes back, then closes.
 - Colors: green and red; secondary text dim.
@@ -138,12 +138,12 @@ A spawn for a run with no known launch is red with "not approved by the gate".
 
 ### What it logs
 
-`<configDir>/tierguard/sessions/<session_id>/<tool_use_id>.eval.json`, one file per run, rewritten whole on every change (`$.fs.write` has no append): the run's checks, failures, agents and end status. Next to the gate's `.gate.json` for the same launch, this is the trace. A run seen with no known launch is written under its run id (`<runId>.eval.json`).
+`<configDir>/ultraguard/sessions/<session_id>/<tool_use_id>.eval.json`, one file per run, rewritten whole on every change (`$.fs.write` has no append): the run's checks, failures, agents and end status. Next to the gate's `.gate.json` for the same launch, this is the trace. A run seen with no known launch is written under its run id (`<runId>.eval.json`).
 
 ## Part 4: guidance, docs, version
 
 - `policy/guidance.md`: the new classes, the verdict schema with an example, the 3-Opus cap and the `slice` pattern, "Opus is for design, decisions, synthesis and complex reviews; investigation runs on Sonnet".
-- README: new deny code `FANOUT`, the record files, tierguard-eval, updated limits ("writes files").
+- README: new deny code `FANOUT`, the record files, ultraguard-eval, updated limits ("writes files").
 - CHANGELOG entry, version `0.4.7` in `package.json`, `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`.
 - `.gitignore`: `.superpowers/`.
 

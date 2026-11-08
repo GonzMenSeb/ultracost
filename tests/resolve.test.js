@@ -8,7 +8,7 @@ import { resolve } from '../src/resolve.mjs';
 const NAME_MESSAGE =
   'Launching a workflow by name is not allowed. For a saved workflow, relaunch with scriptPath pointing at its file. For a built-in workflow, write your own compliant workflow for the same job and launch it with script.';
 
-const dir = mkdtempSync(join(tmpdir(), 'tierguard-resolve-'));
+const dir = mkdtempSync(join(tmpdir(), 'ultraguard-resolve-'));
 mkdirSync(join(dir, 'sub'));
 writeFileSync(join(dir, 'sub', 'w.js'), 'const x = 1;\n');
 

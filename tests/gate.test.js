@@ -37,7 +37,7 @@ test.after(() => {
 });
 
 function freshConfigDir() {
-  const d = mkdtempSync(join(tmpdir(), 'tierguard-config-'));
+  const d = mkdtempSync(join(tmpdir(), 'ultraguard-config-'));
   configDirs.push(d);
   return d;
 }
@@ -84,7 +84,7 @@ test('input whose tool_name is not Workflow is malformed: exit 2, no stdout', ()
     const r = run(input);
     assert.equal(r.status, 2, JSON.stringify(input));
     assert.equal(r.stdout, '');
-    assert.match(r.stderr, /tierguard gate internal error/);
+    assert.match(r.stderr, /ultraguard gate internal error/);
   }
 });
 
@@ -118,7 +118,7 @@ test('SOURCE: unreadable scriptPath', () => {
 test('PARSE: syntax error', () => {
   const reason = denied(run(fixture('parse-error')));
   assert.match(reason, /PARSE/);
-  assert.match(reason, /^tierguard/);
+  assert.match(reason, /^ultraguard/);
   assert.ok(reason.split('\n').some((l) => /^script:\d+ PARSE /.test(l)), reason);
 });
 
@@ -236,7 +236,7 @@ test('session cap: sidechain entries are ignored when reading the session model'
 const HAIKU_NONE = 'This session runs Haiku and no Haiku pair is allowed; switch with /model sonnet or /model opus.';
 
 function withPolicy(mutate, fn) {
-  const tmp = mkdtempSync(join(tmpdir(), 'tierguard-gate-'));
+  const tmp = mkdtempSync(join(tmpdir(), 'ultraguard-gate-'));
   try {
     for (const d of ['hooks', 'src', 'vendor', 'policy']) cpSync(join(ROOT, d), join(tmp, d), { recursive: true });
     const file = join(tmp, 'policy', 'default.json');
@@ -285,12 +285,12 @@ test('malformed stdin is an internal error: exit 2, stderr, no stdout', () => {
     const r = run(bad);
     assert.equal(r.status, 2, `input ${JSON.stringify(bad)}`);
     assert.equal(r.stdout, '');
-    assert.match(r.stderr, /tierguard gate internal error/);
+    assert.match(r.stderr, /ultraguard gate internal error/);
   }
 });
 
 test('broken policy is an internal error: exit 2', () => {
-  const tmp = mkdtempSync(join(tmpdir(), 'tierguard-gate-'));
+  const tmp = mkdtempSync(join(tmpdir(), 'ultraguard-gate-'));
   try {
     for (const d of ['hooks', 'src', 'vendor', 'policy']) cpSync(join(ROOT, d), join(tmp, d), { recursive: true });
     const gate = join(tmp, 'hooks', 'gate.mjs');
@@ -711,7 +711,7 @@ test('a clean launch writes a pass record with the script fingerprint', () => {
 test('the record is written exactly where recordPath says, one file per launch', () => {
   const r = run(launch(stageScript('build', 'sonnet', 'high'), 'opus', { session_id: 'sess_1', tool_use_id: 'toolu_A' }));
   clean(r);
-  const dir = join(r.configDir, 'tierguard', 'sessions', 'sess_1');
+  const dir = join(r.configDir, 'ultraguard', 'sessions', 'sess_1');
   assert.deepEqual(readdirSync(dir), ['toolu_A.gate.json']);
   assert.equal(recordPath(r.configDir, 'sess_1', 'toolu_A', 'gate'), join(dir, 'toolu_A.gate.json'));
 });
@@ -764,13 +764,13 @@ test('a parse error records the source fingerprint, no stages and an unknown bou
 });
 
 test('the config dir is CLAUDE_CONFIG_DIR trimmed, else ~/.claude', () => {
-  const base = mkdtempSync(join(tmpdir(), 'tierguard-cfg-'));
+  const base = mkdtempSync(join(tmpdir(), 'ultraguard-cfg-'));
   configDirs.push(base);
   const padded = run(fixture('clean'), { configDir: `  ${base}  ` });
   clean(padded);
   assert.ok(existsSync(recordPath(base, 'harness', 'toolu_harness', 'gate')));
 
-  const home = mkdtempSync(join(tmpdir(), 'tierguard-home-'));
+  const home = mkdtempSync(join(tmpdir(), 'ultraguard-home-'));
   configDirs.push(home);
   for (const blank of ['', '   ']) {
     const r = run(fixture('clean'), { env: cleanEnv({ HOME: home }), configDir: blank });
@@ -789,10 +789,10 @@ test('an invalid session_id writes under unknown; an invalid or missing tool_use
     const r = run(launch(stageScript('build', 'sonnet', 'high'), 'opus', { tool_use_id: bad }));
     assert.equal(r.status, 2, JSON.stringify(bad));
     assert.equal(r.stdout, '');
-    assert.match(r.stderr, /tierguard gate internal error/);
+    assert.match(r.stderr, /ultraguard gate internal error/);
     assert.match(r.stderr, /cannot write the gate record/);
     assert.match(r.stderr, /tool_use_id/);
-    assert.ok(!existsSync(join(r.configDir, 'tierguard')), JSON.stringify(bad));
+    assert.ok(!existsSync(join(r.configDir, 'ultraguard')), JSON.stringify(bad));
   }
   const missing = launch(stageScript('build', 'sonnet', 'high'));
   delete missing.tool_use_id;
@@ -819,11 +819,11 @@ test('a FANOUT deny omits the blocked_on snippet when every opus stage already h
 test('a deny with an invalid tool_use_id still denies and writes nothing', () => {
   const r = run(launch("await agent('x', { label: 'build: x', model: 'sonnet', effort: 'low' })\n", 'opus', { tool_use_id: 'a/b' }));
   denied(r);
-  assert.ok(!existsSync(join(r.configDir, 'tierguard')));
+  assert.ok(!existsSync(join(r.configDir, 'ultraguard')));
 });
 
 test('when the record cannot be written a clean launch exits 2 naming the path, and a deny still prints its deny', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'tierguard-blocked-'));
+  const dir = mkdtempSync(join(tmpdir(), 'ultraguard-blocked-'));
   configDirs.push(dir);
   const asFile = join(dir, 'config-is-a-file');
   writeFileSync(asFile, 'x');
@@ -1058,11 +1058,11 @@ test('the session table of conditional pairs does not leak into a deny: pair lin
   assert.match(reason, /^decide: opus × \{medium, high, xhigh\}$/m);
 });
 
-test('a gate run never writes outside CLAUDE_CONFIG_DIR/tierguard', () => {
+test('a gate run never writes outside CLAUDE_CONFIG_DIR/ultraguard', () => {
   const r = run(fixture('clean'));
   clean(r);
-  assert.deepEqual(readdirSync(r.configDir), ['tierguard']);
-  assert.deepEqual(readdirSync(join(r.configDir, 'tierguard')), ['sessions']);
+  assert.deepEqual(readdirSync(r.configDir), ['ultraguard']);
+  assert.deepEqual(readdirSync(join(r.configDir, 'ultraguard')), ['sessions']);
 });
 
 test('investigation words in opus-class labels are denied with LABEL on any session', () => {

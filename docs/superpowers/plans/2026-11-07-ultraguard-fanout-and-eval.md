@@ -1,24 +1,24 @@
-# tierguard 0.4.7: fan-out rules and tierguard-eval Implementation Plan
+# ultraguard 0.4.7: fan-out rules and ultraguard-eval Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Cap Opus at 3 concurrent agents and move investigation and simple reviews to Sonnet in the gate, log every gate decision, and add a live tierguard-eval indicator that proves each running workflow followed the approved plan.
+**Goal:** Cap Opus at 3 concurrent agents and move investigation and simple reviews to Sonnet in the gate, log every gate decision, and add a live ultraguard-eval indicator that proves each running workflow followed the approved plan.
 
 **Architecture:** The classic `PreToolUse` gate gains a static fan-out analysis (`src/fanout.mjs`), new class rules, and a per-launch record file. A hooks module in the same plugin (`hooks/eval.tsx`) watches workflow spawns and requests, judges each run with four deterministic checks kept in a pure core (`src/eval.mjs`), draws a band and a pane, and writes a per-run record.
 
 **Tech Stack:** Plain ESM JavaScript on Node 18 (no Node 20+ APIs, no dependencies), vendored acorn 8.19.0, Claude Code 2.1.319 mod API (TypeScript hooks module).
 
-**Spec:** `docs/superpowers/specs/2026-11-07-tierguard-fanout-and-eval-design.md`
+**Spec:** `docs/superpowers/specs/2026-11-07-ultraguard-fanout-and-eval-design.md`
 
 ## Global Constraints
 
 - Node 18 runtime for hooks and CI; tests run with `npm test` (`node --test tests/*.test.js`).
 - No dependencies, no build step. Keep comments to the absolute minimum.
-- Version `0.4.7` in `package.json`, `.claude-plugin/plugin.json` and the `tierguard` entry of `.claude-plugin/marketplace.json`.
+- Version `0.4.7` in `package.json`, `.claude-plugin/plugin.json` and the `ultraguard` entry of `.claude-plugin/marketplace.json`.
 - Limits: `maxConcurrentOpus: 3`, `bigFanout: 3`.
 - Efforts are `medium`, `high`, `xhigh` only; models are the aliases `opus`, `sonnet`, `haiku`.
-- Record files: `<configDir>/tierguard/sessions/<session>/<id>.gate.json` and `.eval.json`, built with `recordPath` from `src/record.mjs`. `<configDir>` is `CLAUDE_CONFIG_DIR` trimmed, else `~/.claude`.
-- tierguard makes no model call anywhere.
+- Record files: `<configDir>/ultraguard/sessions/<session>/<id>.gate.json` and `.eval.json`, built with `recordPath` from `src/record.mjs`. `<configDir>` is `CLAUDE_CONFIG_DIR` trimmed, else `~/.claude`.
+- ultraguard makes no model call anywhere.
 - Tests must never write under the real `~/.claude`: every gate test sets `CLAUDE_CONFIG_DIR` to a temp dir.
 
 ## Review Focus
@@ -67,7 +67,7 @@
 
 - [ ] **Step 3: Implement `fanout(ast, calls, stages, limits)`** per the spec's semantics, including the three extra recognised forms (`.then/.catch/.finally`, `slice(e, e + K)`, functions passed by name). Recurse with a memo per function node and a visiting set for recursion. Any `agent()` call or Opus-bearing function value reached in no recognised position makes `maxOpus` `Infinity`. Message texts:
   - over limit: ``Up to ${n} opus agents can run at once here; the limit is ${limit}. Keep at most the ${limit} most complex on opus and run the rest on sonnet (items.slice(0, ${limit}) on opus, items.slice(${limit}) on sonnet), or batch them: for (let i = 0; i < items.length; i += ${limit}) await parallel(items.slice(i, i + ${limit}).map(...)).``
-  - unknown: ``tierguard cannot count how many opus agents run at once here (${why}). Give the opus part a literal list, a const array literal, Array.from({ length: N }), .slice(0, N) or .slice(i, i + N) with N at most ${limit}, or await the opus agents one at a time.``
+  - unknown: ``ultraguard cannot count how many opus agents run at once here (${why}). Give the opus part a literal list, a const array literal, Array.from({ length: N }), .slice(0, N) or .slice(i, i + N) with N at most ${limit}, or await the opus agents one at a time.``
   Report one error per Opus stage that contributes to the over-limit or unknown bound, with that stage's line and label.
 
 - [ ] **Step 4: Run** `node --test tests/fanout.test.js`. Expected: PASS.
@@ -87,7 +87,7 @@
   - `policy.test.js`: `investigate` exists with only `sonnet × {medium, high, xhigh}`; `judge.verdictPairs.sonnet` and `decide|synth|design.fanoutPairs.sonnet` are `[medium, high, xhigh]`; `limits` is `{ maxConcurrentOpus: 3, bigFanout: 3 }`; `loadPolicy` throws on a bad `fanoutPairs` model, a bad `verdictPairs` effort, and a non-integer `limits` value.
   - `analyze.test.js`: `verdict === true` for `properties: { pass: { type: 'boolean' }, evidence: { type: 'string', description: 'x' }, blocked_on: … }` in any order; `false` with an extra key, `pass` typed `string`, a missing `evidence`, or a non-literal value; `calls.length === stages.length`.
   - `rules.test.js` on an Opus session: `judge` sonnet/high passes with `verdict: true`, fails without it and the message contains `single yes/no review`; `decide` sonnet/high passes with `bigFanout: true`, fails without and the message contains `more than 3 agents`; `investigate` opus fails; on a Sonnet session `judge` sonnet without verdict passes and `decide` sonnet without fan-out passes.
-  - `gate.test.js`: every run sets `CLAUDE_CONFIG_DIR` to a fresh temp dir and passes `session_id` and `tool_use_id`. A clean launch writes `<dir>/tierguard/sessions/<sid>/<tuid>.gate.json` with `decision: 'pass'` and `fingerprint === sha256Hex(script)` (for `scriptPath`, the file's text); a denied launch writes `decision: 'deny'` with its `errors`; the four-Opus fixture on an Opus transcript is denied with a `FANOUT` line; on a Sonnet transcript the same script reports `PAIR`, not `FANOUT`; when the record cannot be written (config dir is a file) a clean launch exits 2 with the path on stderr, while a deny still prints its deny.
+  - `gate.test.js`: every run sets `CLAUDE_CONFIG_DIR` to a fresh temp dir and passes `session_id` and `tool_use_id`. A clean launch writes `<dir>/ultraguard/sessions/<sid>/<tuid>.gate.json` with `decision: 'pass'` and `fingerprint === sha256Hex(script)` (for `scriptPath`, the file's text); a denied launch writes `decision: 'deny'` with its `errors`; the four-Opus fixture on an Opus transcript is denied with a `FANOUT` line; on a Sonnet transcript the same script reports `PAIR`, not `FANOUT`; when the record cannot be written (config dir is a file) a clean launch exits 2 with the path on stderr, while a deny still prints its deny.
   - `session.test.js`: the pairs table shows `investigate:` and marks the conditional pairs, e.g. `sonnet × {medium, high, xhigh} (yes/no verdict schema only)` for `judge:` and `(in a fan-out of more than 3 only)` for `decide:`.
 
 - [ ] **Step 2: Run** `npm test`. Expected: the new tests FAIL.
@@ -96,7 +96,7 @@
 
 - [ ] **Step 4: Run** `npm test`. Expected: PASS.
 
-### Task 3: tierguard-eval mod
+### Task 3: ultraguard-eval mod
 
 **Files:**
 - Create: `src/eval.mjs`, `hooks/eval.tsx`, `types/index.d.ts`, `tests/eval.test.js`, `hooks/eval.test.tsx`
@@ -128,19 +128,19 @@
 
 - [ ] **Step 4: Run** `node --test tests/eval.test.js`. Expected: PASS.
 
-- [ ] **Step 5: Implement `hooks/eval.tsx`** against `/tmp/claude-1000/bundled-skills/2.1.319/5a6239da8691e5f3b60b76ae82fa02f6/plugin-authoring/types/claude-code.d.ts` and the examples next to it (`band.tsx`, `pane.tsx`, `pane.test.tsx`, `tool-call.ts`), with the hooks the spec's "What it observes" lists. Keep the state in one `atom` declared in `types/index.d.ts`. Config dir: `$.env.get('CLAUDE_CONFIG_DIR')` trimmed, else `$.env.get('HOME')` (or `USERPROFILE`) + `/.claude`. Read the gate record lazily on the first spawn or launch result of a run; write the `.eval.json` on every change of that run. The band and pane follow the spec's "What it draws"; `/tierguard` opens the pane. Every hook passes its event on with `next(e)` and never denies or rewrites.
+- [ ] **Step 5: Implement `hooks/eval.tsx`** against `/tmp/claude-1000/bundled-skills/2.1.319/5a6239da8691e5f3b60b76ae82fa02f6/plugin-authoring/types/claude-code.d.ts` and the examples next to it (`band.tsx`, `pane.tsx`, `pane.test.tsx`, `tool-call.ts`), with the hooks the spec's "What it observes" lists. Keep the state in one `atom` declared in `types/index.d.ts`. Config dir: `$.env.get('CLAUDE_CONFIG_DIR')` trimmed, else `$.env.get('HOME')` (or `USERPROFILE`) + `/.claude`. Read the gate record lazily on the first spawn or launch result of a run; write the `.eval.json` on every change of that run. The band and pane follow the spec's "What it draws"; `/ultraguard` opens the pane. Every hook passes its event on with `next(e)` and never denies or rewrites.
 
-- [ ] **Step 6: Write `hooks/eval.test.tsx`** with `claude-code/testing`: a `tool.call` on `Workflow` followed by a workflow `agent.spawn` with a gate record on disk draws a band whose text contains `tierguard-eval`; without the record the run is red.
+- [ ] **Step 6: Write `hooks/eval.test.tsx`** with `claude-code/testing`: a `tool.call` on `Workflow` followed by a workflow `agent.spawn` with a gate record on disk draws a band whose text contains `ultraguard-eval`; without the record the run is red.
 
 - [ ] **Step 7: Run** `claude plugin validate .` and `claude plugin test .` from the repo root. Expected: validation passes; tests pass.
 
 ### Task 4: guidance, docs, version
 
 **Files:**
-- Modify: `policy/guidance.md`, `README.md`, `CHANGELOG.md`, `package.json` (version), `.claude-plugin/marketplace.json` (tierguard version)
+- Modify: `policy/guidance.md`, `README.md`, `CHANGELOG.md`, `package.json` (version), `.claude-plugin/marketplace.json` (ultraguard version)
 
 - [ ] **Step 1:** `policy/guidance.md`: the class table with `investigate:` and the conditional pairs; hard rules for the 3-Opus cap and verdict schema; a Judgment line "Opus is for design, decisions, synthesis and complex reviews; investigation and the simpler agents of a big fan-out run on Sonnet"; the `slice(0, 3)` pattern and the batching loop as code; the verdict schema as code. Keep the whole SessionStart context (guidance plus rendered table) under 8,000 characters.
-- [ ] **Step 2:** README: `FANOUT` in the deny code table; the new rules in "The policy in brief"; a "Records" section with both file paths and their fields; a "tierguard-eval" section (band, pane, four checks, what red means, that it only shows running workflows, and that no button while a workflow runs means tierguard is not loaded); replace "It keeps no state and writes no files" with the record behaviour and the fail-closed write.
+- [ ] **Step 2:** README: `FANOUT` in the deny code table; the new rules in "The policy in brief"; a "Records" section with both file paths and their fields; a "ultraguard-eval" section (band, pane, four checks, what red means, that it only shows running workflows, and that no button while a workflow runs means ultraguard is not loaded); replace "It keeps no state and writes no files" with the record behaviour and the fail-closed write.
 - [ ] **Step 3:** CHANGELOG `## 0.4.7` entry; versions to `0.4.7`.
 - [ ] **Step 4: Run** `npm test`. Expected: PASS, including `tests/version-sync.test.js` (after Task 3 bumps `plugin.json`).
 
@@ -149,4 +149,4 @@
 - [ ] `npm test`, `claude plugin validate .`, `claude plugin test .` all pass.
 - [ ] Adversarial review of the fan-out analysis, the mod against the API, and the gate record path; fix what survives.
 - [ ] Live, with `--plugin-dir` and ultracode: compliant launch passes and writes its `.gate.json`; a 10-Opus fan-out is denied with `FANOUT`; the `slice(0, 3)` pattern passes; in an interactive session the band shows green for a compliant run, the pane drills down, and a run launched with the gate disabled in a test copy shows red.
-- [ ] Commit, push `tierguard`, open the PR to `main`, merge.
+- [ ] Commit, push `ultraguard`, open the PR to `main`, merge.

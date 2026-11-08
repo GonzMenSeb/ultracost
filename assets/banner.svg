@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1280" height="320" viewBox="0 0 1280 320" role="img" aria-labelledby="t d">
-  <title id="t">tierguard</title>
+  <title id="t">ultraguard</title>
   <desc id="d">Every ultracode workflow on the right model. Opus only where judgment pays, never more than 3 at once.</desc>
   <defs>
     <radialGradient id="glow" cx="1010" cy="160" r="300" gradientUnits="userSpaceOnUse">
@@ -14,7 +14,7 @@
     <text x="76" y="92">CLAUDE CODE PLUGIN</text>
   </g>
   <g font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif">
-    <text x="72" y="168" font-size="80" font-weight="700" fill="#e4e4e7" letter-spacing="-2">tierguard</text>
+    <text x="72" y="168" font-size="80" font-weight="700" fill="#e4e4e7" letter-spacing="-2">ultraguard</text>
     <text x="76" y="220" font-size="25" fill="#e4e4e7">Every ultracode workflow on the right model.</text>
     <text x="76" y="256" font-size="25" fill="#a1a1aa">Opus only where judgment pays, never more than 3 at once.</text>
   </g>

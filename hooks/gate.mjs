@@ -163,7 +163,7 @@ function buildReason(allErrors, stages, rawFile, policy, sm, analyzed) {
     const shown = items.slice(0, k);
     const full = mode === 'full';
     const lines = [
-      `tierguard blocked this Workflow launch (${errors.length} problem${errors.length === 1 ? '' : 's'})${full ? '' : ` in ${file}`}. ${header}`,
+      `ultraguard blocked this Workflow launch (${errors.length} problem${errors.length === 1 ? '' : 's'})${full ? '' : ` in ${file}`}. ${header}`,
     ];
     for (const i of shown) {
       const loc = i.lines.length ? `${full ? file : ''}:${spans(i.lines)}` : full && i.stageBound ? file : '';
@@ -318,6 +318,6 @@ async function main() {
 try {
   await main();
 } catch (e) {
-  process.stderr.write(`tierguard gate internal error: ${e && e.stack ? e.stack : e}\n`);
+  process.stderr.write(`ultraguard gate internal error: ${e && e.stack ? e.stack : e}\n`);
   process.exitCode = 2;
 }
