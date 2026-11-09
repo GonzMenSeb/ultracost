@@ -507,7 +507,7 @@ What the session model would have spent on the same task is not observable, so i
 
 ### The estimator
 
-The cost of a task on configuration B equals its observed cost on configuration A times a ratio between the two, learned from tasks run on both (Smékal, "probe-calibrated shared shape", arXiv 2608.25399, Sec 3.4). The observed run is the probe. With one probe the paper measured a median error of 36% and needed a ×1.9 allowance to cover 90% of cases.
+The cost of a task on configuration B equals its observed cost on configuration A times a ratio between the two, learned from tasks run on both (Smékal, "probe-calibrated shared shape", arXiv 2608.25399, Sec 3.4). The observed run is the probe. With one probe the paper measured a median error of 36% and needed a ×1.9 allowance to cover 90% of cases. That figure is for a held-out task on the same model (Kimi K3, 5 tasks, 11 specs × 3 efforts), with errors measured against cell means, so ×1.9 is a lower bound for transitions between models.
 
 - **Configuration:** a (model family, effort) pair, such as `sonnet:high`. A transition is actual to baseline, such as `sonnet:high>opus:xhigh`.
 - **Buckets:** each transition has three token ratios, the same three the limit meter weighs: `output` (thinking included), `fresh` (input plus cache write, keeping the actual split between them) and `read` (cache reads).
@@ -521,16 +521,16 @@ The cost of a task on configuration B equals its observed cost on configuration 
 In this order, first match wins:
 
 1. **Measured**, from the paired replays.
-2. **Chained:** a measured ratio into the same baseline family at another effort, times a published effort step within that family. Effort steps within one model agree across sources (Opus 5.5 xhigh ÷ high: 1.75, 2.55, 2.98 and 2.34 across four sources, log sd 0.22), unlike steps between models.
+2. **Chained:** a measured ratio into the same baseline family at another effort, times a published effort step within that family. Effort steps within one model agree across sources (Opus 5.5 xhigh ÷ high: 1.75, 2.55, 2.98 and 2.34 across four sources, log sd 0.22), unlike steps between models. Steps into and out of `max` come from the Artificial Analysis run alone (Opus high ÷ max: 2.90). The community CSV's `max` cells are left out: its Opus `max` cell needed a permission for an automated test and its Haiku `max` cell wrote its own test script.
 3. **Prior:** published cost per task for both configurations, converted to a token ratio by dividing by the input-price ratio, applied to all three buckets, with log sd = max(0.6, spread between sources). The same model at another effort (an Opus agent at medium in an Opus session at high) uses the published effort step for that pair, applied the same way, with log sd = the spread between sources (0.4 with one source) and no between-run τ.
 
-Chaining passed its one test: measured Opus medium times the published Opus high ÷ medium (1.45) predicted 2.31 for the high transition, inside the measured 2.19 to 2.89.
+Chaining passed its one test in dollars: measured Opus medium times the published Opus high ÷ medium (1.45) predicted 2.31 for the high transition, inside the measured 2.19 to 2.89. Per bucket the read prediction was low: the errors in log were −0.18 for output, +0.13 for fresh and −0.69 for read, because the measured read ratio grew 2.90 against the published 1.45, and the dollars came out right by cancellation. The two cells are different workflows, so this is weak evidence.
 
 ### Margin of error
 
 - **Shared ratio error:** each measured bucket ratio has a 90% Fieller interval with Student t at n − 1 degrees of freedom. Its log half-width ÷ 1.645 is the draw's standard deviation. If the interval is unbounded, that transition falls through to chained or prior.
-- **Between-workflow error (τ):** the same transition saved 29% on long code mapping and 52% on short checks, so a workflow carries an error of its own: `τ² = Σ (ln R_workflow − ln R_transition)² / max(1, W − T)` over the replayed workflows, floored at 0.15. Today τ = 0.30.
-- **Per-agent error:** the sample sd of the paired agents' log ratios, mean-corrected (`− s²/2`) so its multiplier averages 1.
+- **Between-workflow error (τ):** the same transition saved 29% on long code mapping and 52% on short checks, so a workflow carries an error of its own: `τ² = Σ (ln R_workflow − ln R_transition)² / max(1, W − T)` over the replayed workflows, floored at 0.22, the shape-mismatch floor of Smékal's decomposition. Today τ = 0.30. It rests on 3 workflow cells and 2 transitions, one degree of freedom, so the floor protects the next recalibration.
+- **Per-agent error:** the sample sd of the paired agents' log ratios, mean-corrected (`− s²/2`) so its multiplier averages 1. The pooled sd of each bucket (output 0.41, fresh 0.22, read 0.67) must stay at or above the single-run noise floor (0.16, 0.18 and 0.19): the log sd between two runs of one configuration in the HAL traces (0.227, 0.259, 0.273) divided by √2. A test checks it.
 - **Monte Carlo:** 4,000 draws, seeded from the run key, so the pane shows the same numbers on every draw. Per draw: one deviate per run (τ), one per transition (shared ratio, all buckets) and one per agent (all buckets).
 - **Shown as a range:** the pane shows the 5th to 95th percentile as low to high, such as `+30.1 (3.0 to 91.6)`, never as ±. The note under the figures reads "range = 9 times in 10".
 
@@ -539,8 +539,8 @@ Chaining passed its one test: measured Opus medium times the published Opus high
 | File | Content |
 |---|---|
 | `data/replays.json` | The 22 measured pairs, as numbers only: workflow, task kind, `from` and `to` configuration, and the `input`, `output`, `cacheRead` and `cacheWrite` tokens of the actual and baseline run. No prompts, labels or paths. Records the Claude Code version (2.1.319) and the date. |
-| `data/published.json` | Published cost per task by family and effort, from four sources, with their URLs. Costs are compared only inside one source, never across sources. |
-| `data/prices.json` | List prices per million tokens by family (see [Dollars](#dollars)). |
+| `data/published.json` | Published cost per task by family and effort, from five sources, with their URLs: Artificial Analysis (Intelligence Index v5.0.1, which is in the source id because it re-baselines silently), Anthropic's SWE-bench Pro subset, Anthropic's 370-task agentic benchmark, Anthropic's 134-task Managed Agents run (Opus 5.5 low and medium, a source of its own) and the community CSV. Source ids are unique. The community CSV has no `max` cell, so every step and prior into or out of `max` comes from Artificial Analysis. Costs are compared only inside one source, never across sources. |
+| `data/prices.json` | List prices per million tokens by family and, for Opus 5, Sonnet 5 and Fable 5.2, by version (see [Dollars](#dollars)). |
 | `data/ratios.json` | Generated from the three files above. It ships with the plugin: `tau`, `pooledAgentSd`, the `measured` transitions, the effort `steps` and the `priors`. |
 
 ```
@@ -554,17 +554,22 @@ The first rewrites `data/ratios.json` from the other three files. `--check` writ
 
 ### Dollars
 
-List prices per million tokens in `data/prices.json` (platform.claude.com pricing, 2026-11-08):
+List prices per million tokens in `data/prices.json` (platform.claude.com pricing, 2026-11-09):
 
-| Family | Input | Output | Cache read | Cache write |
-|---|---|---|---|---|
-| Opus 5.5 | 4 | 20 | 0.20 | 5 |
-| Sonnet 5.5 | 2 | 10 | 0.10 | 2.50 |
-| Haiku 5.5 (prompt ≤ 100k) | 0.10 | 0.50 | 0.01 | 0.125 |
-| Haiku 5.5 (prompt > 100k) | 0.50 | 2.50 | 0.05 | 0.625 |
-| Fable 5.1 | 10 | 50 | 0.25 | 12.50 |
+| Model | Row | Input | Output | Cache read | Cache write |
+|---|---|---|---|---|---|
+| Opus 5.5 | `opus` | 4 | 20 | 0.20 | 5 |
+| Opus 5 | `opus-5` | 5 | 25 | 0.50 | 6.25 |
+| Sonnet 5.5 | `sonnet` | 2 | 10 | 0.10 | 2.50 |
+| Sonnet 5 | `sonnet-5` | 2 | 10 | 0.20 | 2.50 |
+| Haiku 5.5 (prompt ≤ 100k) | `haiku` | 0.10 | 0.50 | 0.01 | 0.125 |
+| Haiku 5.5 (prompt > 100k) | `haiku` | 0.50 | 2.50 | 0.05 | 0.625 |
+| Fable 5.1 | `fable` | 10 | 50 | 0.25 | 12.50 |
+| Fable 5.2 | `fable-5-2` | 8 | 40 | 0.20 | 10 |
 
-Cache writes are priced at the 5-minute rate, because `usage` does not split them by TTL. Haiku's long-prompt rule applies per request on input plus cache read plus cache write. A model with no row is unknown; it never falls back to Opus. The rows cover the 5 generation (Opus 5.5, Sonnet 5.5, Haiku 5.5, Fable 5.1): an older model such as `claude-opus-4-1` is unknown.
+A model id picks its row by family and version, with or without a date or `[1m]`: `claude-opus-5` is the Opus 5 row and `claude-opus-5-5` the Opus 5.5 row, `claude-sonnet-5` and `claude-sonnet-5-5` likewise, and `claude-fable-5-2` is the Fable 5.2 row while `claude-fable-5-1` stays on the Fable 5.1 row. Ratios stay keyed by family (`opus`, `sonnet`, `haiku`, `fable`): a version has a price row, not ratios of its own.
+
+Cache writes are priced at the 5-minute rate. The `usage` object does split writes into `ephemeral_5m_input_tokens` and `ephemeral_1h_input_tokens`, but ultraguard reads only the flat `cache_creation_input_tokens`. Claude Code defaults to a 5-minute cache for API-key users, the users shown dollars, and workflow agents use 5 minutes even on a subscription, so the 5-minute price is right by default. It is 1.6× too low for the tokens of a user who sets a 1-hour TTL (2× input against 1.25×). Haiku's long-prompt rule applies per request on input plus cache read plus cache write. A model with no row is unknown; it never falls back to Opus. The rows cover Opus 5 and 5.5, Sonnet 5 and 5.5, Haiku 5.5 and Fable 5.1 and 5.2: an older model such as `claude-opus-4-1` is unknown. `claude-fable-5` (Fable 5) is not in the table and resolves to the Fable 5.1 row, although the pricing page charges $1 for its cache reads.
 
 ### Limit percentages
 

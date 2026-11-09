@@ -8,7 +8,7 @@ const AGENT_EFFORTS = ['medium', 'high', 'xhigh']
 const Z90 = 1.645
 const SINGLE_SOURCE_STEP_SD = 0.4
 const MIN_PRIOR_SD = 0.6
-const MIN_TAU = 0.15
+const MIN_TAU = 0.22
 
 const round = (x) => Math.round(x * 1e9) / 1e9
 const mean = (v) => v.reduce((s, x) => s + x, 0) / v.length
