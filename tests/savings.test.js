@@ -152,6 +152,43 @@ test('xhigh is chained from the measured high ratio', () => {
   assert.deepEqual(s.sources.chained, [{ from: 'sonnet:high', to: 'opus:xhigh', via: 'high' }])
 })
 
+test('a chained ratio adds the measured and the step log ratios bucket by bucket', () => {
+  for (const [to, via] of [['opus:xhigh', 'high'], ['opus:low', 'medium']]) {
+    const r = ratioFor(ratios, 'sonnet:high', to)
+    assert.equal(r.source, 'chained')
+    assert.equal(r.via, via)
+    const m = ratios.measured[`sonnet:high>opus:${via}`]
+    const step = ratios.steps.opus[`${via}>${to.split(':')[1]}`]
+    for (const name of ['output', 'fresh', 'read']) {
+      assert.ok(Math.abs(r[name].mu - (m[name].mu + step[name].mu)) < 1e-12, `${to} ${name}`)
+      assert.ok(Math.abs(r[name].sigma - Math.sqrt(m[name].sigma ** 2 + step[name].sd ** 2)) < 1e-12, `${to} ${name}`)
+    }
+    assert.notEqual(r.output.mu - m.output.mu, r.read.mu - m.read.mu)
+  }
+})
+
+test('the same family at another effort uses the step of each bucket', () => {
+  const r = ratioFor(ratios, 'sonnet:high', 'sonnet:xhigh')
+  assert.equal(r.source, 'prior')
+  const step = ratios.steps.sonnet['high>xhigh']
+  for (const name of ['output', 'fresh', 'read']) assert.deepEqual(r[name], { mu: step[name].mu, sigma: step[name].sd })
+  assert.ok(Math.abs(Math.exp(r.output.mu) - 2.21) < 0.01)
+  assert.ok(Math.abs(Math.exp(r.fresh.mu) - 2.11) < 0.01)
+  assert.ok(Math.abs(Math.exp(r.read.mu) - 3.28) < 0.01)
+})
+
+test('a step without buckets applies its scalar to all three buckets', () => {
+  const fable = ratioFor(ratios, 'fable:high', 'fable:xhigh')
+  const step = ratios.steps.fable['high>xhigh']
+  for (const name of ['output', 'fresh', 'read']) assert.deepEqual(fable[name], { mu: step.mu, sigma: step.sd })
+  const scalar = ({ mu, sd, sources }) => ({ mu, sd, sources })
+  const bare = { ...ratios, steps: { ...ratios.steps, opus: Object.fromEntries(Object.entries(ratios.steps.opus).map(([k, s]) => [k, scalar(s)])) } }
+  const r = ratioFor(bare, 'sonnet:high', 'opus:xhigh')
+  const m = ratios.measured['sonnet:high>opus:high']
+  const s = ratios.steps.opus['high>xhigh']
+  for (const name of ['output', 'fresh', 'read']) assert.ok(Math.abs(r[name].mu - (m[name].mu + s.mu)) < 1e-12)
+})
+
 test('a fable session falls back to the published prior', () => {
   const r = ratioFor(ratios, 'sonnet:high', 'fable:high')
   assert.equal(r.source, 'prior')
@@ -160,8 +197,8 @@ test('a fable session falls back to the published prior', () => {
   const step = ratioFor(ratios, 'opus:medium', 'opus:high')
   assert.equal(step.source, 'prior')
   assert.equal(step.tau, 0)
-  assert.ok(Math.abs(step.output.mu - ratios.steps.opus['medium>high'].mu) < 1e-9)
-  assert.equal(step.output.sigma, ratios.steps.opus['medium>high'].sd)
+  assert.ok(Math.abs(step.output.mu - ratios.steps.opus['medium>high'].output.mu) < 1e-9)
+  assert.equal(step.output.sigma, ratios.steps.opus['medium>high'].output.sd)
   assert.equal(ratioFor(ratios, 'sonnet:high', 'sonnet:xhigh').source, 'prior')
   assert.equal(ratioFor(ratios, 'sonnet:high', 'opus:high').source, 'measured')
 })
