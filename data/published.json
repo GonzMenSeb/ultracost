@@ -10,6 +10,53 @@
         "sonnet": { "low": 0.51, "medium": 0.78, "high": 1.64, "xhigh": 4.09, "max": 10.02 },
         "haiku": { "low": 0.04, "medium": 0.09, "high": 0.16, "xhigh": 0.25, "max": 0.41 },
         "fable": { "low": 4.47, "medium": 5.56, "high": 7.54, "xhigh": 10.85, "max": 12.99 }
+      },
+      "wholeIndex": {
+        "unit": "one run of the whole index per effort: tokens in tokens, costs in USD; inputTokens counts non-cache input, cache reads and cache writes",
+        "sonnet": {
+          "from": "model pages claude-sonnet-5-5-low, -medium, -high, -xhigh and claude-sonnet-5-5 (max), embedded JSON canonicalIntelligenceIndexTokenCount and intelligenceIndexCost, verbatim, read 2026-11-09",
+          "prices": { "input": 2, "output": 10, "cacheRead": 0.1, "cacheWrite": 2.5 },
+          "efforts": {
+            "low": { "outputTokens": 21348593, "inputTokens": 1087128505, "costToRun": 499.2013947177689, "nonCacheInputCost": 37.726066, "cacheReadCost": 100.94476172009296, "cacheWriteCost": 147.04463699767595 },
+            "medium": { "outputTokens": 29396702, "inputTokens": 1662829802, "costToRun": 679.1556751397377, "nonCacheInputCost": 37.726464, "cacheReadCost": 156.7689264108443, "cacheWriteCost": 190.69326472889333 },
+            "high": { "outputTokens": 54656782, "inputTokens": 3783822612, "costToRun": 1268.3005112765024, "nonCacheInputCost": 37.709102, "cacheReadCost": 363.6831901343124, "cacheWriteCost": 320.34039914219017 },
+            "xhigh": { "outputTokens": 110709101, "inputTokens": 11231204205, "costToRun": 2902.498414646481, "nonCacheInputCost": 37.704044, "cacheReadCost": 1094.7157123688967, "cacheWriteCost": 662.987648277584 },
+            "max": { "outputTokens": 335221511, "inputTokens": 30617883701, "costToRun": 7980.631329822837, "nonCacheInputCost": 37.555606, "cacheReadCost": 2996.121005465715, "cacheWriteCost": 1594.7396083571216 }
+          }
+        },
+        "opus": {
+          "from": "model and comparison pages claude-opus-5-5-low, -medium, -high, -xhigh and claude-opus-5-5 (max), out tokens, in tokens and cost to run, read 2026-11-09 through a summarizing fetcher, 3 significant digits; no cache split is published",
+          "efforts": {
+            "low": { "outputTokens": 21100000, "inputTokens": 1170000000, "costToRun": 980 },
+            "medium": { "outputTokens": 42500000, "inputTokens": 3250000000, "costToRun": 2031 },
+            "high": { "outputTokens": 56100000, "inputTokens": 4740000000, "costToRun": 2716 },
+            "xhigh": { "outputTokens": 101000000, "inputTokens": 9020000000, "costToRun": 4766 },
+            "max": { "outputTokens": 218000000, "inputTokens": 15600000000, "costToRun": 8910 }
+          }
+        },
+        "haiku": {
+          "from": "model and comparison pages claude-haiku-5-5-low, -medium, -high, -xhigh and claude-haiku-5-5 (max), out tokens, in tokens and cost to run, read 2026-11-09 through a summarizing fetcher, 3 significant digits; no cache split is published",
+          "efforts": {
+            "low": { "outputTokens": 29900000, "inputTokens": 1470000000, "costToRun": 40 },
+            "medium": { "outputTokens": 52700000, "inputTokens": 3130000000, "costToRun": 73 },
+            "high": { "outputTokens": 89800000, "inputTokens": 5520000000, "costToRun": 121 },
+            "xhigh": { "outputTokens": 151000000, "inputTokens": 8760000000, "costToRun": 193 },
+            "max": { "outputTokens": 298000000, "inputTokens": 14600000000, "costToRun": 339 }
+          }
+        }
+      },
+      "evaluations": {
+        "unit": "USD per task of each of the nine evaluations, unweighted",
+        "sonnet": {
+          "from": "model pages claude-sonnet-5-5-low, -medium, -high, -xhigh and claude-sonnet-5-5 (max), embedded JSON intelligenceIndexEvaluations[].costPerTask, verbatim, read 2026-11-09",
+          "efforts": {
+            "low": { "aa-briefcase": 0.8024816507958764, "automationbench-aa": 0.24077614362956895, "terminalbench-4-0": 1.284788105923259, "frontiercode-2-0": 0.24950248399035896, "omniscience": 0.0029058313333333334, "gdp-pdf": 0.37231423999999996, "hle-diamond": 0.014970598000000002, "critpt-v2-hard": 0.07313244490247214, "terminal-bench-science": 1.2344354493850858 },
+            "medium": { "aa-briefcase": 1.3920735497567018, "automationbench-aa": 0.26209815374334866, "terminalbench-4-0": 1.5781629739286835, "frontiercode-2-0": 0.3235497567070719, "omniscience": 0.003117971333333333, "gdp-pdf": 0.38142373999999996, "hle-diamond": 0.032728586000000004, "critpt-v2-hard": 0.09262695901858506, "terminal-bench-science": 2.135445979673252 },
+            "high": { "aa-briefcase": 3.270737112601085, "automationbench-aa": 0.3126108042587534, "terminalbench-4-0": 2.1862227174909825, "frontiercode-2-0": 0.7604061971175975, "omniscience": 0.005669974666666666, "gdp-pdf": 0.40860073999999996, "hle-diamond": 0.106834654, "critpt-v2-hard": 0.18050436842355566, "terminal-bench-science": 4.981271307441899 },
+            "xhigh": { "aa-briefcase": 6.975794181478667, "automationbench-aa": 0.42238802114334933, "terminalbench-4-0": 6.078427561993545, "frontiercode-2-0": 2.7144495443964427, "omniscience": 0.008826601333333333, "gdp-pdf": 0.46012694, "hle-diamond": 0.246289016, "critpt-v2-hard": 0.4478161035636011, "terminal-bench-science": 12.771635673518468 },
+            "max": { "aa-briefcase": 20.47390908599261, "automationbench-aa": 1.0324439998102977, "terminalbench-4-0": 12.64644160831714, "frontiercode-2-0": 11.557516178959974, "omniscience": 0.15182133866666667, "gdp-pdf": 0.7943279200000001, "hle-diamond": 0.803716788, "critpt-v2-hard": 1.926741603570175, "terminal-bench-science": 23.76070504582413 }
+          }
+        }
       }
     },
     {

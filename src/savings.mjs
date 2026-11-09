@@ -21,6 +21,7 @@ const scaleAll = (list, f) => {
 }
 
 const hasBuckets = (m) => m && NAMES.every((name) => m[name])
+const stepBucket = (step, name) => (hasBuckets(step) ? step[name] : step)
 
 export function ratioFor(ratios, from, to) {
   if (from === to) {
@@ -45,8 +46,8 @@ export function ratioFor(ratios, from, to) {
     const via = candidates[0]
     const m = ratios.measured[`${from}>${family}:${via}`]
     const step = ratios.steps[family][`${via}>${effort}`]
-    const bucket = (b) => ({ mu: b.mu + step.mu, sigma: Math.sqrt(b.sigma ** 2 + step.sd ** 2) })
-    return { ...shape(m, 'chained', { via }), ...Object.fromEntries(NAMES.map((name) => [name, bucket(m[name])])) }
+    const bucket = (b, s) => ({ mu: b.mu + s.mu, sigma: Math.sqrt(b.sigma ** 2 + s.sd ** 2) })
+    return { ...shape(m, 'chained', { via }), ...Object.fromEntries(NAMES.map((name) => [name, bucket(m[name], stepBucket(step, name))])) }
   }
 
   const prior = ratios.priors[`${from}>${to}`]
@@ -57,8 +58,8 @@ export function ratioFor(ratios, from, to) {
   const [fromFamily, fromEffort] = from.split(':')
   const step = fromFamily === family ? ratios.steps[family]?.[`${fromEffort}>${effort}`] : null
   if (step) {
-    const bucket = { mu: step.mu, sigma: step.sd }
-    return { source: 'prior', output: bucket, fresh: bucket, read: bucket, agentSd: { ...ratios.pooledAgentSd }, tau: 0, pairs: 0 }
+    const bucket = (s) => ({ mu: s.mu, sigma: s.sd })
+    return { source: 'prior', ...Object.fromEntries(NAMES.map((name) => [name, bucket(stepBucket(step, name))])), agentSd: { ...ratios.pooledAgentSd }, tau: 0, pairs: 0 }
   }
   return null
 }
