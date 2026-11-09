@@ -211,4 +211,12 @@ function main() {
   console.log(report({ cases: leaveOneOut({ replays, prices }), tau }))
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) main()
+const isMain = () => {
+  try {
+    return import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href
+  } catch {
+    return false
+  }
+}
+
+if (process.argv[1] && isMain()) main()

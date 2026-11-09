@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.18 - ultraguard
+
+- An effort step within one model now has a ratio per token type. The level stays the published multi-source cost ratio; the shape comes from Artificial Analysis's per-effort token counts. On Sonnet 5.5, high to xhigh is now output 2.21, fresh 2.11 and read 3.28 instead of 2.49 for all three. Opus and Haiku take output and input from Artificial Analysis and borrow Sonnet's fresh exponent (0.77), with 0.2 more spread on that bucket; Fable keeps one ratio for all three. On the replay mix dollars and limit figures move about 2% and the tokens-saved figure up to 51%, since most saved tokens are cache reads.
+- A step's spread is at least its spread across Artificial Analysis's nine evaluations, and never below 0.25: Opus high to xhigh goes from 0.22 to 0.37 and every step into `max` gets 0.70 or more. Ranges on chained and same-model transitions widen (an Opus xhigh baseline on the replay mix: low end 19% lower, high end 22% higher).
+- `node scripts/lowo.mjs` checks the measured ratios and τ by holding out one replayed workflow at a time. Only the two Opus-medium workflows can predict each other, so it holds one independent comparison: it implies τ ≈ 0.28 against 0.30 and neither confirms nor contradicts it.
+
 ## 0.4.17 - ultraguard
 
 - Limit figures read lower and closer to what the account did. A reading that jumps 2 points or more is not stored, since it mostly comes from usage this session cannot see (other sessions, claude.ai, another machine). On the 200 five-hour intervals of one machine 14 were jumps, and dropping them took the pooled rate from 2.68 to 1.49 points per list-price unit, so 5-hour and weekly figures fall about 1.8×. Intervals already stored with such a jump are ignored too.
