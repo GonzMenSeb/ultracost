@@ -476,8 +476,8 @@ An agent spawned for a run with no known launch is red with "not approved by the
 
 ### What it shows
 
-- A band above the prompt, only while at least one workflow run is active: a square (red if any active run is red, else green), the bold title `ultraguard-eval` and a dim summary such as `2 running · 1 red`. Selecting it opens the pane. `/ultraguard` opens it too. The band yields to a survey.
-- A pane with one row per active run, in aligned columns: a hollow square, the workflow's name, a short run id, the Opus, Sonnet and Haiku counts (the model in bold, in its color), and either the saved figure or the first failure. The focused row is drawn inside a rounded outline with a bold name; every row keeps the room of that outline, so nothing moves when the focus does. Enter on a row shows the four checks with ✓ or ✗ (a passing check adds its detail: the gate's approval time, the agent and request counts, the peak Opus count), then the workflow's phases with their agents (see [Phases in the detail](#phases-in-the-detail)), then the saved block. Esc goes back, then closes.
+- A band above the prompt, only while at least one workflow run is active: a square (red if any active run is red, else green), the bold title `ultraguard-eval` and a dim summary such as `2 running  1 red`. Selecting it opens the pane. `/ultraguard` opens it too. The band yields to a survey.
+- A pane with one row per active run, in aligned columns: a hollow square, the workflow's name, a short run id, the Opus, Sonnet and Haiku counts (the model in bold, in its color), and either the saved figure or the first failure. The focused row is drawn inside a rounded outline with a bold name and a filled square; every row keeps the room of that outline, so nothing moves when the focus does. Items are separated by spaces, never middle dots. Enter on a row shows the four checks with ✓ or ✗ (a passing check adds its detail: the gate's approval time, the agent and request counts, the peak Opus count), then the workflow's phases with their agents (see [Phases in the detail](#phases-in-the-detail)), then the saved block. Esc goes back, then closes.
 
 ### Limits
 
@@ -578,23 +578,27 @@ Usage from other sessions and claude.ai moves the meter without adding units her
 Enter on a run shows the four checks, then the run's phases like Claude Code's own workflow view: each phase is a row you can fold, and the agents that ran in it sit indented below.
 
 ```
-      agent                        approved          ran on            saved
-▾ ○ Collect  done · 2 agents · haiku 2                                 $0.34
-    ✓ grunt: merged PRs            haiku · xhigh     haiku · xhigh     $0.05
-    ✓ grunt: changelog entries     haiku · xhigh     haiku · xhigh     $0.06
-▸ ○ Investigate  done · 2 agents · sonnet 2                            $1.09
-▾ ○ Decide  running · 0 of 1 done · opus 1                             —
-    ✓ decide: release version      opus · high       opus · high       —
-  · Review  not started
+        agent                       API saves   ran on
+  ▾ ○ Collect  2 agents             $0.34
+      ✓ grunt: merged PRs           $0.05       haiku xhigh
+      ✓ grunt: changelog entries    $0.06       haiku xhigh
+  ▸ ○ Investigate  2 agents         $1.09       sonnet 2
+  ▾ ○ Decide  running  0 of 1 done  —
+      ✓ decide: release version     —           opus high
+      Review  not started
+  ✓ ran as the gate approved  ✗ did not
 ```
 
 - **Where phases come from:** the gate reads them from the script (see the gate record's `phases` and each stage's `phase`), and the mod joins each agent to its stage by label, the way it already checks the plan. The running workflow does not expose its phases to plugins, so a script whose phase is only known at run time (a `phase:` value that is not literal text) puts the agent under "phase unknown". So does an agent whose label matches stages that sit in different phases.
 - **No phases:** a script with no phases, a run the gate did not approve or an older gate record shows the flat agent table.
-- **Phase row:** a caret (▾ open, ▸ folded), a hollow circle (green while every agent in the phase is as approved, red when one is not), the bold title, `running · 1 of 2 done` or `done · 2 agents`, the Opus, Sonnet and Haiku counts, `1 red` when an agent broke the plan, and the saved figure of the phase's agents. A phase with no agents yet reads `not started`, and `did not run` once the run ended. Those rows are dim and cannot be folded.
-- **Agent row:** a green ✓ when the agent is as approved, a red ✗ when not, then the label, the approved and ran-on model and effort, and what it saved. A red agent's reason is on its own line below the row.
+- **Columns:** the agent label, then the saved figure, then "ran on" last. The saved column is headed "5h saves" when a 5-hour limit figure shows and "API saves" otherwise. It sits right after the labels so each figure stays near its phase or agent.
+- **Phase block:** a phase is a block. Its first row has a caret (▾ open, ▸ folded), a hollow circle (green while every agent in the phase is as approved, red when one is not), the bold title, `running  1 of 2 done` or `2 agents`, `1 red` when an agent broke the plan, and the phase's saved figure in the saved column. A folded phase also shows its models in the "ran on" column: `opus 11  sonnet 10  haiku 12`, in that order, with the name bold in its color and the count dim. When they do not fit they wrap onto lines at the same column. An open phase lists its agents instead. A phase with no agents yet reads `not started`, and `did not run` once the run ended. Those rows are dim and cannot be folded.
+- **Agent row:** a green ✓ when the agent is as approved, a red ✗ when not, then the label, what it saved, and the model it ran on with its effort (the model bold in its color, the effort dim). A red agent's reason is on its own line below the row. A dim line under the phases explains the marks: "✓ ran as the gate approved  ✗ did not".
+- **No middle dots:** the pane separates items with spaces, never a middle dot: the id after the workflow's name, a passing check's detail, the status of a phase, the counts, the effort, the hints and the run list. The band above the prompt and the saved block follow the same rule.
+- **Focus:** the focused run, phase block, "expand all" and "back to the list" are each drawn inside a rounded outline, and the focused run's square fills (■) and the focused phase's circle fills (●). The outline takes a blank row above and below, so phase blocks after the first overlap their neighbour's blank row and nothing moves when the focus does.
 - **A phase is done** when the run ended, or when every agent in it is done and a later phase has an agent. Until then it reads `running`, so a loop that runs one agent at a time does not flicker.
-- **Folding:** every phase starts open, except that on a run of more than 12 agents a finished phase with nothing red starts folded. Enter on a phase row folds or opens it, `a` opens all or folds all, `b` or Esc goes back. Your choices stay while you look at the run, also when it ends, and reset when you open another run. Focus starts on the first running or red phase.
-- **Saved figure of a phase:** the median of the sum of its agents' savings, not the sum of the agents' medians, so the figures of the agents can add up to a little less or more. It shows a dash when a finished agent in the phase has no figure. On a pane too narrow for the saved column title it follows the phase title after a dot. When the pane is narrow, the label column gives room to the saved figure first.
+- **Folding:** every phase starts open, except that on a run of more than 12 agents a finished phase with nothing red starts folded. Enter on a phase row folds or opens it, `a` opens all or folds all, `b` or Esc goes back. Your choices stay while you look at the run, also when it ends, and reset when you open another run. Focus starts on the first running or red phase. Up and down move between the phases, "expand all" and "back to the list".
+- **Saved figure of a phase:** the median of the sum of its agents' savings, not the sum of the agents' medians, so the figures of the agents can add up to a little less or more. It shows a dash when a finished agent in the phase has no figure. When the pane is narrow, the label column gives room to the saved column first, and a phase title that does not fit is cut with an ellipsis.
 
 ### Colors
 
@@ -602,7 +606,7 @@ What a run costs runs warm, what it saved runs cool. Colors sit in the character
 
 - **Models and efforts:** the model name is bold in its color and the effort word stays dim. Haiku is gold, Sonnet orange and Opus red, each deepening from `low` to `xhigh` (Opus at `xhigh` is the deep crimson, `#d63150`). A count such as `sonnet 32` and a family name in the saved block use the usual shade of the family: Haiku at `xhigh`, Sonnet and Opus at `high`. Fable takes the Opus colors.
 - **Saved:** a percentage of the 5-hour limit is bold and runs from aqua at 1% through azure at 10% to violet at 20% and above, between those points in even steps of perceived color. The same color marks the saved figure of an agent and of a phase. Dollars and tokens stay plain.
-- **Status:** green and red stay for the hollow squares, the hollow circles and the check marks, and mean only as approved or not.
+- **Status:** green and red stay for the squares, the circles and the check marks (hollow, filled on the focused row), and mean only as approved or not.
 
 The colors are tuned for a dark terminal: each one keeps at least 3:1 contrast on a `#262626` background.
 
@@ -620,21 +624,21 @@ compared with running every agent on Opus at high effort, your session's setting
   $2.32 at API prices              ± $0.59   62% of the $3.77 Opus would cost
   2.9M fewer tokens
   ± = how far off the estimate can be, 9 times out of 10
-  from 4 of 4 agents · ratio measured on 4 replayed agents
+  from 4 of 4 agents  ratio measured on 4 replayed agents
 ```
 
-The agent table gets one more column, "saved of 5-hour limit" (or "saved at API prices" when no limit figure shows), with each agent's median, and each phase row shows the figure of its agents.
+The agent table gets one more column, "5h saves" (or "API saves" when no limit figure shows), with each agent's median, and each phase row shows the figure of its agents.
 
 - **Running:** the heading reads "ultraguard saved so far".
 - **API key:** the first line is "$2.32 off your API bill", with no limit lines.
 - **Limit not calibrated:** "5-hour limit: learning how fast your limit fills, 3 of 5 readings so far".
 - **More tokens:** "8.8M more tokens: Sonnet read and wrote more, at a lower price per token". With two or more families it reads "Haiku, Opus and Sonnet read and wrote more…".
 - **Range below zero:** the first figure line ends with "this run may have saved nothing".
-- **Sources:** "ratio measured on N replayed agents"; "ratio measured at high effort, adjusted with published figures for xhigh"; "no replay measured sonnet · medium against opus · high; using published figures, so ± is wide".
+- **Sources:** "ratio measured on N replayed agents"; "ratio measured at high effort, adjusted with published figures for xhigh"; "no replay measured sonnet medium against opus high; using published figures, so ± is wide".
 - **Coverage:** "from 5 of 6 agents: ultraguard has no price for the model one agent ran on".
 - **Nothing to estimate:** "every agent ran on your session's model and effort, so nothing was saved"; "ultraguard could not read your session's model or effort, so it has no estimate".
 
-Run list: a dim header row `workflow · id · agents · saved of 5-hour limit` (or `saved at API prices`). Green rows show `1.4% ± 0.6`, running rows `0.6% so far`, red rows keep their reason.
+Run list: a dim header row `workflow  id  agents  5h saves` (or `API saves`). Green rows show `1.4% ± 0.6`, running rows `0.6% so far`, red rows keep their reason.
 
 Finished this session: ended runs stay in the pane under "finished this session", with `done 14:51` in the agents column, until `/clear` or the session ends. Enter opens them. Cleared runs are not listed.
 

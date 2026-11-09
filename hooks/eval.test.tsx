@@ -6,6 +6,7 @@ const SCRIPT = "export const meta = { name: 'map', description: 'x', phases: [] 
 const CONFIG = '/cfg'
 const SESSION = 'sess-1'
 const SONNET = 'claude-sonnet-4-6'
+const FULL: Record<string, string> = { opus: 'claude-opus-4-7', sonnet: SONNET, haiku: 'claude-haiku-4-5' }
 
 const BAND = {
   plugin: 'ultraguard',
@@ -61,7 +62,9 @@ async function world($: any, on: any, options: { gate: boolean; launch?: Record<
     toolUseId = e.tool_use_id
     return { result: { status: 'async_launched', taskId: 'w1', runId: 'wf_run001', workflowName: 'map' } }
   })
-  on('agent.spawn', () => ({ model: SONNET, agentId: 'a1' }))
+  let spawned = 0
+  on('agent.spawn', (_: any, e: any) => ({ model: FULL[String(e.model)] ?? SONNET, agentId: `a${(spawned += 1)}` }))
+  on('ui.focus', () => ({}))
   on('ui.render', ($: any, e: any) => {
     const { Text } = $.ui.resolve(e)
     return <Text>engine</Text>
@@ -80,8 +83,25 @@ async function world($: any, on: any, options: { gate: boolean; launch?: Record<
     fork: false,
     workflow: { runId: 'wf_run001', agentIndex: 1 },
   })
-  return { writes, logs, notices, id: () => toolUseId }
+  const spawn = (description: string, model: string, agentIndex: number) =>
+    $.agent.spawn({
+      tool_use_id: toolUseId,
+      prompt: 'p',
+      description,
+      subagentType: 'general-purpose',
+      provider: { plugin: 'engine', tier: 'core' },
+      model,
+      parentModel: 'claude-opus-4-7',
+      background: true,
+      fork: false,
+      workflow: { runId: 'wf_run001', agentIndex },
+    })
+  return { writes, logs, notices, id: () => toolUseId, spawn }
 }
+
+const focus = ($: any, element: string) => $.ui.focus({ component: 'Pane', requestId: 'ultraguard', element, origin: { kind: 'person' } })
+const shown = async (ui: any) => (await ui.findAll({ type: 'Text' })).map((t: any) => String(t.text ?? ''))
+const ZERO_WIDTH = '\u200b'
 
 test('a compliant workflow draws a green band and writes its eval record', async ($, on) => {
   const w = await world($, on, { gate: true })
@@ -107,7 +127,7 @@ test('a run with no gate record draws a red band', async ($, on) => {
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ ...BAND, surface })
     expect((await ui.find({ type: 'Button' }))?.text).toContain('ultraguard-eval')
-    expect((await ui.find({ type: 'Button' }))?.text).toContain('1 running · 1 red')
+    expect((await ui.find({ type: 'Button' }))?.text).toContain('1 running  1 red')
     expect((await ui.find({ type: 'Text', text: '□' }))?.props.color).toBe('error')
     await ui.unmount()
   }
@@ -286,41 +306,43 @@ test('the detail groups agents under phases that fold with enter', async ($, on)
     const ui = await $.ui.mount({ ...PANE, surface })
     await ui.press({ key: `run:${w.id()}` })
 
-    const header = await ui.find({ type: 'Button', key: 'phase:Collect' })
-    expect(header?.text).toContain('▾')
-    expect(header?.text).toContain('Collect')
-    expect(header?.text).toContain('running · 0 of 1 done')
-    expect(header?.text).toContain('sonnet 1')
-    expect((await ui.findAll({ type: 'Text', text: '○' })).at(-1)?.props.color).toBe('success')
+    const header = await ui.find({ type: 'Text', text: /^▾ ● Collect/ })
+    expect(header?.text).toContain('Collect  running  0 of 1 done')
+    expect(header?.text).not.toContain('sonnet')
+    expect((await ui.find({ type: 'Button', key: 'phase:Collect' }))?.text).toBe(ZERO_WIDTH)
+    expect((await ui.find({ type: 'Text', text: /^●$/ }))?.props.color).toBe('success')
     expect(await ui.find({ type: 'Text', text: /^ {4}✓ investigate: map/ })).toBeDefined()
-    expect((await ui.find({ type: 'Text', text: /Decide/ }))?.text).toContain('not started')
+    const decide = await ui.find({ type: 'Text', text: /Decide/ })
+    expect(decide?.text).toMatch(/^ {6}Decide {2}not started$/)
+    expect(decide?.props.dimColor).toBe(true)
     expect(await ui.find({ type: 'Button', key: 'phase:Decide' })).toBeUndefined()
+    expect((await ui.find({ type: 'Text', text: /ran as the gate approved/ }))?.text).toBe('  ✓ ran as the gate approved  ✗ did not')
 
     await ui.press({ key: 'phase:Collect' })
-    expect((await ui.find({ type: 'Button', key: 'phase:Collect' }))?.text).toContain('▸')
+    expect((await ui.find({ type: 'Text', text: /^▸ ● Collect/ }))?.text).toContain('sonnet 1')
     expect(await ui.find({ type: 'Text', text: /^ {4}✓ investigate: map/ })).toBeUndefined()
-    expect((await ui.find({ type: 'Button', key: 'all' }))?.text).toContain('expand all')
+    expect(await ui.find({ type: 'Text', text: 'expand all' })).toBeDefined()
 
     await ui.press({ key: 'all' })
-    expect((await ui.find({ type: 'Button', key: 'phase:Collect' }))?.text).toContain('▾')
+    expect(await ui.find({ type: 'Text', text: /^▾ ● Collect/ })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: /^ {4}✓ investigate: map/ })).toBeDefined()
-    expect((await ui.find({ type: 'Button', key: 'all' }))?.text).toContain('collapse all')
+    expect(await ui.find({ type: 'Text', text: 'collapse all' })).toBeDefined()
 
     await ui.press({ key: 'back' })
     await ui.press({ key: `run:${w.id()}` })
-    expect((await ui.find({ type: 'Button', key: 'phase:Collect' }))?.text).toContain('▾')
+    expect(await ui.find({ type: 'Text', text: /^▾ ● Collect/ })).toBeDefined()
     await ui.press({ key: 'back' })
     await ui.unmount()
   }
 })
 
 test('an agent that broke the plan turns its phase red and says why on its own line', async ($, on) => {
-  const w = await world($, on, { gate: true, record: { ...PHASED, stages: PHASED.stages.map((st, i) => (i === 0 ? { ...st, model: 'opus' } : st)) } })
+  const w = await world($, on, { gate: true, record: { phases: ['Map'], stages: [{ ...PHASED.stages[0], model: 'opus', phase: 'Map' }] } })
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
   await ui.press({ key: `run:${w.id()}` })
 
-  expect((await ui.find({ type: 'Button', key: 'phase:Collect' }))?.text).toContain('1 red')
-  expect((await ui.findAll({ type: 'Text', text: '○' })).at(-1)?.props.color).toBe('error')
+  expect((await ui.find({ type: 'Text', text: /^▾ ● Map/ }))?.text).toContain('  1 red')
+  expect((await ui.find({ type: 'Text', text: /^●$/ }))?.props.color).toBe('error')
   expect(await ui.find({ type: 'Text', text: /^ {4}✗ investigate: map/ })).toBeDefined()
   const reason = await ui.find({ type: 'Text', text: /^ {6}agent "investigate: map" ran on sonnet, the gate approved opus/ })
   expect(reason?.props.color).toBe('error')
@@ -332,20 +354,169 @@ test('a gate with no phases keeps the flat agent table', async ($, on) => {
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
   await ui.press({ key: `run:${w.id()}` })
   expect(await ui.find({ type: 'Button', key: 'all' })).toBeUndefined()
-  expect(await ui.find({ type: 'Text', text: /^□ investigate: map/ })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: /^ {2}agent/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^ {4}□ investigate: map\s+sonnet —$/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^ +agent\s+ran on$/ })).toBeDefined()
   await ui.unmount()
 })
 
-test('a run no one has focused only reserves the room of the outline, and its button is just the circle', async ($, on) => {
+test('a run no one has focused only reserves the room of the outline, and its button is an invisible anchor', async ($, on) => {
   const w = await world($, on, { gate: true })
-  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  const ui = await $.ui.mount({ ...BAND_FREE_PANE, surface: 'terminal' })
   const rest = await ui.find({ type: 'Box', key: `box:${w.id()}` })
   expect(rest?.props.borderStyle).toBeUndefined()
   expect(rest?.props.paddingX).toBe(2)
   expect(rest?.props.paddingY).toBe(1)
   expect(rest?.props.backgroundColor).toBeUndefined()
-  expect((await ui.find({ type: 'Button', key: `run:${w.id()}` }))?.text).toBe('□')
+  expect((await ui.find({ type: 'Button', key: `run:${w.id()}` }))?.text).toBe(ZERO_WIDTH)
+  expect(await ui.find({ type: 'Text', text: '□' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: '■' })).toBeUndefined()
+  await ui.unmount()
+})
+
+test('the focused phase block is drawn inside the round outline with a filled circle, the others stay hollow', async ($, on) => {
+  const stages = [...PHASED.stages]
+  const w = await world($, on, { gate: true, record: { ...PHASED, stages: [{ ...stages[0], phase: 'Collect' }, { ...stages[1], phase: 'Decide' }] } })
+  await w.spawn('decide: pick', 'opus', 2)
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  await ui.press({ key: `run:${w.id()}` })
+
+  const collect = async () => ui.find({ type: 'Box', key: 'box:phase:Collect' })
+  const decide = async () => ui.find({ type: 'Box', key: 'box:phase:Decide' })
+  expect((await collect())?.props).toMatchObject({ borderStyle: 'round', borderColor: 'text', paddingX: 1, paddingY: 0, marginTop: 0 })
+  expect((await collect())?.text).toContain('●')
+  expect((await decide())?.props).toMatchObject({ paddingX: 2, paddingY: 1, marginTop: -1 })
+  expect((await decide())?.props.borderStyle).toBeUndefined()
+  expect((await decide())?.text).toContain('○')
+  expect((await decide())?.text).not.toContain('●')
+  expect((await ui.find({ type: 'Button', key: 'phase:Decide' }))?.text).toBe(ZERO_WIDTH)
+
+  await focus($, 'phase:Decide')
+  expect((await decide())?.props).toMatchObject({ borderStyle: 'round', borderColor: 'text', paddingX: 1, paddingY: 0, marginTop: -1 })
+  expect((await decide())?.text).toContain('●')
+  expect((await collect())?.props.borderStyle).toBeUndefined()
+  expect((await collect())?.text).toContain('○')
+
+  expect((await ui.find({ type: 'Box', key: 'box:back' }))?.props.borderStyle).toBeUndefined()
+  await focus($, 'back')
+  expect((await ui.find({ type: 'Box', key: 'box:back' }))?.props).toMatchObject({ borderStyle: 'round', borderColor: 'text', paddingX: 1, paddingY: 0 })
+  expect((await decide())?.props.borderStyle).toBeUndefined()
+  await focus($, 'all')
+  expect((await ui.find({ type: 'Box', key: 'box:all' }))?.props).toMatchObject({ borderStyle: 'round', borderColor: 'text', paddingX: 1, paddingY: 0 })
+  expect((await ui.find({ type: 'Box', key: 'box:back' }))?.props.borderStyle).toBeUndefined()
+  await ui.unmount()
+})
+
+const BAND_FREE_PANE = { ...PANE, props: { ...PANE.props, isFocused: false } }
+
+test('the focused run row is drawn inside the round outline with a filled square', async ($, on) => {
+  const w = await world($, on, { gate: true })
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  expect((await ui.find({ type: 'Box', key: `box:${w.id()}` }))?.props).toMatchObject({ borderStyle: 'round', borderColor: 'text', paddingX: 1, paddingY: 0 })
+  expect(await ui.find({ type: 'Text', text: '■' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: '□' })).toBeUndefined()
+  await ui.unmount()
+})
+
+test('the flat table gives its back button the outline too, and its header lines up with the rows', async ($, on) => {
+  const w = await world($, on, { gate: true })
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  await ui.press({ key: `run:${w.id()}` })
+  expect((await ui.find({ type: 'Box', key: 'box:back' }))?.props).toMatchObject({ borderStyle: 'round', paddingX: 1, paddingY: 0 })
+  const header = (await ui.find({ type: 'Text', text: /^ +agent\s+ran on$/ }))?.text ?? ''
+  const row = (await ui.find({ type: 'Text', text: /^ {4}□ investigate: map/ }))?.text ?? ''
+  expect(header.indexOf('agent')).toBe(row.indexOf('investigate'))
+  expect(header.indexOf('ran on')).toBe(row.indexOf('sonnet'))
+  await ui.unmount()
+})
+
+test('a phase block after a not started phase does not pull its margin onto that row', async ($, on) => {
+  const stages = [
+    { ...PHASED.stages[0], phase: 'Collect' },
+    { ...PHASED.stages[1], phase: 'Decide' },
+  ]
+  const w = await world($, on, { gate: true, record: { phases: ['Collect', 'Mid', 'Decide'], stages } })
+  await w.spawn('decide: pick', 'opus', 2)
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  await ui.press({ key: `run:${w.id()}` })
+  expect((await ui.find({ type: 'Box', key: 'box:phase:Collect' }))?.props.marginTop).toBe(0)
+  expect((await ui.find({ type: 'Box', key: 'box:phase:Decide' }))?.props.marginTop).toBe(0)
+  await ui.unmount()
+})
+
+test('a red run keeps the pane header free of middle dots', async ($, on) => {
+  await world($, on, { gate: false })
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  expect((await ui.findAll({ type: 'Text', text: /running/ })).every((t: any) => !t.text.includes('·'))).toBe(true)
+  await ui.unmount()
+})
+
+const THREE = {
+  phases: ['Collect'],
+  stages: [
+    { index: 0, line: 2, label: 'investigate: map', class: 'investigate', model: 'sonnet', effort: 'high', inFanout: false, bigFanout: false, verdict: false, phase: 'Collect' },
+    { index: 1, line: 3, label: 'decide: pick', class: 'decide', model: 'opus', effort: 'high', inFanout: false, bigFanout: false, verdict: false, phase: 'Collect' },
+    { index: 2, line: 4, label: 'grunt: tidy', class: 'grunt', model: 'haiku', effort: 'medium', inFanout: false, bigFanout: false, verdict: false, phase: 'Collect' },
+  ],
+}
+
+const threeModels = async ($: any, on: any) => {
+  const w = await world($, on, { gate: true, record: THREE })
+  await w.spawn('decide: pick', 'opus', 2)
+  await w.spawn('grunt: tidy', 'haiku', 3)
+  return w
+}
+
+test('a folded phase lists its models in order after the status, name bold in its family color and count dim', async ($, on) => {
+  const w = await threeModels($, on)
+  const ui = await $.ui.mount({ ...PANE, props: { ...PANE.props, bodyColumns: 100 }, surface: 'terminal' })
+  await ui.press({ key: `run:${w.id()}` })
+  expect((await ui.find({ type: 'Text', text: /^▾ ● Collect/ }))?.text).not.toMatch(/opus|haiku/)
+  await ui.press({ key: 'phase:Collect' })
+
+  const head = await ui.find({ type: 'Text', text: /^▸ ● Collect/ })
+  expect(head?.text).toMatch(/Collect {2}running {2}0 of 3 done\s+opus 1 {2}sonnet 1 {2}haiku 1$/)
+  const box = await ui.find({ type: 'Box', key: 'box:phase:Collect' })
+  expect(box?.text).not.toMatch(/\n/)
+  const opus = await ui.findAll({ type: 'Text', text: /^opus$/ })
+  expect(opus.at(-1)?.props.weight).toBe('bold')
+  expect(opus.at(-1)?.props.color).toBe('#e2484f')
+  const haiku = await ui.findAll({ type: 'Text', text: /^haiku$/ })
+  expect(haiku.at(-1)?.props.weight).toBe('bold')
+  expect((await ui.findAll({ type: 'Text', text: /^ 1$/ })).at(-1)?.props.dimColor).toBe(true)
+  await ui.unmount()
+})
+
+test('a folded phase wraps its models onto continuation lines at the same column on a narrow pane', async ($, on) => {
+  const w = await threeModels($, on)
+  const ui = await $.ui.mount({ ...PANE, props: { ...PANE.props, bodyColumns: 59 }, surface: 'terminal' })
+  await ui.press({ key: `run:${w.id()}` })
+  await ui.press({ key: 'phase:Collect' })
+
+  const head = (await ui.find({ type: 'Text', text: /^▸ ● Collect/ }))?.text ?? ''
+  const at = head.indexOf('opus 1')
+  expect(at).toBeGreaterThan(0)
+  expect(head).toMatch(/opus 1 {2}sonnet 1$/)
+  expect(head).not.toContain('haiku')
+  const rest = (await ui.find({ type: 'Text', text: /^ +haiku 1$/ }))?.text ?? ''
+  expect(rest.indexOf('haiku')).toBe(at)
+  await ui.unmount()
+})
+
+test('the pane text has no middle dot separators', async ($, on) => {
+  const w = await world($, on, { gate: true, record: PHASED })
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  const list = await shown(ui)
+  expect(list.join('\n')).not.toContain(' · ')
+  expect(list).toContain('↑↓ choose  enter details  esc close')
+  await ui.press({ key: `run:${w.id()}` })
+  const detail = await shown(ui)
+  expect(detail.join('\n')).not.toContain(' · ')
+  expect(detail).toContain(`ultraguard-eval › map  run001`)
+  expect(detail).toContain('↑↓ choose  enter opens or folds a phase')
+  expect(detail.find(t => /Approved by the gate/.test(t))).toMatch(/\d\d:\d\d:\d\d {2}script fingerprint matches$/)
+  expect(detail.find(t => /Every agent matches the plan/.test(t))).toMatch(/ {2}1 agent$/)
+  await ui.press({ key: 'phase:Collect' })
+  expect((await shown(ui)).join('\n')).not.toContain(' · ')
   await ui.unmount()
 })
 

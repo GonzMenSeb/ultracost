@@ -40,7 +40,7 @@ import {
 import { intervalsOf, staleKeys, storedValue } from '../src/meter.mjs'
 import { familyColor, modelColor, savedColor } from '../src/palette.mjs'
 import { loadPrices, priceFamily } from '../src/prices.mjs'
-import { agentColumn, listCell, listHeader, phaseLayout, savedBlock, toastText } from '../src/savedText.mjs'
+import { agentColumn, listCell, listHeader, modelLines, phaseHeadLength, phaseLayout, phaseStatus, phaseTitle, savedBlock, toastText } from '../src/savedText.mjs'
 import { estimateRun } from '../src/savings.mjs'
 import { seedOf } from '../src/stats.mjs'
 
@@ -62,7 +62,7 @@ const tone = (ok: boolean) => (ok ? 'success' : 'error')
 const fit = (text: string, width: number) => (text.length > width ? `${text.slice(0, Math.max(0, width - 2))}… ` : text.padEnd(width))
 const countsWidth = (c: { opus: number; sonnet: number; haiku: number }) => {
   const parts = (['opus', 'sonnet', 'haiku'] as const).filter(m => c[m] > 0).map(m => `${m} ${c[m]}`)
-  return parts.length === 0 ? 'no agents yet'.length : parts.join(' · ').length
+  return parts.length === 0 ? 'no agents yet'.length : parts.join('  ').length
 }
 
 const segmentLook = (g: Segment) => {
@@ -79,6 +79,17 @@ const lineOf = (Text: any, wrap: 'truncate-end' | 'wrap' = 'truncate-end') => (l
     ))}
   </Text>
 )
+
+const ring = (picked: boolean) => ({
+  borderStyle: picked ? 'round' : undefined,
+  borderColor: picked ? 'text' : undefined,
+  paddingX: picked ? 1 : 2,
+  paddingY: picked ? 0 : 1
+})
+
+const mark = (picked: boolean, hollow: string, filled: string) => (picked ? filled : hollow)
+
+const ZERO_WIDTH = '\u200b'
 
 const tinted = (Text: any, text: string, color: string | undefined) =>
   color ? <Text weight="bold" color={color}>{text}</Text> : <Text dimColor={text === '—' ? true : undefined}>{text}</Text>
@@ -441,16 +452,9 @@ export const register: Register = on => {
     const runs = activeRuns(state).map(r => runView(r))
     const finished = finishedRuns(state).map(r => runView(r))
     const open = [...runs, ...finished].find(v => v.key === state.ui.run)
-    const pair = (model: string | null, effort: string | null, width: number) => {
-      const m = model ?? '—'
-      const rest = ` · ${effort ?? '—'}`
-      return (
-        <Text>
-          <Text weight="bold" color={modelColor(model, effort)}>{m}</Text>
-          <Text dimColor>{fit(rest, Math.max(0, width - m.length))}</Text>
-        </Text>
-      )
-    }
+    let reachable: string[] = []
+    let resting: string | null = null
+    const picked = (key: string) => e.props.isFocused && (reachable.includes(state.ui.focus ?? '') ? state.ui.focus : resting) === key
 
     const counts = (c: { opus: number; sonnet: number; haiku: number }) => {
       const parts = (['opus', 'sonnet', 'haiku'] as const).filter(m => c[m] > 0)
@@ -459,7 +463,7 @@ export const register: Register = on => {
         <Text>
           {parts.map((m, i) => (
             <Text>
-              {i > 0 && <Text dimColor>{' · '}</Text>}
+              {i > 0 && <Text>{'  '}</Text>}
               <Text weight="bold" color={familyColor(m)}>{m}</Text>
               <Text dimColor>{` ${c[m]}`}</Text>
             </Text>
@@ -476,7 +480,7 @@ export const register: Register = on => {
           <Text weight="bold">{TITLE}</Text>
           <Text dimColor>{' › '}</Text>
           <Text weight="bold">{open.title}</Text>
-          <Text dimColor>{` · ${open.shortId}`}</Text>
+          <Text dimColor>{`  ${open.shortId}`}</Text>
         </Text>
       )
       const checks = open.checks.map((c: { id: string; ok: boolean; title: string; reason: string | null; detail: string | null }) => (
@@ -493,117 +497,147 @@ export const register: Register = on => {
         </Box>
       )
 
-      if (phases) {
-        const { field, savedAt, roomy } = phaseLayout(open.agents.map((a: EvalAgentView) => a.label), e.props.bodyColumns, column)
-        const openOf = (p: EvalPhaseView) => phaseOpen(p, state.ui.folds)
-        const foldable = phases.filter(p => p.total > 0)
-        const anyFolded = foldable.some(p => !openOf(p))
-        const focusKey = (foldable.find(p => p.state === 'running' || p.red > 0) ?? foldable[0])?.key
-        const stateText = (p: EvalPhaseView) => (p.state === 'running' ? `running · ${p.done} of ${p.total} done` : `done · ${p.total} agent${p.total === 1 ? '' : 's'}`)
-        const headLength = (p: EvalPhaseView) =>
-          4 + p.title.length + 2 + stateText(p).length + 3 + countsWidth(p.counts) + (p.red > 0 ? ` · ${p.red} red`.length : 0)
-        const phaseRow = (p: EvalPhaseView) => {
-          const subtotal = column ? column.group(p) : null
-          const gap = roomy ? Math.max(1, savedAt - headLength(p)) : 0
-          return (
-            <Button key={`phase:${p.key}`} plain autoFocus={p.key === focusKey ? true : undefined} onPress={() => update($, ev, s => setFolds(s, [p.key], openOf(p)))}>
-              <Text wrap="truncate-end">
-                <Text dimColor>{openOf(p) ? '▾' : '▸'}</Text>
-                {' '}
-                <Text color={tone(p.ok)}>○</Text>
-                {' '}
-                <Text weight="bold">{p.title}</Text>
-                {subtotal !== null && !roomy && <Text>{'  '}{tinted(Text, subtotal, column?.groupColor(p))}</Text>}
-                <Text dimColor>{`  ${stateText(p)} · `}</Text>
-                {counts(p.counts)}
-                {p.red > 0 && <Text color="error">{` · ${p.red} red`}</Text>}
-                {subtotal !== null && roomy && <Text>{' '.repeat(gap)}{tinted(Text, subtotal, column?.groupColor(p))}</Text>}
-              </Text>
-            </Button>
-          )
-        }
-        const agentRow = (a: EvalAgentView) => (
-          <Box flexDirection="column">
-            <Text wrap="truncate-end">
-              {'    '}
-              <Text color={tone(a.ok)}>{a.ok ? '✓' : '✗'}</Text>
-              {` ${fit(a.label, field)}`}
-              {pair(a.approvedModel, a.approvedEffort, 18)}
-              {pair(a.ranModel, a.ranEffort, 18)}
-              {column && tinted(Text, column.cell(a.agentId), column.color(a.agentId))}
-            </Text>
-            {a.reason && <Text color="error" wrap="wrap">{`      ${a.reason}`}</Text>}
-          </Box>
-        )
-        return (
-          <Box flexDirection="column">
-            {crumb}
-            <Text> </Text>
-            {checks}
-            <Text> </Text>
-            <Text dimColor wrap="truncate-end">{`${' '.repeat(6)}${fit('agent', field)}${fit('approved', 18)}${column ? fit('ran on', 18) : 'ran on'}${column ? (roomy ? column.header : 'saved') : ''}`}</Text>
-            {phases.map(p =>
-              p.total === 0 ? (
-                <Text dimColor wrap="truncate-end">{`  · ${p.title}  ${p.state}`}</Text>
-              ) : (
-                <Box flexDirection="column">
-                  {phaseRow(p)}
-                  {openOf(p) && p.agents.map(agentRow)}
-                </Box>
-              ),
-            )}
-            <Text> </Text>
-            {saved}
-            <Text dimColor>↑↓ choose · enter opens or folds a phase</Text>
-            {foldable.length > 0 && (
-              <Button key="all" label={anyFolded ? 'expand all' : 'collapse all'} plain hotkey="a" onPress={() => update($, ev, s => setFolds(s, foldable.map(p => p.key), !anyFolded))} />
-            )}
-            <Button key="back" label="back to the list" plain hotkey="b" autoFocus={foldable.length === 0 ? true : undefined} onPress={() => update($, ev, closeRun)} />
-          </Box>
-        )
-      }
-
-      const labelWidth = Math.min(34, Math.max(12, ...open.agents.map((a: EvalAgentView) => a.label.length + 4)))
-      const roomy = column !== null && labelWidth + 36 + column.header.length <= e.props.bodyColumns
-      return (
+      const filled = (phases ?? []).filter(p => p.total > 0)
+      const width = e.props.bodyColumns - 4
+      const { field, savedAt, savedWidth, modelsAt } = phaseLayout({
+        labels: open.agents.map((a: EvalAgentView) => a.label),
+        heads: filled.map(phaseHeadLength),
+        cells: column ? [...open.agents.map((a: EvalAgentView) => column.cell(a.agentId)), ...filled.map(p => column.group(p))] : [],
+        header: column ? column.header : '',
+        width
+      })
+      const savedCell = (text: string, color: string | undefined) => (column ? [tinted(Text, text, color), ' '.repeat(Math.max(0, savedWidth - text.length))] : [])
+      const ranCell = (a: EvalAgentView) => [
+        <Text weight="bold" color={modelColor(a.ranModel, a.ranEffort)}>{a.ranModel ?? '—'}</Text>,
+        <Text dimColor>{` ${a.ranEffort ?? '—'}`}</Text>
+      ]
+      const agentRow = (a: EvalAgentView, lead: any) => (
+        <Box flexDirection="column">
+          <Text wrap="truncate-end">
+            {'    '}
+            {lead}
+            {` ${fit(a.label, field)}`}
+            {savedCell(column ? column.cell(a.agentId) : '', column ? column.color(a.agentId) : undefined)}
+            {ranCell(a)}
+          </Text>
+          {a.reason && <Text color="error" wrap="wrap">{`      ${a.reason}`}</Text>}
+        </Box>
+      )
+      const headerRow = (indent: number) => (
+        <Text dimColor wrap="truncate-end">{`${' '.repeat(indent)}${fit('agent', field)}${column ? fit(column.header, savedWidth) : ''}ran on`}</Text>
+      )
+      const backButton = () => (
+        <Box key="box:back" {...ring(picked('back'))}>
+          <Button key="back" label="back to the list" plain hotkey="b" autoFocus={filled.length === 0 ? true : undefined} onPress={() => update($, ev, closeRun)}>{ZERO_WIDTH}</Button>
+          <Text>back to the list</Text>
+        </Box>
+      )
+      const crumbAndChecks = (
         <Box flexDirection="column">
           {crumb}
           <Text> </Text>
           {checks}
           <Text> </Text>
+        </Box>
+      )
+
+      if (phases) {
+        const openOf = (p: EvalPhaseView) => phaseOpen(p, state.ui.folds)
+        const anyFolded = filled.some(p => !openOf(p))
+        const focusKey = (filled.find(p => p.state === 'running' || p.red > 0) ?? filled[0])?.key
+        resting = focusKey ? `phase:${focusKey}` : 'back'
+        reachable = [...filled.map(p => `phase:${p.key}`), 'all', 'back']
+        let follows = false
+        const phaseBlock = (p: EvalPhaseView, first: boolean) => {
+          const key = `phase:${p.key}`
+          const isOpen = openOf(p)
+          const here = picked(key)
+          const sub = column ? column.group(p) : null
+          const title = phaseTitle(p, savedAt)
+          const head = phaseHeadLength({ ...p, title })
+          const models = isOpen ? [] : modelLines(p.counts, Math.max(12, width - modelsAt))
+          return (
+            <Box key={`box:${key}`} flexDirection="column" marginTop={first ? 0 : -1} {...ring(here)}>
+              <Box>
+                <Button key={key} plain autoFocus={p.key === focusKey ? true : undefined} onPress={() => update($, ev, s => setFolds(s, [p.key], isOpen))}>{ZERO_WIDTH}</Button>
+                <Text wrap="truncate-end">
+                  <Text dimColor>{isOpen ? '▾' : '▸'}</Text>
+                  {' '}
+                  <Text color={tone(p.ok)}>{mark(here, '○', '●')}</Text>
+                  {' '}
+                  <Text weight="bold">{title}</Text>
+                  <Text dimColor>{`  ${phaseStatus(p)}`}</Text>
+                  {p.red > 0 && <Text color="error">{`  ${p.red} red`}</Text>}
+                  {' '.repeat(Math.max(2, savedAt - head))}
+                  {sub !== null && savedCell(sub, column?.groupColor(p))}
+                  {models.length > 0 && line(models[0])}
+                </Text>
+              </Box>
+              {models.slice(1).map(m => (
+                <Text wrap="truncate-end">{' '.repeat(modelsAt)}{line(m)}</Text>
+              ))}
+              {isOpen && p.agents.map(a => agentRow(a, <Text color={tone(a.ok)}>{a.ok ? '✓' : '✗'}</Text>))}
+            </Box>
+          )
+        }
+        return (
+          <Box flexDirection="column">
+            {crumbAndChecks}
+            {headerRow(8)}
+            {phases.map(p => {
+              if (p.total === 0) {
+                follows = false
+                return <Text dimColor wrap="truncate-end">{`      ${p.title}  ${p.state}`}</Text>
+              }
+              const block = phaseBlock(p, !follows)
+              follows = true
+              return block
+            })}
+            <Text dimColor>{'  ✓ ran as the gate approved  ✗ did not'}</Text>
+            <Text> </Text>
+            {saved}
+            <Text dimColor>↑↓ choose  enter opens or folds a phase</Text>
+            {filled.length > 0 && (
+              <Box key="box:all" {...ring(picked('all'))}>
+                <Button key="all" label={anyFolded ? 'expand all' : 'collapse all'} plain hotkey="a" onPress={() => update($, ev, s => setFolds(s, filled.map(p => p.key), !anyFolded))}>{ZERO_WIDTH}</Button>
+                <Text>{anyFolded ? 'expand all' : 'collapse all'}</Text>
+              </Box>
+            )}
+            {backButton()}
+          </Box>
+        )
+      }
+
+      resting = 'back'
+      reachable = ['back']
+      return (
+        <Box flexDirection="column">
+          {crumbAndChecks}
           {saved}
-          <Text dimColor wrap="truncate-end">{`${fit('  agent', labelWidth)}${fit('approved', 18)}${column ? fit('ran on', 18) : 'ran on'}${column ? (roomy ? column.header : 'saved') : ''}`}</Text>
-          {open.agents.map((a: EvalAgentView) => (
-            <Text wrap="truncate-end">
-              <Text color={tone(a.ok)}>□</Text>
-              {` ${fit(a.label, labelWidth - 2)}`}
-              {pair(a.approvedModel, a.approvedEffort, 18)}
-              {pair(a.ranModel, a.ranEffort, 18)}
-              {column && tinted(Text, column.cell(a.agentId), column.color(a.agentId))}
-              {a.reason && <Text color="error">{`  ${a.reason}`}</Text>}
-            </Text>
-          ))}
+          {headerRow(6)}
+          {open.agents.map((a: EvalAgentView) => agentRow(a, <Text color={tone(a.ok)}>□</Text>))}
           <Text> </Text>
-          <Button key="back" label="back to the list" plain hotkey="b" autoFocus onPress={() => update($, ev, closeRun)} />
+          {backButton()}
         </Box>
       )
     }
 
     const view = bandView(state)
     const all = [...runs, ...finished]
+    reachable = all.map(v => `run:${v.key}`)
+    resting = runs[0] ? `run:${runs[0].key}` : null
     const nameWidth = Math.min(30, Math.max(12, 12, ...all.map(v => v.title.length + 4)))
     const agentsWidth = Math.max(12, ...runs.map(v => countsWidth(v.counts) + 2))
     const row = (v: (typeof all)[number], i: number, ended: boolean) => {
       const rowKey = `run:${v.key}`
-      const picked = e.props.isFocused && state.ui.focus === rowKey
+      const here = picked(rowKey)
       return (
-        <Box key={`box:${v.key}`} borderStyle={picked ? 'round' : undefined} borderColor={picked ? 'text' : undefined} paddingX={picked ? 1 : 2} paddingY={picked ? 0 : 1}>
-          <Button key={rowKey} plain autoFocus={i === 0 && !ended ? true : undefined} onPress={() => update($, ev, s => openRun(s, v.key))}>
-            <Text color={tone(v.ok)}>□</Text>
-          </Button>
+        <Box key={`box:${v.key}`} {...ring(here)}>
+          <Button key={rowKey} plain autoFocus={i === 0 && !ended ? true : undefined} onPress={() => update($, ev, s => openRun(s, v.key))}>{ZERO_WIDTH}</Button>
           <Text wrap="truncate-end">
+            <Text color={tone(v.ok)}>{mark(here, '□', '■')}</Text>
             {' '}
-            <Text weight={picked ? 'bold' : undefined}>{fit(v.title, nameWidth - 2)}</Text>
+            <Text weight={here ? 'bold' : undefined}>{fit(v.title, nameWidth - 2)}</Text>
             <Text dimColor>{fit(v.shortId, 9)}</Text>
             {ended ? <Text dimColor>{fit(`done ${v.endedClock ?? ''}`.trim(), agentsWidth)}</Text> : <Text>{counts(v.counts)}{' '.repeat(Math.max(1, agentsWidth - countsWidth(v.counts)))}</Text>}
             {v.ok ? line(listCell(v)) : <Text color="error">{v.reason}</Text>}
@@ -615,7 +649,7 @@ export const register: Register = on => {
       <Box flexDirection="column">
         <Text wrap="truncate-end">
           <Text weight="bold">{TITLE}</Text>
-          <Text dimColor>{view ? ` · ${bandText(view)}` : ''}</Text>
+          <Text dimColor>{view ? `  ${bandText(view)}` : ''}</Text>
         </Text>
         <Text> </Text>
         {runs.length === 0 && <Text dimColor>No workflow is running.</Text>}
@@ -630,7 +664,7 @@ export const register: Register = on => {
         {finished.length > 0 && <Text dimColor>finished this session</Text>}
         {finished.map((v, i) => row(v, runs.length + i, true))}
         {all.length > 0 && <Text> </Text>}
-        {all.length > 0 && <Text dimColor>{e.props.isFocused ? '↑↓ choose · enter details · esc close' : 'ctrl+x tab: focus this pane'}</Text>}
+        {all.length > 0 && <Text dimColor>{e.props.isFocused ? '↑↓ choose  enter details  esc close' : 'ctrl+x tab: focus this pane'}</Text>}
       </Box>
     )
   }).catch(($, e, next) => {

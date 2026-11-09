@@ -511,7 +511,7 @@ export function bandView(state) {
 }
 
 export function bandText(view) {
-  return view.red > 0 ? `${view.running} running · ${view.red} red` : `${view.running} running`
+  return view.red > 0 ? `${view.running} running  ${view.red} red` : `${view.running} running`
 }
 
 const CHECK_TITLES = {
@@ -529,7 +529,7 @@ const clockOf = (iso) => {
 }
 
 const CHECK_DETAILS = {
-  gate: (run) => [clockOf(run.gate && run.gate.at), 'script fingerprint matches'].filter(Boolean).join(' · '),
+  gate: (run) => [clockOf(run.gate && run.gate.at), 'script fingerprint matches'].filter(Boolean).join('  '),
   plan: (run) => `${run.agents.length} agent${run.agents.length === 1 ? '' : 's'}`,
   requests: (run) => {
     const n = run.agents.reduce((sum, a) => sum + a.sent.length, 0)
@@ -625,7 +625,7 @@ export function runView(run) {
     counts,
     saved: run.saved || null,
     endedClock: run.endedAt ? hhmm(run.endedAt) : null,
-    countsText: [`${counts.opus} opus`, `${counts.sonnet} sonnet`, ...(counts.haiku > 0 ? [`${counts.haiku} haiku`] : [])].join(' · '),
+    countsText: [`${counts.opus} opus`, `${counts.sonnet} sonnet`, ...(counts.haiku > 0 ? [`${counts.haiku} haiku`] : [])].join('  '),
     checks: checks.map((c) => ({ ...c, title: CHECK_TITLES[c.id](run), detail: c.ok ? CHECK_DETAILS[c.id](run) : null })),
     agents,
     phases: phaseViews(run, plan, agents)

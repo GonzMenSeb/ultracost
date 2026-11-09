@@ -11,7 +11,7 @@ const savedSeg = (text, pct) => ({ text, style: 'saved', pct })
 const capitalize = (s) => s.charAt(0).toUpperCase() + s.slice(1)
 const familySeg = (family) => seg(capitalize(family), FAMILY_STYLES.has(family) ? family : 'plain')
 const textOf = (line) => line.reduce((n, s) => n + s.text.length, 0)
-const configText = (config) => config.replace(':', ' · ')
+const configText = (config) => config.replace(':', ' ')
 
 export const fmtPct = (x) => (Math.abs(x) < 0.1 ? '< 0.1%' : `${x.toFixed(1)}%`)
 
@@ -118,7 +118,7 @@ export function savedBlock(saved) {
   if (tokens) out.push(tokens)
 
   const { measured, others } = sourceLines(saved)
-  const coverage = reasons.length ? `${base}: ${reasons.join('; ')}` : measured ? `${base} · ${measured}` : base
+  const coverage = reasons.length ? `${base}: ${reasons.join('; ')}` : measured ? `${base}  ${measured}` : base
   const lines = ['± = how far off the estimate can be, 9 times out of 10', coverage]
   if (reasons.length && measured) lines.push(measured)
   lines.push(...others)
@@ -135,7 +135,7 @@ export function agentColumn(saved) {
   const tint = (value) => (limit && typeof value === 'number' ? savedColor(value) : undefined)
   const missingOf = (phase) => phase.agents.some((a) => a.done && (byId.get(a.agentId)?.[field] ?? null) === null)
   return {
-    header: limit ? 'saved of 5-hour limit' : 'saved at API prices',
+    header: limit ? '5h saves' : 'API saves',
     cell: (agentId) => show(byId.get(agentId)?.[field]),
     color: (agentId) => tint(byId.get(agentId)?.[field]),
     group(phase) {
@@ -147,16 +147,54 @@ export function agentColumn(saved) {
   }
 }
 
-export function phaseLayout(labels, bodyColumns, column) {
-  const wanted = Math.min(34, Math.max(12, ...labels.map((l) => l.length + 4)))
-  const field = column ? Math.max(12, Math.min(wanted, bodyColumns - 6 - 36 - 7)) : wanted
-  const savedAt = 6 + field + 36
-  return { field, savedAt, roomy: column !== null && savedAt + column.header.length <= bodyColumns }
+const FAMILIES = ['opus', 'sonnet', 'haiku']
+const SAVED_GAP = 3
+const MODELS_MIN = 12
+
+export function phaseStatus(phase) {
+  const n = phase.total
+  return phase.state === 'running' ? `running  ${phase.done} of ${n} done` : `${n} agent${n === 1 ? '' : 's'}`
+}
+
+export function phaseHeadLength(phase) {
+  return 4 + phase.title.length + 2 + phaseStatus(phase).length + (phase.red > 0 ? `  ${phase.red} red`.length : 0)
+}
+
+export function phaseTitle(phase, savedAt) {
+  const room = savedAt - 2 - 4 - phaseStatus(phase).length - 2 - (phase.red > 0 ? `  ${phase.red} red`.length : 0)
+  return phase.title.length > room ? `${phase.title.slice(0, Math.max(1, room - 1))}…` : phase.title
+}
+
+export function phaseLayout({ labels, heads, cells, header, width }) {
+  const savedWidth = header ? Math.max(header.length, ...cells.map((c) => c.length)) + SAVED_GAP : 0
+  const wanted = Math.min(34, Math.max(12, ...labels.map((l) => l.length + 4), ...heads.map((h) => h - 4)))
+  const field = Math.max(12, Math.min(wanted, width - 6 - savedWidth - MODELS_MIN))
+  const savedAt = 6 + field
+  return { field, savedAt, savedWidth, modelsAt: savedAt + savedWidth }
+}
+
+export function modelLines(counts, width) {
+  const names = FAMILIES.filter((m) => counts[m] > 0)
+  if (names.length === 0) return [[dim('no agents yet')]]
+  const lines = [[]]
+  let used = 0
+  for (const m of names) {
+    const w = `${m} ${counts[m]}`.length
+    if (used > 0 && used + 2 + w > width) {
+      lines.push([])
+      used = 0
+    }
+    const line = lines[lines.length - 1]
+    if (line.length > 0) line.push(seg('  '))
+    line.push(seg(m, m), dim(` ${counts[m]}`))
+    used += (used > 0 ? 2 : 0) + w
+  }
+  return lines
 }
 
 export function listHeader(views) {
   const limit = views.some((v) => fiveHourOf(v.saved))
-  return [dim(limit ? 'saved of 5-hour limit' : 'saved at API prices')]
+  return [dim(limit ? '5h saves' : 'API saves')]
 }
 
 export function listCell(view) {
