@@ -55,7 +55,9 @@ The fold row is a row like the others, with the ring when picked. On it the hint
 - With no running run the workflows section reads `none running` and says `No workflow is running.`.
 - The overall total pools every workflow of the session in one estimate per baseline (the session's model and effort at each launch). With one baseline it is that estimate. With several it adds the low, middle and high ends (conservative), and the vs line reads `vs your session's model at each launch`.
 - The 5-hour and weekly rows count only the workflows of the current window. When some workflows ran in an earlier window a dim line says how many count.
-- The tally lives in its own session atom and is mirrored to the plugin store under `tally:<session id>`, so it outlives the 20-run list and a reload. Keys older than 30 days are removed at session start.
+- The tally lives in its own session atom and is mirrored to the plugin store under `tally:<session id>`, so it outlives the 20-run list and a reload. At session start the store keeps the 3 newest other sessions' tallies whose newest run is under 30 days old. A tally over 512 KiB is no longer mirrored (the store holds 4 MiB for every key).
+- The overall estimate always uses 1,000 draws: at 4,000 draws, 300 pooled agents took about 480 ms per scope, and it runs three scopes per baseline on every estimate.
+- When no workflow of the session ran in the current window and that window has 5 or more readings, its row shows a zero saving rather than `learning`.
 
 ## A run's view
 

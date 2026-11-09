@@ -475,24 +475,25 @@ An agent spawned for a run with no known launch is red with "not approved by the
 | each model request of such an agent | The model and effort actually sent. |
 | agent turn complete | The agent finished. |
 | a `<task-notification>` for a known launch with status `completed`, `failed` or `killed` | The run ended. The mod also checks the last rows of the session when the main thread completes a turn, in case it missed one. |
-| `/clear` | Every running run ends as `cleared`. |
+| `/clear` | Every running run ends as `cleared`, and the overall tally resets. |
+| `TaskStop` whose `task_id` (or `shell_id`) matches a running workflow's task id | The run ends as stopped, with status `killed`, the status the host's own notification uses. It gets its final estimate, its record and a toast "ultraguard: <title> stopped". A denied or failed TaskStop, or one for another task, changes nothing. |
 
 ### What it shows
 
 - A band above the prompt, only while at least one workflow run is active: a square (red if any active run is red, else green), the bold title `ultraguard-eval` and a dim summary such as `2 running  1 red`. Selecting it opens the pane. `/ultraguard` opens it too. The band yields to a survey.
-- A pane with one row per active run, in aligned columns: a hollow square, the workflow's name, a short run id, the Opus, Sonnet and Haiku counts (the model in bold, in its color), and either the saved figure or the first failure. The focused row is drawn inside a rounded outline with a bold name and a filled square; every row keeps the room of that outline, so nothing moves when the focus does. Items are separated by spaces, never middle dots. Enter on a row shows the four checks with ✓ or ✗ (a passing check adds its detail: the gate's approval time, the agent and request counts, the peak Opus count), then the workflow's phases with their agents (see [Phases in the detail](#phases-in-the-detail)), then the saved block. Esc goes back, then closes.
+- A pane that opens with the overall savings block, then the workflows. Every main section starts with a double rule such as `══ workflows  2 running ═══`. Subgroups use a thin rule such as `─ finished this session ───`. The workflows sit in a window of their own, so the overall section stays in view. Each run takes 2 lines, in aligned columns: a hollow square, the workflow's name, a short run id, the Opus, Sonnet and Haiku counts (the model in bold, in its color), and either the saved figure or the first failure. The focused row is drawn inside a rounded outline with a bold name and a filled square. Items are separated by spaces, never middle dots. "↑ N more" and "↓ N more" lines show the rows outside the window. The arrow keys move through every row and the window follows, keeping one row past the selection drawn. Enter on a row shows the run's view: the saved block, then the phases with their agents (see [Phases in the detail](#phases-in-the-detail)), then the four checks with ✓ or ✗ (a passing check adds its detail: the gate's approval time, the agent and request counts, the peak Opus count). Each section starts with a double rule: `══ ultraguard saved ══`, `══ phases ══` and `══ checks ══`. Esc goes back, then closes.
 
 ### Limits
 
 - Claude Code draws one plugin band above the prompt. A plugin whose hook draws its own band there without keeping the one beneath it (Cognee's memory row does) hides ultraguard's band; `/ultraguard` still opens the pane.
-- The band counts running workflows. A run that ends leaves the band, stays in its `.eval.json`, and stays in the pane under "finished this session" (see [Savings](#savings)). The mod keeps the 20 most recently ended runs in memory. A launch the gate refused is not a run: it is only in the gate's record. Workflows still being drafted are not shown, because nothing reliably marks when drafting starts or ends.
+- The band counts running workflows. A run that ends leaves the band, stays in its `.eval.json`, and stays in the pane under "finished this session", or in the folded "stopped this session" row if it was stopped (see [Savings](#savings)). The mod keeps the 20 most recently ended runs in memory. A launch the gate refused is not a run: it is only in the gate's record. Workflows still being drafted are not shown, because nothing reliably marks when drafting starts or ends.
 - If a workflow is running and there is no `ultraguard-eval` button, ultraguard is not loaded in that session.
 - Check 1 compares the script's text at two moments, the gate's read and the mod's read. It cannot tell what a sibling hook or the runtime did to the script after that.
 - It sees the models and efforts in requests that Claude Code sends. It does not see what a provider does after receiving them.
 
 ## Savings
 
-For each tracked run, ultraguard shows what it saved against one counterfactual: every agent of the workflow running on the session's model at the session's effort. That is what Claude Code does when a stage pins nothing. The figures are the percent of the 5-hour and weekly limits (subscribers), dollars at API prices (API key users) and tokens. Percentages and dollars carry a margin of error; the token figure is the median. A figure ultraguard cannot back is shown as unknown, never as 0. There is no model call, and nothing on the request path waits on the estimate.
+For each tracked run, ultraguard shows what it saved against one counterfactual: every agent of the workflow running on the session's model at the session's effort. That is what Claude Code does when a stage pins nothing. The figures are the percent of the 5-hour and weekly limits (subscribers), dollars at API prices (API key users) and tokens. Percentages and dollars carry a range; the token figure is the median. A figure ultraguard cannot back is shown as unknown, never as 0. There is no model call, and nothing on the request path waits on the estimate.
 
 Observed exactly, by the mod:
 
@@ -530,7 +531,7 @@ Chaining passed its one test: measured Opus medium times the published Opus high
 - **Between-workflow error (τ):** the same transition saved 29% on long code mapping and 52% on short checks, so a workflow carries an error of its own: `τ² = Σ (ln R_workflow − ln R_transition)² / max(1, W − T)` over the replayed workflows, floored at 0.15. Today τ = 0.30.
 - **Per-agent error:** the sample sd of the paired agents' log ratios, mean-corrected (`− s²/2`) so its multiplier averages 1.
 - **Monte Carlo:** 4,000 draws, seeded from the run key, so the pane shows the same numbers on every draw. Per draw: one deviate per run (τ), one per transition (shared ratio, all buckets) and one per agent (all buckets).
-- **Shown as ±:** the 90% range is lopsided, so ± uses its wider side, `max(median − 5th, 95th − median)`. That slightly overstates the uncertainty. The pane prints "± = how far off, 9 times in 10" under the figures.
+- **Shown as a range:** the pane shows the 5th to 95th percentile as low to high, such as `+30.1 (3.0 to 91.6)`, never as ±. The note under the figures reads "range = 9 times in 10".
 
 ### Data files and calibration
 
@@ -578,7 +579,7 @@ Usage from other sessions and claude.ai moves the meter without adding units her
 
 ### Phases in the detail
 
-Enter on a run shows the four checks, then the run's phases like Claude Code's own workflow view: each phase is a row you can fold, and the agents that ran in it sit indented below.
+Enter on a run shows the saved block, then the run's phases like Claude Code's own workflow view, then the four checks: each phase is a row you can fold, and the agents that ran in it sit indented below.
 
 ```
         agent                       API saves   ran on
@@ -600,7 +601,7 @@ Enter on a run shows the four checks, then the run's phases like Claude Code's o
 - **No middle dots:** the pane separates items with spaces, never a middle dot: the id after the workflow's name, a passing check's detail, the status of a phase, the counts, the effort, the hints and the run list. The band above the prompt and the saved block follow the same rule.
 - **Focus:** the focused run, phase block, "expand all" and "back to the list" are each drawn inside a rounded outline, and the focused run's square fills (■) and the focused phase's circle fills (●). The outline takes a blank row above and below, so phase blocks after the first overlap their neighbour's blank row and nothing moves when the focus does.
 - **A phase is done** when the run ended, or when every agent in it is done and a later phase has an agent. Until then it reads `running`, so a loop that runs one agent at a time does not flicker.
-- **Folding:** every phase starts open, except that on a run of more than 12 agents a finished phase with nothing red starts folded. Enter on a phase row folds or opens it, `a` opens all or folds all, `b` or Esc goes back. Your choices stay while you look at the run, also when it ends, and reset when you open another run. Focus starts on the first running or red phase. Up and down move between the phases, "expand all" and "back to the list".
+- **Folding:** every phase starts folded. Enter on a phase row opens or folds it, `a` opens all or folds all, `b` or Esc goes back. Your choices stay while you look at the run, also when it ends, and reset when you open another run. Focus starts on the first running or red phase. Up and down move between the phases, "expand all" and "back to the list".
 - **Saved figure of a phase:** the median of the sum of its agents' savings, not the sum of the agents' medians, so the figures of the agents can add up to a little less or more. It shows a dash when a finished agent in the phase has no figure. When the pane is narrow, the label column gives room to the saved column first, and a phase title that does not fit is cut with an ellipsis.
 
 ### Colors
@@ -618,40 +619,74 @@ The colors are tuned for a dark terminal: each one keeps at least 3:1 contrast o
 
 The row above the prompt keeps its meaning, with a hollow square: green and red still mean only enforced or evaded.
 
-Workflow detail (Enter on a run), after the four checks, at width 56:
+The list (`/ultraguard`), at width 56:
 
 ```
-ultraguard saved  vs every agent on Opus high
-  context ━━━━━━━━━━╸──────────────│   42%  84k of 200k
-  5-hour  ━━━━━━━━━━━━━━───────────│   40%  +15.0 ±4.0
-  weekly  ━━━╸─────────────────────│   10%  +2.4 ±0.9
+══ overall savings for this session so far  15 workflows ══════
+  vs every agent on Sonnet xhigh
+  context ━━━──────────────────────│   12%  125k of 1M
+  5-hour  ━━━━━━━╸─────────────────│   13%  +17.8
+          (2.1 to 52.3)
+  weekly  ━━━━━━━━━━━━━╸───────────│   50%  +3.5
+          (0.4 to 10.2)
+  5-hour counts the 7 workflows of this window
+
+══ workflows  2 running ═══════════════════════════════════════
+    workflow                  id       agents          5h saves
+  ↑ 3 more
+  □ audit the gate            e4f5a6b  sonnet 4         0.8% so far
+
+─ finished this session ───────────────────────────────────────
+  □ fan out the docs          c7d8e9f  done 14:02       2.2% (0.9 to 3.8)
+
+  ▸ stopped this session  2 workflows
+  ↓ 5 more
+```
+
+- **Overall savings:** the list opens with "overall savings for this session" (" so far" while a workflow runs) and the number of workflows. It pools every workflow of the session into one estimate per baseline, with the same context, 5-hour and weekly rows as a run's saved block. It resets on /clear.
+- **Tally:** the totals live in a session tally of their own, so they count every workflow, past the 20 the list keeps. The tally is mirrored to the plugin store under `tally:<session id>`. At session start the store keeps the 3 newest other sessions' tallies whose newest run is under 30 days old, and a tally over 512 KiB is no longer mirrored. The overall estimate always uses 1,000 draws.
+- **Per-window counting:** the 5-hour and weekly rows count only the workflows of the current window. When some workflows ran in an earlier window a dim line says how many count. When none of the session's workflows ran in the current window and that window has 5 or more readings, its row shows a zero saving rather than `learning`.
+- **Mixed baselines:** with one baseline the total is that estimate. With several, the low, middle and high ends are added, and the vs line reads "vs your session's model at each launch".
+- **Workflows section:** it sits in its own window, so the overall section stays in view. Rows take 2 lines. Finished workflows sit under a thin "finished this session" rule. "↑ N more" and "↓ N more" lines show the hidden rows. With no running workflow the section reads "none running".
+- **Stopped:** a workflow stopped with TaskStop goes into a folded "stopped this session" row at the end of the list. Enter on it opens or folds it, and open, its rows read `stopped HH:MM` in the agents column. Their savings count toward the overall total.
+
+A run's view (Enter on a run), at width 56:
+
+```
+══ ultraguard saved ═══════════════════════════════════════════
+  vs every agent on Opus high
+  context ━━━╸─────────────────────│   42%  84k of 200k
+  5-hour  ━━━━━━━━━━━━━━───────────│   40%  +15.0
+          (11.0 to 19.0)
+  weekly  ━━━╸─────────────────────│   10%  +2.4
+          (1.5 to 3.3)
   without ultraguard you would have been past half of
   your 5-hour limit already
-  $2.32 ±$0.59 at API prices
+  $2.32 ($1.73 to $2.91) at API prices
   2.9M fewer tokens
-  ± = how far off, 9 times in 10
+  range = 9 times in 10
 ```
 
 The agent table gets one more column, "5h saves" (or "API saves" when no limit figure shows), with each agent's median, and each phase row shows the figure of its agents.
 
 - **Width:** the block is at most 56 columns wide and has the same compact layout at every pane width. Text wraps at the block's width.
-- **Bars:** one thick-line bar per row: context, 5-hour and weekly. `━` is a full cell, `╸` a half cell and `─` the empty track. `│` marks 100% of the limit. The rows share one scale. The mark sits at the end of the bar until a row's use plus saving passes 100%. Then it moves into the bar on every row, the saving can spill past it, and the scale tops out at 150% of the limit. A `»` caps the last cell when use plus saving passes the end of the bar. That is a little over 150%, and the exact total moves with the pane width: for a 5-hour row with use 100%, the first cap is at a total of 158% at a block width of 56 columns or more and 166% at 44.
-- **Row text:** after the bar, the used percent (context: the share of the window), then the saving as `+N ±M` in points of the limit. Context shows the tokens against the window, such as `84k of 200k`. A saving of 0 or less shows without a `+`, and a window still learning shows `learning 3/5`.
+- **Bars:** one thick-line bar per row: context, 5-hour and weekly. `━` is a full cell, `╸` a half cell and `─` the empty track. `│` marks 100% of the limit. The rows share one scale. The mark sits at the end of the bar until a row's use plus saving passes 100%. Then it moves into the bar on every row, the saving can spill past it, and the scale tops out at 150% of the limit. A `»` caps the last cell when use plus saving passes the end of the bar. That is a little over 150%, and the exact total moves with the pane width: for a 5-hour row with use 100%, the first cap is at a total of 158% at a block width of 56 columns or more and 166% at 44. On a narrow pane the bars shrink down to 4 cells so every line fits the block's width. Below that a row's range moves to its own line under it.
+- **Row text:** after the bar, the used percent (context: the share of the window), then the saving as `+M (L to H)` in points of the limit. Context shows the tokens against the window, such as `84k of 200k`. A saving of 0 or less shows without a `+`, and a window still learning shows `learning 3/5`.
 - **Saving color:** the saved cells run on the gradient described under [Colors](#colors). The last saved cell and the `+N` figure share one color.
 - **Used part:** the used part of a limit bar, drawn in the theme's text color, is the use frozen at the last estimate, from the record's `used`. The gray part of the bar is the empty track. A record with no `used`, or a window with no reading, draws the row without a bar.
 - **Context row:** it reads the session's live context window as a status line does: tokens against the model's window, or against the smaller compaction window when auto-compaction is on. Right after a fresh session or a compaction it shows an empty track and a dash until the next response.
-- **Running:** the heading reads "ultraguard saved so far".
-- **API key:** the bars are context and cost. The cost bar shows the dollars spent as the used part and `+$2.32 ±$0.59` as the saving. There is no limit row, no limit message and no money line.
+- **Running:** the heading reads "ultraguard saved so far". The "vs every agent on ..." line always takes its own line.
+- **API key:** the bars are context and cost. The cost bar shows the dollars spent as the used part and `+$2.32 ($1.73 to $2.91)` as the saving. There is no limit row, no limit message and no money line.
 - **Limit not calibrated:** the row reads `learning 3/5` instead of the saving, with the readings so far.
 - **Limit messages:** they sit under the bars. "without ultraguard you would have blown past your 5-hour limit" when use plus saving would have passed 100%. "... would have had only 2% of your 5-hour limit left" when it comes within 10 points of the limit. "... would have been past half of your 5-hour limit already" when use plus saving passes 50% and use alone stays under it. Rows of the same kind and the same hedge join into one sentence: "5-hour and weekly limits". Rows of one kind with different hedges get a sentence each, and rows of the "only N% left" kind never join, so a kind can give several sentences. For the first two kinds, a saving under 2% is hedged: "would likely have" when the low end of the range still lands in the same band, "might have" when it does not. For the half kind, a margin under 5 points over half is hedged with "likely".
-- **Money and tokens:** on a subscription the money line reads `$2.32 ±$0.59 at API prices`. The tokens line is "2.9M fewer tokens", or "8.8M more tokens: Sonnet read and wrote more, at a lower price per token". With two or more families it reads "Haiku, Opus and Sonnet read and wrote more…". Each is on its own line.
-- **Note:** the dim line "± = how far off, 9 times in 10" follows, and under it "this run may have saved nothing" when the range reaches below zero.
-- **Coverage:** these dim lines appear only when something is off. When an agent is left out or a price or a ratio is missing, the first line is "from 3 of 4 agents: ultraguard has no price for the model one agent ran on", and "ratio measured on N replayed agents" follows it when some pairs were measured. The source lines print whenever they apply: "ratio measured at high effort, adjusted with published figures for xhigh", "no replay measured sonnet medium against opus high; using published figures, so ± is wide". When every agent counted, was priced and had a ratio, the bare "from N of N agents" line and the "ratio measured on N replayed agents" line are dropped, and only the source lines print.
+- **Money and tokens:** on a subscription the money line reads `$2.32 ($1.73 to $2.91) at API prices`. The tokens line is "2.9M fewer tokens", or "8.8M more tokens: Sonnet read and wrote more, at a lower price per token". With two or more families it reads "Haiku, Opus and Sonnet read and wrote more…". Each is on its own line.
+- **Note:** the dim line "range = 9 times in 10" follows, and under it "this run may have saved nothing" when the range reaches below zero.
+- **Coverage:** these dim lines appear only when something is off. When an agent is left out or a price or a ratio is missing, the first line is "from 3 of 4 agents: ultraguard has no price for the model one agent ran on", and "ratio measured on N replayed agents" follows it when some pairs were measured. The source lines print whenever they apply: "ratio measured at high effort, adjusted with published figures for xhigh", "no replay measured sonnet medium against opus high; using published figures, so the range is wide". When every agent counted, was priced and had a ratio, the bare "from N of N agents" line and the "ratio measured on N replayed agents" line are dropped, and only the source lines print.
 - **Nothing to estimate:** "every agent ran on your session's model and effort, so nothing was saved"; "ultraguard could not read your session's model or effort, so it has no estimate".
 
-Run list: a dim header row `workflow  id  agents  5h saves` (or `API saves`). Green rows show `1.4% ± 0.6`, running rows `0.6% so far`, red rows keep their reason.
+Run list: a dim header row `workflow  id  agents  5h saves` (or `API saves`). Green rows show `1.4% (0.6 to 2.2)`, running rows `0.6% so far`, red rows keep their reason.
 
-Finished this session: ended runs stay in the pane under "finished this session", with `done 14:51` in the agents column, until `/clear` or the session ends. Enter opens them. Cleared runs are not listed.
+Finished this session: ended runs stay in the pane under a thin "finished this session" rule, with `done 14:51` in the agents column, until `/clear` or the session ends. Enter opens them. Cleared runs are not listed. Stopped runs go in the folded "stopped this session" row instead.
 
 Toast at run end (8 seconds; the model never sees it):
 
@@ -678,11 +713,11 @@ Replays run 2026-11-08: 22 agents from 3 past all-Opus workflows, replayed with 
 
 ### Savings limits
 
-- Smékal's estimator is unproven across models. The replays are the only evidence for this workload, and they measure two transitions directly. No Haiku transition was replay-measured, so Haiku savings use published figures and their ± is wide.
-- With 3 replayed workflows the per-workflow ± is wide (τ = 0.30), close to Smékal's ×1.9.
+- Smékal's estimator is unproven across models. The replays are the only evidence for this workload, and they measure two transitions directly. No Haiku transition was replay-measured, so Haiku savings use published figures and their range is wide.
+- With 3 replayed workflows the per-workflow range is wide (τ = 0.30), close to Smékal's ×1.9.
 - Effort labels have cost about 2× more from one Claude Code version to the next (anthropics/claude-code#78320). `data/ratios.json` records the version it was measured on.
 - Limit figures carry the meter's unknowns: other usage on the account, the cache-read weight and server-side changes. A change of plan or account leaves readings from the old limit in use for up to 30 days. A request on a model with no price voids the reading it falls in.
-- Not included: a user's own ratios file, a replay-building script, a session or weekly total, per-class ratios.
+- Not included: a user's own ratios file, a replay-building script, a weekly total, per-class ratios.
 
 ## Environment checks
 
