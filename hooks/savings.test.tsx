@@ -86,7 +86,11 @@ async function flow($: any, on: any, options: Options) {
   on('session.measure', (_: any, e: any) => ({ changed: e.changed }))
   on('command.register', () => ({ value: { command: 'ultraguard' } }))
   on('turn.complete', () => ({ text: '' }))
-  on('ui.log', () => ({ value: undefined }))
+  const logs: string[] = []
+  const offsets: number[] = []
+  on('ui.log', (_: any, e: any) => (logs.push(String(e.text)), { value: undefined }))
+  on('ui.focus', () => ({}))
+  on('ui.scroll', (_: any, e: any) => (offsets.push(e.offset), {}))
   on('ui.toast', (_: any, e: any) => (toasts.push(String(e.text)), { value: undefined }))
   on('fs.write', (_: any, e: any) => ((writes[e.path] = e.text), { value: undefined }))
   on('store.keys', () => ({ value: Object.keys(store) }))
@@ -165,7 +169,7 @@ async function flow($: any, on: any, options: Options) {
     return toolUseId
   }
   if (finish) await end(toolUseId)
-  return { writes, toasts, store, clock, id: () => toolUseId, end, launch, setContext: (next: Record<string, unknown>) => (fill = { window: 200000, ...next }) }
+  return { writes, toasts, store, clock, logs, offsets, id: () => toolUseId, end, launch, setContext: (next: Record<string, unknown>) => (fill = { window: 200000, ...next }) }
 }
 
 const detail = async ($: any, id: string) => {
@@ -592,3 +596,73 @@ test('a session start loads its own stored tally and removes tally keys older th
   expect(Object.keys(tallyOf(w).runs).sort()).toEqual(['earlier', w.id()].sort())
   expect(tallyOf(w).overall.count).toBe(2)
 })
+
+const flat = (children: unknown): any[] =>
+  Array.isArray(children) ? children.flatMap(flat) : children && typeof children === 'object' ? [children] : []
+const heightOf = (el: any): number => {
+  if (el.type !== 'Box') return 1
+  const kids = flat(el.children)
+  const inner = el.props?.flexDirection === 'column' ? kids.reduce((n: number, c: any) => n + heightOf(c) + (c.props?.marginTop ?? 0), 0) : Math.max(0, ...kids.map(heightOf))
+  return inner + (el.props?.borderStyle ? 2 : 0) + 2 * (el.props?.paddingY ?? 0)
+}
+const layout = (root: any) => {
+  let y = 0
+  const boxes: Record<string, { top: number; bottom: number }> = {}
+  for (const c of flat(root.children)) {
+    y += c.props?.marginTop ?? 0
+    const h = heightOf(c)
+    if (c.props?.key) boxes[String(c.props.key)] = { top: y, bottom: y + h }
+    y += h
+  }
+  return { rows: y, boxes }
+}
+const ringedBoxes = async (ui: any) => (await ui.findAll({ type: 'Box' })).filter((b: any) => /^box:/.test(String(b.key ?? '')) && b.props.borderStyle === 'round').map((b: any) => String(b.key))
+const boxOf = (key: string) => `box:${key.slice(4)}`
+
+for (const bodyRows of [20, 24, 28]) {
+  test(`at ${bodyRows} rows the arrows walk a windowed list through every row both ways, and the overall section stays on top`, async ($, on) => {
+    const w = await flow($, on, { subscription: true })
+    const first = w.id()
+    const launched: string[] = []
+    for (let i = 0; i < 14; i++) launched.push(await w.launch())
+    for (const id of launched.slice(10)) await w.end(id)
+    const keys = [first, ...launched].map(id => `run:${id}`)
+    const ui = await $.ui.mount({ ...PANE, props: { ...PANE.props, scroll: { offset: 0, bodyRows } }, surface: 'terminal' })
+
+    const settled = async (key: string) => {
+      const { rows, boxes } = layout(await ui.drawn())
+      expect(rows).toBeGreaterThan(bodyRows)
+      expect(await ringedBoxes(ui)).toEqual([boxOf(key)])
+      expect(boxes[boxOf(key)]?.bottom).toBeLessThanOrEqual(bodyRows)
+      const texts: string[] = (await ui.findAll({ type: 'Text' })).map((t: any) => String(t.text ?? ''))
+      expect(texts[0]).toBe('ultraguard-eval')
+      expect(texts.find(t => /^══ /.test(t))).toMatch(/^══ overall savings for this session/)
+      return rows
+    }
+    const step = async (by: number, rows: number) => {
+      const seen = w.logs.length
+      await $.ui.scroll({ component: 'Pane', requestId: 'ultraguard', offset: Math.max(0, by), by, bodyRows, contentRows: rows, origin: { kind: 'person' } })
+      const target = w.logs.slice(seen).map(l => l.match(/arrow to (\S+): /)?.[1]).find(Boolean) ?? null
+      if (target) await $.ui.focus({ component: 'Pane', requestId: 'ultraguard', element: target, origin: { kind: 'plugin', name: 'ultraguard' } })
+      return target
+    }
+    const walk = async (from: string, by: number) => {
+      const seen = [from]
+      let rows = await settled(from)
+      for (let target = await step(by, rows); target; target = await step(by, rows)) {
+        seen.push(target)
+        rows = await settled(target)
+      }
+      return seen
+    }
+
+    const start = (await ringedBoxes(ui))[0]
+    const down = await walk(keys.find(k => boxOf(k) === start) ?? '', 1)
+    expect([...down].sort()).toEqual([...keys].sort())
+    const up = await walk(down.at(-1) ?? '', -1)
+    expect(up).toEqual([...down].reverse())
+    expect(w.offsets.length).toBeGreaterThan(0)
+    expect(w.offsets.every(o => o === 0)).toBe(true)
+    await ui.unmount()
+  })
+}

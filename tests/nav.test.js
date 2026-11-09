@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { sha256Hex } from '../src/fingerprint.mjs'
 import { STOPPED, closeRun, createState, noteLaunch, noteLaunchResult, noteRunEnd, openRun, setStoppedOpen } from '../src/eval.mjs'
-import { STOPPED_FOLD, arrowOf, boxKeyOf, paneNav, stepFocus } from '../src/nav.mjs'
+import { STOPPED_FOLD, arrowOf, boxKeyOf, listShown, paneNav, stepFocus } from '../src/nav.mjs'
 
 const SCRIPT = "await agent('x', { label: 'investigate: map', model: 'sonnet', effort: 'high' })\n"
 
@@ -106,4 +106,13 @@ test('a focus key maps to the box the outline is drawn around', () => {
   assert.equal(boxKeyOf('phase:Collect'), 'box:phase:Collect')
   assert.equal(boxKeyOf('all'), 'box:all')
   assert.equal(boxKeyOf('back'), 'box:back')
+})
+
+test('the list shows unless the open run is still listed', () => {
+  const s = run(createState(), 'toolu_a', 1000)
+  assert.equal(listShown(s), true)
+  assert.equal(listShown(openRun(s, 'toolu_a')), false)
+  assert.equal(listShown(openRun(s, 'toolu_gone')), true)
+  assert.equal(listShown(closeRun(openRun(s, 'toolu_a'))), true)
+  assert.equal(listShown(stopped(openRun(s, 'toolu_a'), 'toolu_a', 2000)), false)
 })

@@ -382,7 +382,7 @@ export function openRun(state, key) {
 }
 
 export function closeRun(state) {
-  return state.ui.run === null ? state : { ...state, ui: { ...state.ui, run: null, folds: {} } }
+  return state.ui.run === null ? state : { ...state, ui: { ...state.ui, run: null, folds: {}, focus: `run:${state.ui.run}` } }
 }
 
 export function noteFocus(state, key) {

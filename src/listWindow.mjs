@@ -1,13 +1,17 @@
 const FIRST_ROW_LINES = 3
+const MIN_ROOM = 3
+
+export function listLayout({ items, bodyRows, fixed, focusKey, prevFrom }) {
+  const full = bodyRows - fixed
+  if (costOf(items, 0, items.length) <= full) return { from: 0, to: items.length, above: 0, below: 0, windowed: false, pad: 0 }
+  const shown = listWindow({ items, room: Math.max(MIN_ROOM, full - 2), focusKey, prevFrom })
+  return { ...shown, windowed: true, pad: Math.max(1, full - 1 - costOf(items, shown.from, shown.to)) }
+}
 
 export function listWindow({ items, room, focusKey, scrolloff = 1, prevFrom = 0 }) {
   const n = items.length
   const hidden = (from, to) => ({ from, to, above: countRows(items, 0, from), below: countRows(items, to, n) })
-  const cost = (from, to) => {
-    let sum = 0
-    for (let i = from; i < to; i++) sum += i === from && items[i].row ? Math.max(items[i].lines, FIRST_ROW_LINES) : items[i].lines
-    return sum
-  }
+  const cost = (from, to) => costOf(items, from, to)
   if (n === 0 || cost(0, n) <= room) return hidden(0, n)
 
   const found = items.findIndex((it) => it.key === focusKey)
@@ -28,6 +32,12 @@ export function listWindow({ items, room, focusKey, scrolloff = 1, prevFrom = 0 
   if (to < n) while (to > hi + 1 && !items[to - 1].row) to--
   if (to === n) while (from > 0 && cost(from - 1, to) <= room) from--
   return hidden(from, to)
+}
+
+function costOf(items, from, to) {
+  let sum = 0
+  for (let i = from; i < to; i++) sum += i === from && items[i].row ? Math.max(items[i].lines, FIRST_ROW_LINES) : items[i].lines
+  return sum
 }
 
 function countRows(items, from, to) {

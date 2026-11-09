@@ -47,9 +47,9 @@ import {
   TALLY_STORE_MAX
 } from '../src/eval.mjs'
 import { contextFill, createContext, forgetCompactRead, noteBreakdown, noteContext } from '../src/context.mjs'
-import { listWindow } from '../src/listWindow.mjs'
+import { listLayout } from '../src/listWindow.mjs'
 import { intervalsOf, staleKeys, storedValue, usedOf } from '../src/meter.mjs'
-import { STOPPED_FOLD, arrowOf, boxKeyOf, paneNav, stepFocus } from '../src/nav.mjs'
+import { STOPPED_FOLD, arrowOf, boxKeyOf, listShown, paneNav, stepFocus } from '../src/nav.mjs'
 import { familyColor, modelColor, savedColor } from '../src/palette.mjs'
 import { loadPrices, priceFamily } from '../src/prices.mjs'
 import {
@@ -91,7 +91,6 @@ const KEPT = 20
 const TOAST_MS = 8000
 const DRAWS_RUNNING = 1000
 const TALLY_TOO_BIG = `ultraguard: the session tally is over ${TALLY_STORE_MAX / 1024} KiB, so it is no longer kept in the plugin store`
-const MIN_ROOM = 3
 const agentsText = (n: number) => `${n} agent${n === 1 ? '' : 's'}`
 
 const ev = atom({ plugin: 'ultraguard', key: 'eval' } as const, createState() as EvalState, { shape: 'eval-2' })
@@ -99,6 +98,7 @@ const ctx = atom({ plugin: 'ultraguard', key: 'context' } as const, createContex
 const tally = atom({ plugin: 'ultraguard', key: 'tally' } as const, createTally() as TallyState, { shape: 'tally-1' })
 
 const windowFrom = new Map<string, number>()
+let ringHeld = true
 
 type Ids = { toolUseId: string; runId: string }
 type Notice = { toolUseId: string | null | undefined; taskId: string | null | undefined; status: string }
@@ -562,10 +562,14 @@ export const register: Register = on => {
   })
 
   on('ui.focus', { component: 'Pane', requestId: PANE }, async ($, e, next) => {
-    await guard($, 'focus', () => update($, ev, s => noteFocus(s, e.element ?? null)))
-    const done = await next(e)
     const element = e.element
-    if (element) {
+    if (element !== undefined) await guard($, 'focus', () => update($, ev, s => noteFocus(s, element)))
+    if (ringHeld !== (element !== undefined)) {
+      ringHeld = element !== undefined
+      await guard($, 'focus ring', async () => $.ui.invalidate('ui.render'))
+    }
+    const done = await next(e)
+    if (element !== undefined) {
       await guard($, 'focus scroll', async () => {
         await $.ui.scroll({ to: { key: boxKeyOf(element) }, in: PANE })
       })
@@ -574,22 +578,24 @@ export const register: Register = on => {
   })
 
   on('ui.scroll', { component: 'Pane', requestId: PANE }, async ($, e, next) => {
+    const state = await read($, ev).catch(() => null)
     const dir = arrowOf(e)
-    if (dir === 0) return next(e)
+    const before = state?.ui.focus ?? null
+    const target = state && dir !== 0 ? stepFocus(paneNav(state), before, dir) : null
     let moved = false
-    await guard($, 'arrow', async () => {
-      const state = await read($, ev)
-      const before = state.ui.focus ?? null
-      const target = stepFocus(paneNav(state), before, dir)
-      if (target === null) return
-      await update($, ev, s => noteFocus(s, target))
-      try {
-        moved = (await $.ui.focus({ requestId: PANE, key: target })).deny === undefined
-      } finally {
-        if (!moved) await update($, ev, s => noteFocus(s, before))
-      }
-    })
-    return moved ? {} : next(e)
+    if (target !== null) {
+      await guard($, `arrow to ${target}`, async () => {
+        await update($, ev, s => noteFocus(s, target))
+        try {
+          moved = (await $.ui.focus({ requestId: PANE, key: target })).deny === undefined
+        } finally {
+          if (!moved) await update($, ev, s => noteFocus(s, before))
+        }
+      })
+    }
+    if (moved) return {}
+    const last = state && listShown(state) ? Math.max(0, e.contentRows - e.bodyRows - 1) : e.offset
+    return e.offset > last ? next({ ...e, offset: last }) : next(e)
   })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
@@ -616,7 +622,7 @@ export const register: Register = on => {
     const open = [...runs, ...finished, ...stopped].find(v => v.key === state.ui.run)
     const { reachable, resting } = paneNav(state)
     const focusKey = reachable.includes(state.ui.focus ?? '') ? (state.ui.focus ?? null) : resting
-    const picked = (key: string) => e.props.isFocused && focusKey === key
+    const picked = (key: string) => e.props.isFocused && ringHeld && focusKey === key
     const width = e.props.bodyColumns - 4
     const overall = open ? null : ((await read($, tally)).overall ?? null)
     const stored = await read($, ctx)
@@ -795,12 +801,12 @@ export const register: Register = on => {
     const nameWidth = Math.min(30, Math.max(12, ...all.map(v => v.title.length + 4)))
     const agentsWidth = Math.max(12, ...runs.map(v => countsWidth(v.counts) + 2), ...[...finished, ...stopped].map(v => endedText(v).length + 2))
     type Draw = (first: boolean) => any
-    const runRow = (v: (typeof all)[number], live: boolean, autoFocus: boolean): Draw => first => {
+    const runRow = (v: (typeof all)[number], live: boolean): Draw => first => {
       const rowKey = `run:${v.key}`
       const here = picked(rowKey)
       return (
         <Box key={boxKeyOf(rowKey)} marginTop={first ? 0 : -1} {...ring(here)}>
-          <Button key={rowKey} plain autoFocus={autoFocus ? true : undefined} onPress={() => update($, ev, s => openRun(s, v.key))}>{ZERO_WIDTH}</Button>
+          <Button key={rowKey} plain autoFocus={rowKey === focusKey ? true : undefined} onPress={() => update($, ev, s => openRun(s, v.key))}>{ZERO_WIDTH}</Button>
           <Text wrap="truncate-end">
             <Text color={tone(v.ok)}>{mark(here, '□', '■')}</Text>
             {' '}
@@ -816,7 +822,7 @@ export const register: Register = on => {
       const here = picked(STOPPED_FOLD)
       return (
         <Box key={boxKeyOf(STOPPED_FOLD)} marginTop={first ? 0 : -1} {...ring(here)}>
-          <Button key={STOPPED_FOLD} plain onPress={() => update($, ev, s => setStoppedOpen(s, !stoppedOpen(s)))}>{ZERO_WIDTH}</Button>
+          <Button key={STOPPED_FOLD} plain autoFocus={focusKey === STOPPED_FOLD ? true : undefined} onPress={() => update($, ev, s => setStoppedOpen(s, !stoppedOpen(s)))}>{ZERO_WIDTH}</Button>
           {line(foldLine({ open: foldOpen, count: stopped.length, picked: here }))}
         </Box>
       )
@@ -828,8 +834,8 @@ export const register: Register = on => {
       if (head) items.push({ key: `head:${head}`, lines: 2, row: false, first: false, draw: () => <Box flexDirection="column"><Text> </Text>{line(subHead(head, { width }))}</Box> })
       rows.forEach((r, i) => items.push({ ...r, lines: i === 0 ? 3 : 2, row: true, first: i === 0 }))
     }
-    const ended = (list: typeof all) => list.map(v => ({ key: `run:${v.key}`, draw: runRow(v, false, false) }))
-    group(runs.map((v, i) => ({ key: `run:${v.key}`, draw: runRow(v, true, i === 0) })))
+    const ended = (list: typeof all) => list.map(v => ({ key: `run:${v.key}`, draw: runRow(v, false) }))
+    group(runs.map(v => ({ key: `run:${v.key}`, draw: runRow(v, true) })))
     group(ended(finished), FINISHED_TITLE)
     if (stopped.length > 0) group([{ key: STOPPED_FOLD, draw: foldRow }, ...(foldOpen ? ended(stopped) : [])])
 
@@ -852,20 +858,17 @@ export const register: Register = on => {
     ]
     const hint = !e.props.isFocused ? FOCUS_HINT : focusKey === STOPPED_FOLD ? FOLD_HINT(foldOpen) : LIST_HINT
     const bottom = all.length > 0 ? [<Text> </Text>, <Text dimColor>{hint}</Text>] : []
-    const full = e.props.scroll.bodyRows - top.length - bottom.length
-    const windowed = items.reduce((n, it) => n + it.lines, 0) > full
-    const shown = windowed
-      ? listWindow({ items, room: Math.max(MIN_ROOM, full - 2), focusKey, prevFrom: windowFrom.get(e.surface) })
-      : { from: 0, to: items.length, above: 0, below: 0 }
+    const shown = listLayout({ items, bodyRows: e.props.scroll.bodyRows, fixed: top.length + bottom.length, focusKey, prevFrom: windowFrom.get(e.surface) })
     windowFrom.set(e.surface, shown.from)
     const more = (n: number, text: (n: number) => string) => (n > 0 ? <Text dimColor>{text(n)}</Text> : <Text> </Text>)
     return (
       <Box flexDirection="column">
         {top}
-        {windowed && more(shown.above, MORE_ABOVE)}
+        {shown.windowed && more(shown.above, MORE_ABOVE)}
         {items.slice(shown.from, shown.to).map((it, i) => it.draw(it.first || i === 0))}
-        {windowed && more(shown.below, MORE_BELOW)}
+        {shown.windowed && more(shown.below, MORE_BELOW)}
         {bottom}
+        {Array.from({ length: shown.pad }, () => <Text> </Text>)}
       </Box>
     )
   }).catch(($, e, next) => {

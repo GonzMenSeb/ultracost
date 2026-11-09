@@ -535,6 +535,12 @@ test('openRun and closeRun move the pane between its list and a run', () => {
   assert.equal(closeRun(s), s)
 })
 
+test('closing a run puts the list focus on its row', () => {
+  const s = noteFocus(openRun(createState(), TU), 'back')
+  assert.equal(closeRun(s).ui.focus, `run:${TU}`)
+  assert.equal(closeRun(createState()).ui.focus ?? null, null)
+})
+
 test('parseTaskNotifications reads the end of a run from a notification row', () => {
   const row = [
     '<task-notification>',
@@ -935,7 +941,7 @@ test('a toggle beats the default and survives a redraw; opening another run rese
   assert.equal(phaseOpen(first, all.ui.folds), false)
   assert.deepEqual(openRun(all, 'other').ui, { run: 'other', folds: {} })
   assert.equal(openRun(all, TU).ui.run, TU)
-  assert.deepEqual(closeRun(all).ui, { run: null, folds: {} })
+  assert.deepEqual(closeRun(all).ui, { run: null, folds: {}, focus: `run:${TU}` })
   assert.equal(phaseOpen({ key: 'x', open: false }, null), false)
 })
 
