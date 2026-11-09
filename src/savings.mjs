@@ -52,8 +52,8 @@ export function ratioFor(ratios, from, to) {
 
   const prior = ratios.priors[`${from}>${to}`]
   if (prior) {
-    const bucket = { mu: prior.mu, sigma: prior.sd }
-    return { source: 'prior', output: bucket, fresh: bucket, read: bucket, agentSd: { ...ratios.pooledAgentSd }, tau: 0, pairs: 0 }
+    const bucket = (s) => ({ mu: s.mu, sigma: s.sd })
+    return { source: 'prior', ...Object.fromEntries(NAMES.map((name) => [name, bucket(stepBucket(prior, name))])), agentSd: { ...ratios.pooledAgentSd }, tau: 0, pairs: 0 }
   }
   const [fromFamily, fromEffort] = from.split(':')
   const step = fromFamily === family ? ratios.steps[family]?.[`${fromEffort}>${effort}`] : null
