@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.13 - ultraguard
+
+- The workflow detail in ultraguard-eval has a new layout. The columns are the agent, then what it saved, then "ran on" last, so the saved figure sits right after the labels, near its phase or agent. The approved model and effort are gone from the rows; a dim line under the phases says "✓ ran as the gate approved  ✗ did not".
+- Each phase is a block: the caret, a circle, the title, the agent count (or "running  1 of 2 done", plus "1 red" when an agent broke the plan) and the saved figure of its agents. While folded, the phase also shows its models in the "ran on" column ("opus 11  sonnet 10  haiku 12"), wrapping onto more lines when they do not fit. An open phase lists its agents, each with a model in its color and the effort dim.
+- The saved column is headed "5h saves" with a 5-hour limit figure and "API saves" otherwise, in the detail and in the run list.
+- No more middle dots in the pane: the id next to the workflow's name, a passing check's detail, the status of a phase, the counts, the effort, the hints, the run list, the band above the prompt and the saved block use spaces.
+- The focus outline now also wraps a phase block and the "expand all" and "back to the list" buttons, not only a run. The focused run's square and the focused phase's circle fill in (■, ●). Each row's button is now an invisible anchor, so the engine's inverted fill no longer shows, and the phase blocks share the blank row between them.
+
 ## 0.4.12 - ultraguard
 
 - `code:` and `grunt:` allow Haiku at `medium`, `high` and `xhigh`, not only `xhigh`. A replay of the 10 latest workflows on Haiku 5.5 matched the recorded answer on all 30 runs of five fixed-shape tasks at `medium` and `xhigh`, at 6 to 11 times less cost per run than Sonnet.

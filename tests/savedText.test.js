@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { fmtPct, fmtUsd, fmtTokens, phaseLayout, savedBlock, agentColumn, listHeader, listCell, toastText } from '../src/savedText.mjs'
+import { fmtPct, fmtUsd, fmtTokens, modelLines, phaseHeadLength, phaseLayout, phaseStatus, phaseTitle, savedBlock, agentColumn, listHeader, listCell, toastText } from '../src/savedText.mjs'
 import { savedColor } from '../src/palette.mjs'
 
 const range = (mid, pm, lo = mid - pm) => ({ mid, lo, hi: mid + pm, pm })
@@ -9,7 +9,7 @@ const lines = (saved) => savedBlock(saved).map(text)
 const at36 = (left, right) => left.padEnd(36) + right
 
 const PM = '  ± = how far off the estimate can be, 9 times out of 10'
-const COVERAGE = '  from 4 of 4 agents · ratio measured on 22 replayed agents'
+const COVERAGE = '  from 4 of 4 agents  ratio measured on 22 replayed agents'
 const VERSUS = "compared with running every agent on Opus at high effort, your session's setting"
 
 const saved = (over = {}) => ({
@@ -172,7 +172,7 @@ test('sources say how the ratio was obtained', () => {
     })
   )
   assert.equal(prior.at(-2), '  from 4 of 4 agents')
-  assert.equal(prior.at(-1), '  no replay measured sonnet · high against opus · xhigh; using published figures, so ± is wide')
+  assert.equal(prior.at(-1), '  no replay measured sonnet high against opus xhigh; using published figures, so ± is wide')
 })
 
 test('an unpriced agent is named in the coverage line', () => {
@@ -190,12 +190,12 @@ test('several unpriced agents are counted', () => {
 
 test('an agent with no ratio is named in the coverage line', () => {
   const block = lines(saved({ coverage: { used: 3, total: 4, unpriced: 0, noRatio: ['haiku:low>opus:high'] }, sources: { measuredPairs: 0, chained: [], priors: [] } }))
-  assert.equal(block.at(-1), '  from 3 of 4 agents: ultraguard has no ratio for haiku · low against opus · high')
+  assert.equal(block.at(-1), '  from 3 of 4 agents: ultraguard has no ratio for haiku low against opus high')
 })
 
 test('an agent with no usage only lowers the count', () => {
   const block = lines(saved({ coverage: { used: 1, total: 2, unpriced: 0, noRatio: [] } }))
-  assert.equal(block.at(-1), '  from 1 of 2 agents · ratio measured on 22 replayed agents')
+  assert.equal(block.at(-1), '  from 1 of 2 agents  ratio measured on 22 replayed agents')
 })
 
 test('nothing saved when every agent ran on the session setting', () => {
@@ -225,18 +225,18 @@ test('no usable agents shows only the coverage line', () => {
 
 test('the agent column follows the figure that shows', () => {
   const limit = agentColumn(saved())
-  assert.equal(limit.header, 'saved of 5-hour limit')
+  assert.equal(limit.header, '5h saves')
   assert.equal(limit.cell('a1'), '0.4%')
   assert.equal(limit.cell('a2'), '—')
   assert.equal(limit.cell('nope'), '—')
 
   const dollars = agentColumn(saved({ limits: null, subscription: false }))
-  assert.equal(dollars.header, 'saved at API prices')
+  assert.equal(dollars.header, 'API saves')
   assert.equal(dollars.cell('a1'), '$0.63')
   assert.equal(dollars.cell('a2'), '—')
 
   const noLimit = agentColumn(saved({ limits: { five_hour: null, seven_day: null, readings: { five_hour: 1, seven_day: 1 } } }))
-  assert.equal(noLimit.header, 'saved at API prices')
+  assert.equal(noLimit.header, 'API saves')
   assert.equal(agentColumn(null).cell('a1'), '—')
 })
 
@@ -277,25 +277,65 @@ test('the tokens line joins the families with commas and a last "and"', () => {
   assert.equal(line('haiku', 'opus', 'sonnet'), '  46k more tokens: Haiku, Opus and Sonnet read and wrote more, at a lower price per token')
 })
 
-test('the phase table gives the saved value room before it gives the label room', () => {
-  const column = agentColumn(saved())
-  const labels = ['grunt: merged PRs', 'investigate: deprecations']
-  assert.deepEqual(phaseLayout(labels, 120, column), { field: 29, savedAt: 71, roomy: true })
-  assert.deepEqual(phaseLayout(labels, 76, column), { field: 27, savedAt: 69, roomy: false })
-  assert.deepEqual(phaseLayout(labels, 70, column), { field: 21, savedAt: 63, roomy: false })
-  assert.equal(phaseLayout(labels, 60, column).field, 12)
-  assert.equal(phaseLayout(labels, 40, column).field, 12)
-  assert.deepEqual(phaseLayout(labels, 70, null), { field: 29, savedAt: 71, roomy: false })
-  assert.equal(phaseLayout([], 120, null).field, 12)
-  assert.equal(phaseLayout(['x'.repeat(60)], 200, column).field, 34)
+const phase = (over = {}) => ({ title: 'Investigate', state: 'done', total: 2, done: 2, red: 0, ...over })
+
+test('a phase says how many agents it has, or how far a running one is', () => {
+  assert.equal(phaseStatus(phase()), '2 agents')
+  assert.equal(phaseStatus(phase({ total: 1, done: 1 })), '1 agent')
+  assert.equal(phaseStatus(phase({ state: 'running', total: 5, done: 3 })), 'running  3 of 5 done')
+})
+
+test('the head of a phase row counts its caret, circle, title, status and red marker', () => {
+  assert.equal(phaseHeadLength(phase()), '▸ ○ Investigate  2 agents'.length)
+  assert.equal(phaseHeadLength(phase({ red: 1 })), '▸ ○ Investigate  2 agents  1 red'.length)
+})
+
+test('the phase table puts the saved column right after the labels and keeps the models column the rest', () => {
+  const heads = [phaseHeadLength(phase())]
+  const base = { labels: ['grunt: merged PRs', 'investigate: deprecations'], heads, cells: ['1.0%', '14.6%'], header: '5h saves' }
+  assert.deepEqual(phaseLayout({ ...base, width: 76 }), { field: 29, savedAt: 35, savedWidth: 11, modelsAt: 46 })
+  assert.deepEqual(phaseLayout({ ...base, width: 60 }), { field: 29, savedAt: 35, savedWidth: 11, modelsAt: 46 })
+  assert.equal(phaseLayout({ ...base, width: 40 }).field, 12)
+  assert.equal(phaseLayout({ ...base, labels: ['x'.repeat(60)], width: 200 }).field, 34)
+  assert.equal(phaseLayout({ ...base, labels: [], heads: [], width: 200 }).field, 12)
+})
+
+test('a long phase title widens the label column up to its cap, then the title is cut with an ellipsis', () => {
+  const mid = phase({ title: 'Investigate', state: 'running', total: 12, done: 7 })
+  const wide = phaseLayout({ labels: ['a'], heads: [phaseHeadLength(mid)], cells: ['1.0%'], header: '5h saves', width: 120 })
+  assert.equal(phaseTitle(mid, wide.savedAt), 'Investigate')
+  const long = phase({ title: 'x'.repeat(40), red: 1 })
+  const capped = phaseLayout({ labels: ['a'], heads: [phaseHeadLength(long)], cells: ['1.0%'], header: '5h saves', width: 120 })
+  assert.equal(capped.field, 34)
+  const cut = phaseTitle(long, capped.savedAt)
+  assert.ok(cut.endsWith('…') && cut.length < 40)
+  assert.ok(phaseHeadLength({ ...long, title: cut }) + 2 <= capped.savedAt)
+})
+
+test('a pane with no saved column gives the models column the room', () => {
+  assert.deepEqual(phaseLayout({ labels: ['a: b'], heads: [], cells: [], header: '', width: 76 }), { field: 12, savedAt: 18, savedWidth: 0, modelsAt: 18 })
+})
+
+test('the models of a folded phase read opus, sonnet, haiku with two spaces between them', () => {
+  const [line] = modelLines({ opus: 11, sonnet: 10, haiku: 12 }, 40)
+  assert.equal(text(line), 'opus 11  sonnet 10  haiku 12')
+  assert.deepEqual(line.map((s) => s.style), ['opus', 'dim', 'plain', 'sonnet', 'dim', 'plain', 'haiku', 'dim'])
+  assert.equal(text(modelLines({ opus: 0, sonnet: 0, haiku: 14 }, 40)[0]), 'haiku 14')
+  assert.equal(text(modelLines({ opus: 0, sonnet: 0, haiku: 0 }, 40)[0]), 'no agents yet')
+})
+
+test('models that do not fit the width wrap onto the next line, a family never split', () => {
+  const lines = modelLines({ opus: 11, sonnet: 10, haiku: 12 }, 20)
+  assert.deepEqual(lines.map(text), ['opus 11  sonnet 10', 'haiku 12'])
+  assert.deepEqual(modelLines({ opus: 1, sonnet: 0, haiku: 0 }, 3).map(text), ['opus 1'])
 })
 
 test('the list header picks the unit any view can show', () => {
-  assert.deepEqual(listHeader([view()]), [{ text: 'saved of 5-hour limit', style: 'dim' }])
+  assert.deepEqual(listHeader([view()]), [{ text: '5h saves', style: 'dim' }])
   const dollars = view({ saved: saved({ limits: null }) })
-  assert.equal(text(listHeader([dollars, view({ saved: null })])), 'saved at API prices')
-  assert.equal(text(listHeader([dollars, view()])), 'saved of 5-hour limit')
-  assert.equal(text(listHeader([])), 'saved at API prices')
+  assert.equal(text(listHeader([dollars, view({ saved: null })])), 'API saves')
+  assert.equal(text(listHeader([dollars, view()])), '5h saves')
+  assert.equal(text(listHeader([])), 'API saves')
 })
 
 test('list cells show the figure, so far, dollars or a dash', () => {

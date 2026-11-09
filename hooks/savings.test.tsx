@@ -175,7 +175,8 @@ test('the detail shows what a finished run saved, against the session model and 
   expect(await ui.find({ type: 'Text', text: /at API prices/ })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /± = how far off the estimate can be, 9 times out of 10/ })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /from 1 of 1 agents/ })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: /saved of 5-hour limit/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^ +agent\s+5h saves {3}ran on$/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /saved of 5-hour limit/ })).toBeUndefined()
   await ui.unmount()
   const record = JSON.parse(w.writes[`${CONFIG}/ultraguard/sessions/${SESSION}/${w.id()}.eval.json`] ?? '{}')
   expect(record.savings.baseline).toEqual({ model: OPUS, effort: 'high' })
@@ -189,7 +190,8 @@ test('an API session shows dollars and no limit lines', async ($, on) => {
   const ui = await detail($, w.id())
   expect(await ui.find({ type: 'Text', text: /off your API bill/ })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /5-hour/ })).toBeUndefined()
-  expect(await ui.find({ type: 'Text', text: /saved at API prices/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^ +agent\s+API saves {3}ran on$/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /5h saves/ })).toBeUndefined()
   await ui.unmount()
 })
 
@@ -204,7 +206,7 @@ test('a subscription with too few readings says it is still learning', async ($,
 test('the run list labels the saved column and keeps red reasons', async ($, on) => {
   const w = await flow($, on, { subscription: false, gate: false, finish: false })
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  expect(await ui.find({ type: 'Text', text: /saved at API prices/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /workflow\s+id\s+agents\s+API saves/ })).toBeDefined()
   expect((await ui.find({ type: 'Box', key: `box:${w.id()}` }))?.text).toContain('not approved by the gate')
   await ui.unmount()
 })
@@ -256,7 +258,7 @@ test('an agent with no usage leaves the coverage line at "from 1 of 2 agents"', 
 test('a run with no estimate yet still shows the effort an agent ran at', async ($, on) => {
   const w = await flow($, on, { subscription: true, readings: 1, finish: false, complete: false })
   const ui = await detail($, w.id())
-  expect(await ui.find({ type: 'Text', text: /sonnet · high/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^ {4}□ investigate: map\s+sonnet high$/ })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /sonnet…/ })).toBeUndefined()
   expect(await ui.find({ type: 'Text', text: /ultraguard saved/ })).toBeUndefined()
   await ui.unmount()
@@ -279,68 +281,91 @@ test('a session start removes the stored meter readings that are all older than 
   expect(Object.keys(w.store).sort()).toEqual(['meter:recent', `meter:${SESSION}`].sort())
 })
 
-test('the saved block wraps instead of cutting, and a narrow pane shortens the saved column title', async ($, on) => {
+test('the saved block wraps instead of cutting, and the saved column keeps the same title on a narrow pane', async ($, on) => {
   const w = await flow($, on, { subscription: false })
   const narrow = await $.ui.mount({ ...PANE, props: { ...PANE.props, bodyColumns: 60 }, surface: 'terminal' })
   await narrow.press({ key: `run:${w.id()}` })
   expect((await narrow.find({ type: 'Text', text: /compared with running every agent/ }))?.props.wrap).toBe('wrap')
-  const head = await narrow.find({ type: 'Text', text: /^\s*agent\s/ })
-  expect(head?.text).toMatch(/saved\s*$/)
+  expect((await narrow.find({ type: 'Text', text: /^ +agent\s/ }))?.text).toMatch(/^ +agent\s+API saves {3}ran on$/)
   await narrow.unmount()
   const wide = await $.ui.mount({ ...PANE, props: { ...PANE.props, bodyColumns: 140 }, surface: 'terminal' })
-  expect((await wide.find({ type: 'Text', text: /^\s*agent\s/ }))?.text).toContain('saved at API prices')
+  expect((await wide.find({ type: 'Text', text: /^ +agent\s/ }))?.text).toMatch(/^ +agent\s+API saves {3}ran on$/)
   await wide.unmount()
 })
 
-test('a phase header shows what its agents saved, and the unit follows the limit figure', async ($, on) => {
-  const record = {
-    phases: ['Investigate', 'Decide'],
-    stages: [{ index: 0, line: 2, label: 'investigate: map', class: 'investigate', model: 'sonnet', effort: 'high', inFanout: false, bigFanout: false, verdict: false, phase: 'Investigate' }],
-  }
+const ONE_PHASE = (title: string) => ({
+  phases: [title],
+  stages: [{ index: 0, line: 2, label: 'investigate: map', class: 'investigate', model: 'sonnet', effort: 'high', inFanout: false, bigFanout: false, verdict: false, phase: title }],
+})
+
+test('a phase block shows what its agents saved, and the unit follows the limit figure', async ($, on) => {
+  const record = { ...ONE_PHASE('Investigate'), phases: ['Investigate', 'Decide'] }
   const api = await flow($, on, { subscription: false, record })
   const ui = await detail($, api.id())
-  const header = await ui.find({ type: 'Button', key: 'phase:Investigate' })
-  expect(header?.text).toMatch(/Investigate\s+done · 1 agent · sonnet 1\s+\$\d+\.\d\d/)
-  expect((await ui.find({ type: 'Text', text: /Decide/ }))?.text).toContain('did not run')
+  const header = await ui.find({ type: 'Text', text: /^▾ ● Investigate/ })
+  expect(header?.text).toMatch(/^▾ ● Investigate {2}1 agent\s+\$\d+\.\d\d\s*$/)
+  expect((await ui.find({ type: 'Text', text: /Decide/ }))?.text).toBe('      Decide  did not run')
   await ui.unmount()
 })
 
-test('a subscription phase header shows its share of the 5-hour limit', async ($, on) => {
-  const record = {
-    phases: ['Investigate'],
-    stages: [{ index: 0, line: 2, label: 'investigate: map', class: 'investigate', model: 'sonnet', effort: 'high', inFanout: false, bigFanout: false, verdict: false, phase: 'Investigate' }],
-  }
-  const w = await flow($, on, { subscription: true, record })
+test('a subscription phase block shows its share of the 5-hour limit', async ($, on) => {
+  const w = await flow($, on, { subscription: true, record: ONE_PHASE('Investigate') })
   const ui = await detail($, w.id())
-  expect((await ui.find({ type: 'Button', key: 'phase:Investigate' }))?.text).toMatch(/Investigate\s+done · 1 agent · sonnet 1\s+\S+%/)
+  expect((await ui.find({ type: 'Text', text: /^▾ ● Investigate/ }))?.text).toMatch(/^▾ ● Investigate {2}1 agent\s+\S+%\s*$/)
+  expect((await ui.find({ type: 'Text', text: /^ +agent/ }))?.text).toMatch(/agent\s+5h saves {3}ran on$/)
   await ui.unmount()
 })
 
-test('on a wide pane the phase figure lines up under the saved column title', async ($, on) => {
-  const record = {
-    phases: ['Investigate'],
-    stages: [{ index: 0, line: 2, label: 'investigate: map', class: 'investigate', model: 'sonnet', effort: 'high', inFanout: false, bigFanout: false, verdict: false, phase: 'Investigate' }],
-  }
-  const w = await flow($, on, { subscription: false, record })
+test('the saved column comes before ran on, and the phase and agent figures share its column', async ($, on) => {
+  const w = await flow($, on, { subscription: false, record: ONE_PHASE('Investigate') })
   const ui = await detail($, w.id())
-  const title = (await ui.find({ type: 'Text', text: /saved at API prices/ }))?.text ?? ''
-  const phaseRow = (await ui.find({ type: 'Button', key: 'phase:Investigate' }))?.text ?? ''
+  const title = (await ui.find({ type: 'Text', text: /^ +agent/ }))?.text ?? ''
+  const phaseRow = (await ui.find({ type: 'Text', text: /^▾ ● Investigate/ }))?.text ?? ''
   const agentRow = (await ui.find({ type: 'Text', text: /^ {4}✓ investigate: map/ }))?.text ?? ''
-  expect(title.indexOf('saved at API prices')).toBeGreaterThan(0)
-  expect(phaseRow.indexOf('$')).toBe(title.indexOf('saved at API prices'))
-  expect(agentRow.indexOf('$')).toBe(title.indexOf('saved at API prices'))
+  expect(title.indexOf('API saves')).toBeGreaterThan(0)
+  expect(title.indexOf('ran on')).toBeGreaterThan(title.indexOf('API saves'))
+  expect(title.indexOf('ran on') - title.indexOf('API saves')).toBe(agentRow.indexOf('sonnet') - agentRow.indexOf('$'))
+  expect(phaseRow.indexOf('$')).toBe(agentRow.indexOf('$'))
+  expect(agentRow).toMatch(/\$\d+\.\d\d\s+sonnet high$/)
   await ui.unmount()
 })
 
-test('on a narrow pane the phase figure follows the title so a long header cannot cut it off', async ($, on) => {
-  const record = {
-    phases: ['Investigate the repository'],
-    stages: [{ index: 0, line: 2, label: 'investigate: map', class: 'investigate', model: 'sonnet', effort: 'high', inFanout: false, bigFanout: false, verdict: false, phase: 'Investigate the repository' }],
-  }
-  const w = await flow($, on, { subscription: false, record })
+test('a folded phase keeps its saved total and puts its models under ran on', async ($, on) => {
+  const w = await flow($, on, { subscription: false, record: ONE_PHASE('Investigate') })
+  const ui = await detail($, w.id())
+  const agentRow = (await ui.find({ type: 'Text', text: /^ {4}✓ investigate: map/ }))?.text ?? ''
+  await ui.press({ key: 'phase:Investigate' })
+  const folded = (await ui.find({ type: 'Text', text: /^▸ ● Investigate/ }))?.text ?? ''
+  expect(folded).toMatch(/\$\d+\.\d\d\s+sonnet 1$/)
+  expect(folded.indexOf('$')).toBe(agentRow.indexOf('$'))
+  expect(folded.indexOf('sonnet 1')).toBe(agentRow.indexOf('sonnet high'))
+  expect(await ui.find({ type: 'Text', text: /^ {4}✓ investigate: map/ })).toBeUndefined()
+  await ui.unmount()
+})
+
+test('on a narrow pane a long phase title is shortened so the saved figure keeps its column', async ($, on) => {
+  const w = await flow($, on, { subscription: false, record: ONE_PHASE('Investigate the repository') })
   const ui = await $.ui.mount({ ...PANE, props: { ...PANE.props, bodyColumns: 60 }, surface: 'terminal' })
   await ui.press({ key: `run:${w.id()}` })
-  expect((await ui.find({ type: 'Button', key: 'phase:Investigate the repository' }))?.text).toMatch(/Investigate the repository\s+\$\d+\.\d\d\s+done · 1 agent · sonnet 1$/)
+  const header = (await ui.find({ type: 'Text', text: /^▾ ● Investigate/ }))?.text ?? ''
+  const agentRow = (await ui.find({ type: 'Text', text: /^ {4}✓ investigate: map/ }))?.text ?? ''
+  expect(header).toMatch(/^▾ ● Investigate[^…]*…  1 agent\s+\$\d+\.\d\d\s*$/)
+  expect(header).not.toContain('repository')
+  expect(header.indexOf('$')).toBe(agentRow.indexOf('$'))
+  await ui.unmount()
+})
+
+test('the pane text has no middle dots, the saved block included', async ($, on) => {
+  const w = await flow($, on, { subscription: false, record: ONE_PHASE('Investigate') })
+  const ui = await detail($, w.id())
+  const texts: string[] = (await ui.findAll({ type: 'Text' })).map((t: any) => String(t.text ?? ''))
+  const block = texts.findIndex(t => /^ultraguard saved/.test(t))
+  expect(block).toBeGreaterThan(-1)
+  expect(texts.join('\n')).not.toContain(' · ')
+  await ui.press({ key: 'back' })
+  const list: string[] = (await ui.findAll({ type: 'Text' })).map((t: any) => String(t.text ?? ''))
+  expect(list.some(t => /workflow\s+id\s+agents\s+API saves/.test(t))).toBe(true)
+  expect(list.join('\n')).not.toContain(' · ')
   await ui.unmount()
 })
 
@@ -352,20 +377,16 @@ const order = async (ui: any, first: RegExp, second: RegExp) => {
 test('the flat table keeps the saved block above it, the phase tree sits above the saved block', async ($, on) => {
   const flat = await flow($, on, { subscription: false })
   const flatUi = await detail($, flat.id())
-  const [saved, header] = await order(flatUi, /^ultraguard saved/, /^ {2}agent/)
+  const [saved, header] = await order(flatUi, /^ultraguard saved/, /^ +agent/)
   expect(saved).toBeGreaterThan(-1)
   expect(header).toBeGreaterThan(saved)
   await flatUi.unmount()
 })
 
 test('with phases the tree comes before the saved block', async ($, on) => {
-  const record = {
-    phases: ['Investigate'],
-    stages: [{ index: 0, line: 2, label: 'investigate: map', class: 'investigate', model: 'sonnet', effort: 'high', inFanout: false, bigFanout: false, verdict: false, phase: 'Investigate' }],
-  }
-  const w = await flow($, on, { subscription: false, record })
+  const w = await flow($, on, { subscription: false, record: ONE_PHASE('Investigate') })
   const ui = await detail($, w.id())
-  const [header, saved] = await order(ui, /^ {6}agent/, /^ultraguard saved/)
+  const [header, saved] = await order(ui, /^ +agent/, /^ultraguard saved/)
   expect(header).toBeGreaterThan(-1)
   expect(saved).toBeGreaterThan(header)
   await ui.unmount()

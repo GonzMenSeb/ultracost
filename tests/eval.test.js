@@ -112,7 +112,7 @@ test('a compliant run is green with four passing checks', () => {
   assert.equal(v.color, 'green')
   assert.equal(v.title, 'research')
   assert.equal(v.shortId, 'abc123')
-  assert.equal(v.countsText, '1 opus · 1 sonnet')
+  assert.equal(v.countsText, '1 opus  1 sonnet')
   assert.deepEqual(v.agents.map((a) => [a.label, a.approved, a.ran, a.ok]), [
     ['synth: research legal', 'opus · xhigh', 'opus · xhigh', true],
     ['investigate: map', 'sonnet · high', 'sonnet · high', true]
@@ -445,7 +445,7 @@ test('bandView is null with no active run and red when any active run is red', (
   s = noteLaunch(s, { toolUseId: 'toolu_02B', fingerprint: 'f', at: 10 })
   s = noteLaunchResult(s, { toolUseId: 'toolu_02B', runId: 'wf_2', at: 11 })
   assert.deepEqual(bandView(s), { color: 'red', running: 2, red: 1 })
-  assert.equal(bandText(bandView(s)), '2 running · 1 red')
+  assert.equal(bandText(bandView(s)), '2 running  1 red')
   assert.equal(bandText({ color: 'green', running: 3, red: 0 }), '3 running')
   s = noteRunEnd(s, { toolUseId: 'toolu_02B', status: 'completed', at: 12 })
   assert.deepEqual(bandView(s), { color: 'green', running: 1, red: 0 })
