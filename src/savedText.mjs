@@ -18,12 +18,10 @@ const configText = (config) => config.replace(':', ' ')
 
 export const fmtPct = (x) => (Math.abs(x) < 0.1 ? '< 0.1%' : `${x.toFixed(1)}%`)
 
-export const fmtUsd = (x) => `${x < 0 ? '-' : ''}$${Math.abs(x).toFixed(2)}`
-
-const cents = (x) => fmtUsd(Math.abs(x) < 0.005 ? 0 : x)
+export const fmtUsd = (x) => `${x <= -0.005 ? '-' : ''}$${Math.abs(x).toFixed(2)}`
 
 export const rangeText = (range, kind) => {
-  const f = kind === 'usd' ? cents : tenths
+  const f = kind === 'usd' ? fmtUsd : tenths
   return ` (${f(range.lo)} to ${f(range.hi)})`
 }
 
@@ -46,9 +44,10 @@ const RANGE_WIDE = 'so the range is wide'
 const MIXED_BASELINE = "vs your session's model at each launch"
 const RUN_NOTHING = 'this run may have saved nothing'
 const OVERALL_TITLE = 'overall savings for this session'
-const OVERALL_COUNT = (n) => `${n} workflows`
+const workflows = (n) => `${n} workflow${n === 1 ? '' : 's'}`
+const OVERALL_COUNT = workflows
 const OVERALL_NOTHING = 'these workflows may have saved nothing'
-const OVERALL_SCOPE = (label, n) => `${label} counts the ${n} workflows of this window`
+const OVERALL_SCOPE = (label, n) => `${label} counts the ${workflows(n)} of this window`
 const NO_ESTIMATE = 'no estimate yet'
 
 export const RULE = '═'

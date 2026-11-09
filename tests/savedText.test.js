@@ -693,3 +693,9 @@ test('every overall line fits the width, capped at 56, past its head', () => {
     }
   }
 })
+
+test('a dollar figure just under zero prints as $0.00, never -$0.00', () => {
+  assert.equal(fmtUsd(-0.001), '$0.00')
+  assert.equal(fmtUsd(-0.005), '-$0.01')
+  assert.equal(fmtUsd(-1.234), '-$1.23')
+})
