@@ -20,6 +20,8 @@ function checkRow(row, where) {
   for (const b of BUCKETS) if (!isNum(row[b])) throw new Error(`prices: ${where}.${b} must be a number ≥ 0`)
 }
 
+export const familyOfRow = (key) => (typeof key === 'string' ? key.split('-')[0] : key)
+
 export function loadPrices(json) {
   if (json === null || typeof json !== 'object' || json.families === null || typeof json.families !== 'object') {
     throw new Error('prices: no families')

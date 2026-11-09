@@ -160,6 +160,14 @@ test('overallInput splits the agents by baseline and scope', () => {
   assert.deepEqual(ids(groups[0].five_hour), ['r2-a0', 'r2-a1'])
 })
 
+test('overallInput keeps two price rows of one family and effort apart, so each is priced at its own row', () => {
+  const OPUS5_HIGH = { family: 'opus-5', effort: 'high' }
+  const t = tallyOf(runInfo('r1', { baseline: OPUS_HIGH, at: 1 }), runInfo('r2', { baseline: OPUS5_HIGH, at: 2 }), runInfo('r3', { baseline: { family: 'mythos-5', effort: 'high' }, at: 3 }))
+  const { groups } = overallInput(t, null, 10)
+  assert.deepEqual(groups.map((g) => g.baseline), [OPUS5_HIGH, OPUS_HIGH])
+  assert.deepEqual(groups.map((g) => g.all.map((a) => a.agentId)), [['r2-a0', 'r2-a1'], ['r1-a0', 'r1-a1']])
+})
+
 test('combine of one group is that group estimate as it is', () => {
   const meter = meterWith()
   const t = tallyOf(runInfo('r1', { windows: { five_hour: 'B', seven_day: 'W' } }), runInfo('r2', { windows: { five_hour: 'A', seven_day: 'W' }, at: 2000 }))

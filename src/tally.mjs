@@ -38,7 +38,7 @@ export function countedRuns(tally, kind, current, now) {
   })
 }
 
-const baselineKey = (b) => (b ? configOf(b.family, b.effort) : null)
+const baselineKey = (b) => (b && configOf(b.family, b.effort) ? `${b.family}:${b.effort}` : null)
 const piecesOf = (runs) => runs.flatMap((r) => r.agents)
 
 export function overallInput(tally, current, now) {

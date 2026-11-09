@@ -37,6 +37,21 @@ const run = (over) =>
     running: false,
     ...over,
   })
+test('a version price row keys its ratios by its family, and stays priced at its own row', () => {
+  assert.equal(configOf('opus-5', 'high'), 'opus:high')
+  assert.equal(configOf('fable-5-2', 'medium'), 'fable:medium')
+  assert.equal(configOf('sonnet-5', 'max'), 'sonnet:max')
+  assert.equal(configOf('mythos-5', 'high'), null)
+  const usage = sum('w1')
+  const onRow = run({ agents: [agent('a1', piece(usage, 'sonnet-5'))], baseline: { family: 'opus-5', effort: 'high' } })
+  assert.equal(onRow.status, 'estimated')
+  assert.equal(onRow.coverage.used, 1)
+  const onFamily = run({ agents: [agent('a1', piece(usage, 'sonnet'))], baseline: { family: 'opus', effort: 'high' } })
+  assert.equal(onFamily.status, 'estimated')
+  assert.notEqual(onRow.actualDollars, onFamily.actualDollars)
+  assert.notEqual(onRow.baselineDollars, onFamily.baselineDollars)
+})
+
 const split = (usage, n) =>
   Array.from({ length: n }, (_, i) =>
     agent(`a${i}`, piece(Object.fromEntries(Object.entries(usage).map(([k, v]) => [k, v / n])))),

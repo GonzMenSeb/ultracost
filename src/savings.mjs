@@ -1,5 +1,5 @@
 import { rng, normal, quantile } from './stats.mjs'
-import { requestCost, meterUnits } from './prices.mjs'
+import { familyOfRow, requestCost, meterUnits } from './prices.mjs'
 
 const FAMILIES = new Set(['opus', 'sonnet', 'haiku', 'fable'])
 const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max']
@@ -8,7 +8,8 @@ const MAX_CACHE_READ_WEIGHT = 0.1
 const NAMES = ['output', 'fresh', 'read']
 const ZERO = { mu: 0, sigma: 0 }
 
-export function configOf(family, effort) {
+export function configOf(row, effort) {
+  const family = familyOfRow(row)
   return FAMILIES.has(family) && EFFORTS.includes(effort) ? `${family}:${effort}` : null
 }
 
