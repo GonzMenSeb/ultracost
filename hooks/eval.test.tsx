@@ -1116,18 +1116,19 @@ test('the compaction hook hands the engine its answer untouched', async ($, on) 
   expect(await w.compact()).toEqual(answer)
 })
 
-test('a run whose spend at the pooled rate is more than the account rose is withheld', async ($, on) => {
+test('a run whose spend at the pooled rate is more than the account rose is scaled down to the rise, in the run and in the overall', async ($, on) => {
   const w = await metered($, on, { preload: { 'meter:other': { v: 1, five_hour: TICKS, seven_day: [] } } })
   const saved = await w.workflow(6)
   expect(saved.limits.readings.five_hour).toBeGreaterThanOrEqual(5)
-  expect(saved.limits.five_hour).toBeNull()
-  expect(saved.limits.implausible).toEqual(['five_hour'])
-  expect(saved.agents[0].five_hour).toBeNull()
+  const f = saved.limits.clamp.five_hour
+  expect(f).toBeGreaterThan(0)
+  expect(f).toBeLessThan(1)
+  expect(saved.limits.five_hour.mid).toBeGreaterThan(0)
+  expect(saved.agents[0].five_hour).not.toBeNull()
   expect(saved.dollars.mid).toBeGreaterThan(0)
   const tally = w.store[`tally:${SESSION}`] as any
-  expect(tally.runs[w.id()].withheld).toEqual(['five_hour'])
-  expect(tally.overall.limits.five_hour).toBeNull()
-  expect(tally.overall.limits.implausible).toEqual(['five_hour'])
+  expect(tally.runs[w.id()].clamp.five_hour).toBe(f)
+  expect(Math.abs(tally.overall.limits.five_hour.mid - saved.limits.five_hour.mid)).toBeLessThan(1e-6 * Math.max(1, saved.limits.five_hour.mid) + 0.05 * saved.limits.five_hour.mid)
   expect(tally.overall.dollars.mid).toBeGreaterThan(0)
 })
 
@@ -1135,10 +1136,9 @@ test('a run whose spend fits the rise of the account keeps its figure', async ($
   const w = await metered($, on)
   const saved = await w.workflow(6)
   expect(saved.limits.five_hour.mid).toBeGreaterThan(0)
-  expect(saved.limits.implausible).toEqual([])
+  expect(saved.limits.clamp).toEqual({ five_hour: null, seven_day: null })
   expect(saved.agents[0].five_hour).not.toBeNull()
   const tally = w.store[`tally:${SESSION}`] as any
-  expect(tally.runs[w.id()].withheld).toEqual([])
+  expect(tally.runs[w.id()].clamp).toEqual({ five_hour: null, seven_day: null })
   expect(tally.overall.limits.five_hour).not.toBeNull()
-  expect(tally.overall.limits.implausible).toEqual([])
 })

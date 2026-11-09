@@ -11,16 +11,16 @@ const both = (make) => Object.fromEntries(KINDS.map((k) => [k, make(k)]))
 const byTime = (a, b) => a.at - b.at || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0)
 const runsOf = (tally) => Object.values(tally.runs).sort(byTime)
 const stamp = (x) => (typeof x === 'string' ? x : null)
-const withheldOf = (list) => (Array.isArray(list) ? KINDS.filter((k) => list.includes(k)) : [])
+const factor = (x) => (typeof x === 'number' && Number.isFinite(x) && x > 0 && x < 1 ? x : null)
 
 export function createTally() {
   return { v: 1, runs: {} }
 }
 
-export function noteTallyRun(tally, { key, status, baseline, agents, windows, withheld, at }, { log, ifAbsent = false } = {}) {
+export function noteTallyRun(tally, { key, status, baseline, agents, windows, clamp, at }, { log, ifAbsent = false } = {}) {
   const held = tally.runs[key]
   if (held && (ifAbsent || (held.status !== 'running' && status === 'running'))) return tally
-  const runs = { ...tally.runs, [key]: { key, status, baseline: baseline ?? null, agents, windows: both((k) => stamp(windows?.[k])), withheld: withheldOf(withheld), at } }
+  const runs = { ...tally.runs, [key]: { key, status, baseline: baseline ?? null, agents, windows: both((k) => stamp(windows?.[k])), clamp: both((k) => factor(clamp?.[k])), at } }
   const all = Object.values(runs)
   if (all.length <= MAX_RUNS) return { ...tally, runs }
   const drop = all.sort(byTime).slice(0, all.length - MAX_RUNS)
@@ -35,20 +35,15 @@ const inWindow = (r, kind, current, now) => {
   return own === current
 }
 
-const withheldIn = (r, kind) => Array.isArray(r.withheld) && r.withheld.includes(kind)
-
 export function countedRuns(tally, kind, current, now) {
   const runs = runsOf(tally)
   if (kind === 'all') return runs
-  return runs.filter((r) => inWindow(r, kind, current, now) && !withheldIn(r, kind))
-}
-
-export function withheldRuns(tally, kind, current, now) {
-  return runsOf(tally).filter((r) => inWindow(r, kind, current, now) && withheldIn(r, kind))
+  return runs.filter((r) => inWindow(r, kind, current, now))
 }
 
 const baselineKey = (b) => (b && configOf(b.family, b.effort) ? `${b.family}:${b.effort}` : null)
-const piecesOf = (runs) => runs.flatMap((r) => r.agents)
+const scaled = (r) => (factor(r.clamp?.five_hour) || factor(r.clamp?.seven_day) ? r.agents.map((a) => ({ ...a, scale: r.clamp })) : r.agents)
+const piecesOf = (runs) => runs.flatMap(scaled)
 
 export function overallInput(tally, current, now) {
   const keys = [...new Set(runsOf(tally).map((r) => baselineKey(r.baseline)).filter(Boolean))].sort()
@@ -108,16 +103,10 @@ export function combine(estimates, { tally, meter, now }) {
   const subscription = meter?.subscription ?? null
   const current = both((k) => meter?.last?.[k]?.resetsAt ?? null)
   const readings = alls.find((e) => e.limits)?.limits.readings ?? { five_hour: 0, seven_day: 0 }
-  const held = both((k) => withheldRuns(tally, k, current[k], now).length)
   const limitOf = (kind) => {
     const ranges = present(kept.map((e) => (e[kind] && e[kind].status !== 'unknown' ? e[kind].limits?.[kind] : null)))
     if (ranges.length) return addRanges(ranges)
-    if (held[kind] > 0) return null
     return readings[kind] >= MIN_READINGS ? { mid: 0, lo: 0, hi: 0, pm: 0 } : null
-  }
-  const limitsOf = () => {
-    const found = both(limitOf)
-    return { ...found, readings, implausible: KINDS.filter((k) => found[k] === null && held[k] > 0) }
   }
   const tokens = present(alls.map((e) => e.tokens))
   return {
@@ -132,7 +121,7 @@ export function combine(estimates, { tally, meter, now }) {
     actualDollars: addNumbers(alls.map((e) => e.actualDollars)),
     baselineDollars: addNumbers(alls.map((e) => e.baselineDollars)),
     tokens: tokens.length === 0 ? null : tokens.length === 1 ? tokens[0] : { saved: addNumbers(tokens.map((t) => t.saved)), outputSaved: addNumbers(tokens.map((t) => t.outputSaved)) },
-    limits: subscription === true ? limitsOf() : null,
+    limits: subscription === true ? { five_hour: limitOf('five_hour'), seven_day: limitOf('seven_day'), readings } : null,
     used: subscription === true ? both((k) => usedOf(meter.last?.[k], now)) : both(() => null),
     coverage: addCoverage(alls),
     sources: addSources(alls),

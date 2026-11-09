@@ -1,6 +1,6 @@
 # ultraguard reference
 
-This is the complete reference for ultraguard 0.4.16. The [README](../README.md) explains what ultraguard is for and why the rules exist. This page lists every rule, code, file and limit, and it is written to match the code in `src/`, `hooks/` and `policy/`.
+This is the complete reference for ultraguard 0.4.17. The [README](../README.md) explains what ultraguard is for and why the rules exist. This page lists every rule, code, file and limit, and it is written to match the code in `src/`, `hooks/` and `policy/`.
 
 ## Contents
 
@@ -521,7 +521,7 @@ The cost of a task on configuration B equals its observed cost on configuration 
 In this order, first match wins:
 
 1. **Measured**, from the paired replays.
-2. **Chained:** a measured ratio into the same baseline family at another effort, times a published effort step within that family. Effort steps within one model agree across sources (Opus 5.5 xhigh ÷ high: 1.75, 2.55, 2.98 and 2.34 across four sources, log sd 0.22), unlike steps between models. Steps into and out of `max` come from the Artificial Analysis run alone (Opus high ÷ max: 2.90). The community CSV's `max` cells are left out: its Opus `max` cell needed a permission for an automated test and its Haiku `max` cell wrote its own test script.
+2. **Chained:** a measured ratio into the same baseline family at another effort, times a published effort step within that family. Effort steps within one model agree across sources (Opus 5.5 xhigh ÷ high: 1.75, 2.55, 2.98 and 2.34 across four sources, log sd 0.22), unlike steps between models. Steps into and out of `max` come from the Artificial Analysis run alone (Opus max ÷ high: 2.90). The community CSV's `max` cells are left out: its Opus `max` cell needed a permission for an automated test and its Haiku `max` cell wrote its own test script.
 3. **Prior:** published cost per task for both configurations, converted to a token ratio by dividing by the input-price ratio, applied to all three buckets, with log sd = max(0.6, spread between sources). The same model at another effort (an Opus agent at medium in an Opus session at high) uses the published effort step for that pair, applied the same way, with log sd = the spread between sources (0.4 with one source) and no between-run τ.
 
 Chaining passed its one test in dollars: measured Opus medium times the published Opus high ÷ medium (1.45) predicted 2.31 for the high transition, inside the measured 2.19 to 2.89. Per bucket the read prediction was low: the errors in log were −0.18 for output, +0.13 for fresh and −0.69 for read, because the measured read ratio grew 2.90 against the published 1.45, and the dollars came out right by cancellation. The two cells are different workflows, so this is weak evidence.
@@ -573,7 +573,7 @@ Cache writes are priced at the 5-minute rate. The `usage` object does split writ
 
 ### Limit percentages
 
-The best public reverse-engineering of the meter fits input and output at list-price ratios, cache writes at the input rate and cache reads free; another analysis says cache reads count 0.1×. ultraguard calibrates its own rate.
+The best public reverse-engineering of the meter fits input and output at list-price ratios and cache writes at the input rate. Its cache-read weight is small but not zero: the sources overlap at 0.01 to 0.07 of the input price, and one report says about 0.1. ultraguard calibrates its own rate.
 
 - **Meter units** per request, in list-price dollars: `U = in·p_in + cw·p_in + out·p_out` and `C = cr·p_in`. The weight is `U + w·C`, with `w` unknown in [0, 0.1].
 - **Whole percent:** the host reports `percentUsed` in whole percent: 242 of 242 stored rises were integers, and 186 of 200 five-hour intervals were exactly 1. A rise below `MIN_RISE = 0.1` is ignored, which only matters if the host ever sends decimals.
@@ -584,9 +584,9 @@ The best public reverse-engineering of the meter fits input and output at list-p
 - **Storage:** `$.store` key `meter:<session id>`, at most 200 intervals per window across all keys, intervals older than 30 days dropped. Sessions write separate keys, and all keys are merged on load. On start, keys whose readings are all older than 30 days are deleted.
 - **Rate:** `ΣΔ / Σ(U + w·C)` over the stored intervals. Each Monte Carlo draw takes `w` uniform in [0, 0.1] and a bootstrap resample of the intervals.
 - **Readiness:** a window's figure shows once it has 5 intervals. Before that the window's row reads `learning 3/5` in place of the saving.
-- **Sanity bound:** a run's own tokens, in meter units, times the pooled rate is what the run cost the window in points, and the account cannot have risen by less, since other sessions only add. At launch ultraguard keeps the window readings; at each estimate the rise is the latest reading minus the launch reading, when both are in the same window (same `resetsAt`) and the difference is not negative. In each Monte Carlo draw the run's actual spend is `(ΣU + w·ΣC)` over all its agents times the same resampled rate. If the median of that is more than the rise plus 1 point (the whole-percent quantization), the rate is too high for this run and its figure for that window is withheld: the row reads `can't tell` in place of the saving, and the run's per-agent and per-phase 5-hour figures go with it. Dollars, tokens and the other window are not touched. With no rise (no reading at launch, or the window reset since) nothing changes. In the session total a withheld run is left out of that window's figure and its count, and a window with no run left reads `can't tell`.
+- **Sanity bound:** a run's own tokens, in meter units, times the pooled rate is what the run cost the window in points, and the account cannot have risen by less, since other sessions only add. At launch ultraguard keeps the window readings; at each estimate the rise is the latest reading minus the launch reading, when both are in the same window (same `resetsAt`) and the difference is not negative. In each Monte Carlo draw the run's actual spend is `(ΣU + w·ΣC)` over all its agents times the same resampled rate. If the median of that is more than the rise plus 1 point (the whole-percent quantization), the rate is too high for this run, and the run's figures for that window are scaled down by (rise + 1) ÷ that median, so the run never claims more of the window than the account actually used. The run's per-agent and per-phase 5-hour figures are scaled with it, and the factor is kept in the record (`limits.clamp`) and in the session tally, where the same run's agents are scaled by it in the session total. Dollars, tokens and the other window are not touched. With no rise (no reading at launch, or the window reset since) nothing changes.
 
-Usage from other sessions and claude.ai moves the meter without adding units here, so the figure reads high. Fable's separate weekly limit is not exposed and not shown.
+Usage from other sessions and claude.ai moves the meter without adding units here, so the figure reads high; the jump rule and the clamp remove the worst of it, not all. Fable's separate weekly limit is not exposed and not shown.
 
 ### Phases in the detail
 

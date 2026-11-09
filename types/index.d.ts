@@ -74,7 +74,7 @@ export type Saved = {
     five_hour: SavedRange | null
     seven_day: SavedRange | null
     readings: { five_hour: number; seven_day: number }
-    implausible?: MeterWindow[]
+    clamp?: Record<MeterWindow, number | null>
   } | null
   used?: { five_hour: number | null; seven_day: number | null }
   agents: { agentId: string; dollars: number | null; five_hour: number | null }[]
@@ -184,7 +184,7 @@ export type TallyRun = {
   baseline: { family: string; effort: string } | null
   agents: { agentId: string; pieces: Omit<EvalUsage, 'requests'>[] }[]
   windows: Record<MeterWindow, string | null>
-  withheld?: MeterWindow[]
+  clamp?: Record<MeterWindow, number | null>
   at: number
 }
 

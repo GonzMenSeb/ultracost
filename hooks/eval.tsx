@@ -259,7 +259,7 @@ async function estimate($: EngineInterface, key: string) {
   const after = await update($, ev, st => noteSaved(st, key, { ...saved, used }))
   const current = after.runs[key]
   if (!current || current.hidden || (running && current.status !== 'running')) return
-  await guard($, 'tally', () => noteTally($, sid, { key, status: run.status, baseline, agents, windows: stampsOf(s.meter), withheld: saved.limits?.implausible ?? [], at }, running ? 'due' : 'always'))
+  await guard($, 'tally', () => noteTally($, sid, { key, status: run.status, baseline, agents, windows: stampsOf(s.meter), clamp: saved.limits?.clamp ?? null, at }, running ? 'due' : 'always'))
 }
 
 type Pooled = { baseline: TallyRun['baseline'] } & Record<'all' | 'five_hour' | 'seven_day', TallyRun['agents']>

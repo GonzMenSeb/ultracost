@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.4.17 - ultraguard
+
+- Limit figures read lower and closer to what the account did. A reading that jumps 2 points or more is not stored, since it mostly comes from usage this session cannot see (other sessions, claude.ai, another machine). On the 200 five-hour intervals of one machine 14 were jumps, and dropping them took the pooled rate from 2.68 to 1.49 points per list-price unit, so 5-hour and weekly figures fall about 1.8×. Intervals already stored with such a jump are ignored too.
+- A workflow never claims more of a window than the account rose while it ran. ultraguard keeps the window readings at launch; when the run's own spend at the pooled rate is more than the rise plus 1 point, the run's 5-hour or weekly figures are scaled down to it, and the session total scales that run the same way.
+- A `percentUsed` outside 0 to 100 is ignored, and a compaction of the main conversation restarts the meter's counters, so no interval spans it.
+- A running agent's usage reaches the record and the session tally after each of its steps, at most every 30 seconds per run. Before, it waited for the agent to finish, so a long agent showed no figure and its usage was lost if the process exited.
+- Data: the community CSV's `max` cells are left out (its Opus `max` cell needed a permission for an automated test), so every step into `max` falls 43 to 63% (Opus high to max 6.65 to 2.90). The Artificial Analysis source carries its index version, v5.0.1. Anthropic's 134-task Managed Agents run (Opus 5.5 low and medium) is a source of its own. Fable medium in Anthropic's 370-task benchmark is $1.34, as the page says, not $2.68, so priors into `fable:medium` fall about 29%.
+- Price rows for Opus 5 ($5 / $25, cache read $0.50), Sonnet 5 (cache read $0.20) and Fable 5.2 ($8 / $40, cache read $0.20, cache write $10): those models were priced at the Opus 5.5, Sonnet 5.5 and Fable 5.1 rows. A version row prices its tokens and keys its ratios and its name by its family.
+- τ is floored at 0.22 instead of 0.15 (it stays 0.30), and a test keeps each pooled per-agent sd at or above the single-run noise floor.
+- The reference and the README say readings are whole percent, how the jump rule and the clamp work, and correct the cache-read and chaining notes. The knowledge base behind these changes is in `docs/superpowers/specs/2026-11-09-ultraguard-token-spend-knowledge.md`.
+
 ## 0.4.16 - ultraguard
 
 - The arrow keys move through every row of a windowed list. The host only raises scroll events while the pane overflows, so a windowed list is drawn one row taller than the body and its scroll offset is capped, which keeps the overall section on top. The focus starts on the drawn row, and going back, reopening the pane and the pane's own focus stops keep the row and the window.

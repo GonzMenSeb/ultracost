@@ -5,7 +5,7 @@ import { configOf, ratioFor, estimateRun } from '../src/savings.mjs'
 import { loadPrices, meterUnits } from '../src/prices.mjs'
 import { seedOf } from '../src/stats.mjs'
 import { createMeter } from '../src/meter.mjs'
-import { combine, countedRuns, createTally, noteTallyRun, overallInput, withheldRuns } from '../src/tally.mjs'
+import { combine, countedRuns, createTally, noteTallyRun, overallInput } from '../src/tally.mjs'
 import { overallBlock, savedBlock } from '../src/savedText.mjs'
 
 const read = (name) => JSON.parse(readFileSync(new URL(`../data/${name}.json`, import.meta.url), 'utf8'))
@@ -268,37 +268,45 @@ const subscribed = (rise) => ({ subscription: true, five_hour: intervals(8), sev
 const bounded = (rise, over = {}) => run({ meter: subscribed(rise), ...over })
 const rowsOf = (block) => block.map((l) => l.map((x) => x.text).join(''))
 
-test('a figure whose spend exceeds the account rise plus one point is withheld', () => {
-  const s = bounded({ five_hour: spendAtMidW - 1 - 0.1, seven_day: null }, { agents: split(sum('w1'), 2), groups: [{ key: 'all', agentIds: ['a0', 'a1'] }] })
-  assert.equal(s.limits.five_hour, null)
-  assert.deepEqual(s.limits.implausible, ['five_hour'])
-  assert.equal(s.limits.readings.five_hour, 8)
-  assert.ok(s.limits.seven_day.mid > 0)
-  assert.deepEqual(s.agents.map((a) => a.five_hour), [null, null])
-  assert.equal(s.groups[0].five_hour, null)
-  assert.ok(s.agents.every((a) => a.dollars !== null))
-  assert.ok(s.dollars.mid > 0)
+const near = (a, b) => Math.abs(a - b) <= 1e-9 * Math.max(1, Math.abs(b))
+const scaledRange = (r, base, f) => near(r.mid, base.mid * f) && near(r.lo, base.lo * f) && near(r.hi, base.hi * f)
+const opts = { agents: split(sum('w1'), 2), groups: [{ key: 'all', agentIds: ['a0', 'a1'] }] }
+
+test('a figure whose spend exceeds the account rise plus one point is scaled down to it', () => {
+  const plain = bounded(undefined, opts)
+  const s = bounded({ five_hour: spendAtMidW - 1 - 0.1, seven_day: null }, opts)
+  const f = s.limits.clamp.five_hour
+  assert.ok(f > 0 && f < 1, String(f))
+  assert.equal(s.limits.clamp.seven_day, null)
+  assert.ok(scaledRange(s.limits.five_hour, plain.limits.five_hour, f))
+  assert.deepEqual(s.limits.seven_day, plain.limits.seven_day)
+  s.agents.forEach((a, i) => assert.ok(near(a.five_hour, plain.agents[i].five_hour * f)))
+  assert.ok(near(s.groups[0].five_hour, plain.groups[0].five_hour * f))
+  assert.deepEqual(s.dollars, plain.dollars)
 })
 
-test('a figure whose spend is within the account rise plus one point is kept', () => {
-  const s = bounded({ five_hour: spendAtMidW - 1 + 0.1, seven_day: spendAtMidW - 1 + 0.1 }, { agents: split(sum('w1'), 2), groups: [{ key: 'all', agentIds: ['a0', 'a1'] }] })
-  assert.ok(s.limits.five_hour.mid > 0)
-  assert.ok(s.limits.seven_day.mid > 0)
-  assert.deepEqual(s.limits.implausible, [])
-  assert.ok(s.agents.every((a) => a.five_hour !== null))
-  assert.notEqual(s.groups[0].five_hour, null)
+test('a figure whose spend is within the account rise plus one point is kept as it is', () => {
+  const plain = bounded(undefined, opts)
+  const s = bounded({ five_hour: spendAtMidW - 1 + 0.1, seven_day: spendAtMidW - 1 + 0.1 }, opts)
+  assert.deepEqual(s.limits, plain.limits)
+  assert.deepEqual(s.limits.clamp, { five_hour: null, seven_day: null })
+  assert.deepEqual(s.agents, plain.agents)
+  assert.deepEqual(s.groups, plain.groups)
 })
 
-test('the bound is per window', () => {
+test('the clamp is per window, and a rise of nothing caps the spend at one point', () => {
+  const plain = bounded(undefined)
   const s = bounded({ five_hour: 1000, seven_day: 0 })
-  assert.ok(s.limits.five_hour.mid > 0)
-  assert.equal(s.limits.seven_day, null)
-  assert.deepEqual(s.limits.implausible, ['seven_day'])
+  assert.deepEqual(s.limits.five_hour, plain.limits.five_hour)
+  assert.equal(s.limits.clamp.five_hour, null)
+  const f = s.limits.clamp.seven_day
+  assert.ok(f > 0 && f < 1)
+  assert.ok(scaledRange(s.limits.seven_day, plain.limits.seven_day, f))
 })
 
 test('no rise leaves the figures alone', () => {
   const plain = bounded(undefined)
-  assert.deepEqual(plain.limits.implausible, [])
+  assert.deepEqual(plain.limits.clamp, { five_hour: null, seven_day: null })
   for (const rise of [{ five_hour: null, seven_day: null }, {}, null]) {
     const s = bounded(rise)
     assert.deepEqual(s.limits, plain.limits)
@@ -307,28 +315,25 @@ test('no rise leaves the figures alone', () => {
   }
 })
 
-test('a window still learning has nothing to withhold', () => {
+test('a window still learning has nothing to clamp', () => {
   const s = run({ meter: { subscription: true, five_hour: intervals(2), seven_day: intervals(8), rise: { five_hour: 0, seven_day: 1000 } } })
   assert.equal(s.limits.five_hour, null)
-  assert.deepEqual(s.limits.implausible, [])
+  assert.deepEqual(s.limits.clamp, { five_hour: null, seven_day: null })
 })
 
-test('the bound does not touch dollars, tokens or the status of a run', () => {
+test('the clamp does not touch dollars, tokens or the status of a run', () => {
   const kept = bounded({ five_hour: 1000, seven_day: 1000 })
   const cut = bounded({ five_hour: 0, seven_day: 0 })
-  assert.deepEqual(cut.limits.implausible, ['five_hour', 'seven_day'])
+  assert.ok(cut.limits.clamp.five_hour < 1 && cut.limits.clamp.seven_day < 1)
   assert.deepEqual(cut.dollars, kept.dollars)
   assert.deepEqual(cut.tokens, kept.tokens)
   assert.equal(cut.status, kept.status)
 })
 
-test("a withheld row reads can't tell where an unready one reads learning", () => {
-  const text = rowsOf(savedBlock(bounded({ five_hour: 0, seven_day: 1000 })))
-  assert.ok(text.some((l) => l.includes('5-hour') && l.endsWith("can't tell")), text.join('\n'))
-  assert.ok(!text.some((l) => l.includes('learning')))
-  assert.ok(text.some((l) => l.includes('weekly') && l.includes('+')))
-  const learning = rowsOf(savedBlock(run({ meter: { subscription: true, five_hour: intervals(2), seven_day: intervals(8) } })))
-  assert.ok(learning.some((l) => l.includes('5-hour') && l.endsWith('learning 2/5')))
+test('a clamped row still shows its number', () => {
+  const text = rowsOf(savedBlock(bounded({ five_hour: 0, seven_day: 0 })))
+  assert.ok(text.some((l) => l.includes('5-hour') && l.includes('+')), text.join('\n'))
+  assert.ok(!text.some((l) => l.includes('learning') || l.includes("can't tell")))
 })
 
 const SONNET_XHIGH = { family: 'sonnet', effort: 'xhigh' }
@@ -351,72 +356,41 @@ const overallOf = (tally, current = { five_hour: 'A', seven_day: 'W' }, now = 20
   return combine(estimates, { tally, meter, now })
 }
 
-test('a tally run keeps the windows withheld from it, normalized', () => {
-  assert.deepEqual(tallyOf(tallyRun('r1')).runs.r1.withheld, [])
-  assert.deepEqual(tallyOf(tallyRun('r1', { withheld: ['seven_day', 'five_hour', 'x'] })).runs.r1.withheld, ['five_hour', 'seven_day'])
-  assert.deepEqual(tallyOf(tallyRun('r1', { withheld: 'five_hour' })).runs.r1.withheld, [])
+test('a tally run keeps its clamp factors, and nothing that is not a factor below 1', () => {
+  assert.deepEqual(tallyOf(tallyRun('r1')).runs.r1.clamp, { five_hour: null, seven_day: null })
+  assert.deepEqual(tallyOf(tallyRun('r1', { clamp: { five_hour: 0.5, seven_day: 2 } })).runs.r1.clamp, { five_hour: 0.5, seven_day: null })
+  assert.deepEqual(tallyOf(tallyRun('r1', { clamp: 'x' })).runs.r1.clamp, { five_hour: null, seven_day: null })
 })
 
-test('a run withheld from a window is not counted for that window only', () => {
-  const t = tallyOf(tallyRun('r1', { withheld: ['five_hour'] }), tallyRun('r2', { at: 1500 }))
-  assert.deepEqual(countedRuns(t, 'five_hour', 'A', 2000).map((r) => r.key), ['r2'])
+test('a clamped run still counts for its windows', () => {
+  const t = tallyOf(tallyRun('r1', { clamp: { five_hour: 0.5, seven_day: null } }), tallyRun('r2', { at: 1500 }))
+  assert.deepEqual(countedRuns(t, 'five_hour', 'A', 2000).map((r) => r.key), ['r1', 'r2'])
   assert.deepEqual(countedRuns(t, 'seven_day', 'W', 2000).map((r) => r.key), ['r1', 'r2'])
-  assert.deepEqual(countedRuns(t, 'all', null, 2000).map((r) => r.key), ['r1', 'r2'])
-  assert.deepEqual(withheldRuns(t, 'five_hour', 'A', 2000).map((r) => r.key), ['r1'])
-  assert.deepEqual(withheldRuns(t, 'seven_day', 'W', 2000), [])
-  assert.deepEqual(withheldRuns(t, 'five_hour', 'B', 2000), [])
 })
 
-test('a stored run without the field counts as before', () => {
-  const t = tallyOf(tallyRun('r1'))
-  delete t.runs.r1.withheld
-  assert.equal(countedRuns(t, 'five_hour', 'A', 2000).length, 1)
-  assert.deepEqual(withheldRuns(t, 'five_hour', 'A', 2000), [])
-})
-
-test('the pooled agents of a window leave out a withheld run', () => {
-  const t = tallyOf(tallyRun('r1', { withheld: ['five_hour'] }), tallyRun('r2', { at: 1500 }))
+test('the pooled agents of a clamped run carry its factors, and the others none', () => {
+  const t = tallyOf(tallyRun('r1', { clamp: { five_hour: 0.5, seven_day: null } }), tallyRun('r2', { at: 1500 }))
   const [g] = overallInput(t, { five_hour: 'A', seven_day: 'W' }, 2000).groups
-  assert.deepEqual(g.five_hour.map((a) => a.agentId), ['r2-a'])
-  assert.deepEqual(g.seven_day.map((a) => a.agentId), ['r1-a', 'r2-a'])
+  assert.deepEqual(g.five_hour.map((a) => a.scale ?? null), [{ five_hour: 0.5, seven_day: null }, null])
   assert.deepEqual(g.all.map((a) => a.agentId), ['r1-a', 'r2-a'])
 })
 
-test('combine shows no number for a window whose only runs were withheld', () => {
-  const s = overallOf(tallyOf(tallyRun('r1', { withheld: ['five_hour'] })))
-  assert.equal(s.status, 'estimated')
-  assert.equal(s.limits.five_hour, null)
-  assert.deepEqual(s.limits.implausible, ['five_hour'])
-  assert.ok(s.limits.seven_day.mid !== undefined)
-  assert.deepEqual(s.counted, { five_hour: 0, seven_day: 1 })
-  assert.equal(s.count, 1)
-  assert.ok(s.dollars.mid > 0)
-  const text = rowsOf(overallBlock(s))
-  assert.ok(text.some((l) => l.includes('5-hour') && l.endsWith("can't tell")), text.join('\n'))
-})
-
-test('combine adds only the runs that were not withheld, and says how many it counted', () => {
+test('combine scales the points of a clamped run by its factor and leaves the others', () => {
+  const one = overallOf(tallyOf(tallyRun('r1')))
+  const cut = overallOf(tallyOf(tallyRun('r1', { clamp: { five_hour: 0.5, seven_day: null } })))
+  assert.ok(scaledRange(cut.limits.five_hour, one.limits.five_hour, 0.5))
+  assert.deepEqual(cut.limits.seven_day, one.limits.seven_day)
+  assert.deepEqual(cut.dollars, one.dollars)
+  assert.deepEqual(cut.counted, { five_hour: 1, seven_day: 1 })
   const both = overallOf(tallyOf(tallyRun('r1'), tallyRun('r2', { at: 1500 })))
-  const some = overallOf(tallyOf(tallyRun('r1', { withheld: ['five_hour'] }), tallyRun('r2', { at: 1500 })))
-  const only = overallOf(tallyOf(tallyRun('r2', { at: 1500 })))
-  assert.deepEqual(some.limits.implausible, [])
-  assert.deepEqual(some.limits.five_hour, only.limits.five_hour)
+  const some = overallOf(tallyOf(tallyRun('r1', { clamp: { five_hour: 0.5, seven_day: null } }), tallyRun('r2', { at: 1500 })))
   assert.ok(some.limits.five_hour.mid < both.limits.five_hour.mid)
-  assert.deepEqual(some.limits.seven_day, both.limits.seven_day)
-  assert.deepEqual(some.counted, { five_hour: 1, seven_day: 2 })
-  assert.equal(some.count, 2)
-  assert.ok(rowsOf(overallBlock(some)).some((l) => l.includes('5-hour counts the 1 workflow of this window')))
+  assert.ok(some.limits.five_hour.mid > one.limits.five_hour.mid)
+  assert.deepEqual(some.counted, { five_hour: 2, seven_day: 2 })
 })
 
-test('a run withheld in an earlier window does not hide the current one', () => {
-  const s = overallOf(tallyOf(tallyRun('old', { windows: { five_hour: 'Z', seven_day: 'W' }, withheld: ['five_hour'] })))
-  assert.deepEqual(s.limits.implausible, [])
-  assert.deepEqual(s.limits.five_hour, { mid: 0, lo: 0, hi: 0, pm: 0 })
-})
-
-test('combine without a withheld run reports none and keeps the limits it had', () => {
+test('the overall keeps the limits shape it had, with no clamp of its own', () => {
   const s = overallOf(tallyOf(tallyRun('r1')))
-  assert.deepEqual(s.limits.implausible, [])
   assert.ok(s.limits.five_hour.mid !== undefined)
-  assert.deepEqual(Object.keys(s.limits), ['five_hour', 'seven_day', 'readings', 'implausible'])
+  assert.deepEqual(Object.keys(s.limits), ['five_hour', 'seven_day', 'readings'])
 })

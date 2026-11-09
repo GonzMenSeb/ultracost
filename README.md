@@ -174,7 +174,7 @@ The overall savings at the top of the list pool every workflow of the session, s
 
 The bars show limit use as of the last estimate, not live. The deep purple of the largest savings is hard to read on dark terminals.
 
-Limit figures need 5 readings. ultraguard learns how fast your limit fills from the `/usage` percentages as you work, and until a window has 5 readings its row reads "learning 3/5" in place of the saving.
+Limit figures need 5 readings. ultraguard learns how fast your limit fills from the `/usage` percentages as you work, and until a window has 5 readings its row reads "learning 3/5" in place of the saving. Usage from other sessions, claude.ai or another machine moves those percentages too, so limit figures read high: ultraguard ignores jumps of 2 points or more and never lets a workflow claim more of a window than your account actually used while it ran.
 
 The ratios between models come from 22 replayed agents, which measured Sonnet at high against Opus at high and against Opus at medium. Other efforts of the same model are chained from those with published effort steps. Every other pair, the same model at another effort included, uses published figures; the pane says which, and their range is wide. The results are in the [reference](docs/reference.md#calibration-results).
 

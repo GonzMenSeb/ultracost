@@ -15,6 +15,10 @@ export function configOf(row, effort) {
 }
 
 const isRise = (x) => typeof x === 'number' && Number.isFinite(x) && x >= 0
+const factorOf = (x) => (typeof x === 'number' && Number.isFinite(x) && x > 0 && x < 1 ? x : 1)
+const scaleAll = (list, f) => {
+  for (let k = 0; k < list.length; k++) list[k] *= f
+}
 
 const hasBuckets = (m) => m && NAMES.every((name) => m[name])
 
@@ -134,7 +138,7 @@ export function estimateRun({ agents, baseline, ratios, prices, meter, seed, dra
     else if (missing) noRatio.add(missing)
     if (unpriced || missing || !pieces.length) continue
     for (const x of pieces) if (!transitions.has(x.from)) transitions.set(x.from, x.ratio)
-    used.push({ agentId: a.agentId, pieces })
+    used.push({ agentId: a.agentId, pieces, scale: a.scale })
   }
   base.coverage.used = used.length
   base.coverage.noRatio = [...noRatio].sort()
@@ -186,6 +190,7 @@ export function estimateRun({ agents, baseline, ratios, prices, meter, seed, dra
   const spendDraws = windows.map(() => new Float64Array(draws))
   const spentU = flat.reduce((n, x) => n + (x.unitsActual?.u ?? 0), 0)
   const spentC = flat.reduce((n, x) => n + (x.unitsActual?.c ?? 0), 0)
+  const agentScale = used.map((a) => windows.map((win) => factorOf(a.scale?.[win.kind])))
   const zT = new Float64Array(keys.length)
   const eps = new Float64Array(n)
   const cfTokens = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }
@@ -241,7 +246,7 @@ export function estimateRun({ agents, baseline, ratios, prices, meter, seed, dra
     for (let i = 0; i < n; i++) {
       agentDollars[i][k] = dollarsBy[i]
       for (let j = 0; j < windows.length; j++) {
-        const pts = unitsBy[i] * pointsOf[j]
+        const pts = unitsBy[i] * pointsOf[j] * agentScale[i][j]
         if (j === 0) agentPoints[i][k] = pts
         pointsDraws[j][k] += pts
       }
@@ -255,13 +260,23 @@ export function estimateRun({ agents, baseline, ratios, prices, meter, seed, dra
   }
 
   const readings = { five_hour: validIntervals(meter?.five_hour).length, seven_day: validIntervals(meter?.seven_day).length }
-  const withheld = windows.map((win, j) => win.shown && isRise(meter.rise?.[win.kind]) && median(spendDraws[j]) > meter.rise[win.kind] + QUANTIZATION)
+  const clamp = windows.map((win, j) => {
+    if (!win.shown || !isRise(meter.rise?.[win.kind])) return null
+    const spend = median(spendDraws[j])
+    const cap = meter.rise[win.kind] + QUANTIZATION
+    return spend > cap ? cap / spend : null
+  })
+  clamp.forEach((f, j) => {
+    if (f === null) return
+    scaleAll(pointsDraws[j], f)
+    if (j === 0) for (const list of [...agentPoints, ...groupPoints]) scaleAll(list, f)
+  })
   const limits = subscription
     ? {
-        five_hour: windows[0].shown && !withheld[0] ? range(pointsDraws[0]) : null,
-        seven_day: windows[1].shown && !withheld[1] ? range(pointsDraws[1]) : null,
+        five_hour: windows[0].shown ? range(pointsDraws[0]) : null,
+        seven_day: windows[1].shown ? range(pointsDraws[1]) : null,
         readings,
-        implausible: windows.filter((_, j) => withheld[j]).map((win) => win.kind),
+        clamp: { five_hour: clamp[0], seven_day: clamp[1] },
       }
     : null
   const byId = new Map(used.map((a, i) => [a.agentId, i]))
@@ -281,13 +296,13 @@ export function estimateRun({ agents, baseline, ratios, prices, meter, seed, dra
       return {
         agentId: a.agentId,
         dollars: i === undefined ? null : median(agentDollars[i]),
-        five_hour: i === undefined || !windows[0]?.shown || withheld[0] ? null : median(agentPoints[i]),
+        five_hour: i === undefined || !windows[0]?.shown ? null : median(agentPoints[i]),
       }
     }),
     groups: groups.map((g, gi) => ({
       key: g.key,
       dollars: members[gi].length ? median(groupDollars[gi]) : null,
-      five_hour: members[gi].length && windows[0]?.shown && !withheld[0] ? median(groupPoints[gi]) : null,
+      five_hour: members[gi].length && windows[0]?.shown ? median(groupPoints[gi]) : null,
       used: members[gi].length,
       total: g.agentIds.length,
     })),

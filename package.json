@@ -1,6 +1,6 @@
 {
   "name": "ultraguard",
-  "version": "0.4.16",
+  "version": "0.4.17",
   "private": true,
   "description": "Per-agent delegation gate for Claude Code dynamic workflows.",
   "type": "module",
