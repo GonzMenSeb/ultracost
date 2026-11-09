@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { ContextState, EvalAgentView, EvalPhaseView, EvalState } from '../types'
+import type { ContextState, EvalAgentView, EvalMeter, EvalPhaseView, EvalState, TallyRun, TallyState } from '../types'
 import { sha256Hex } from '../src/fingerprint.mjs'
 import { recordPath } from '../src/record.mjs'
 import {
@@ -36,8 +36,11 @@ import {
   runOfAgent,
   runView,
   setFolds,
+  staleTallies,
   STOPPED,
-  stoppedRuns
+  storedTally,
+  stoppedRuns,
+  TALLY_PREFIX
 } from '../src/eval.mjs'
 import { contextFill, createContext, forgetCompactRead, noteBreakdown, noteContext } from '../src/context.mjs'
 import { intervalsOf, staleKeys, storedValue, usedOf } from '../src/meter.mjs'
@@ -47,6 +50,7 @@ import { loadPrices, priceFamily } from '../src/prices.mjs'
 import { agentColumn, listCell, listHeader, modelLines, phaseHeadLength, phaseLayout, phaseStatus, phaseTitle, savedBlock, sectionHead, toastText } from '../src/savedText.mjs'
 import { estimateRun } from '../src/savings.mjs'
 import { seedOf } from '../src/stats.mjs'
+import { combine, createTally, noteTallyRun, overallInput } from '../src/tally.mjs'
 
 const PANE = 'ultraguard'
 const TITLE = 'ultraguard-eval'
@@ -60,6 +64,7 @@ const agentsText = (n: number) => `${n} agent${n === 1 ? '' : 's'}`
 
 const ev = atom({ plugin: 'ultraguard', key: 'eval' } as const, createState() as EvalState, { shape: 'eval-2' })
 const ctx = atom({ plugin: 'ultraguard', key: 'context' } as const, createContext() as ContextState, { shape: 'context-1' })
+const tally = atom({ plugin: 'ultraguard', key: 'tally' } as const, createTally() as TallyState, { shape: 'tally-1' })
 
 type Ids = { toolUseId: string; runId: string }
 type Notice = { toolUseId: string | null | undefined; taskId: string | null | undefined; status: string }
@@ -193,19 +198,61 @@ async function estimate($: EngineInterface, key: string) {
   if (!run) return
   const family = priceFamily(run.baseline.model)
   const running = run.status === 'running'
+  const baseline = family && run.baseline.effort ? { family, effort: run.baseline.effort } : null
+  const meter = { subscription: s.meter.subscription, five_hour: intervalsOf(s.meter, 'five_hour', at), seven_day: intervalsOf(s.meter, 'seven_day', at) }
+  const agents = agentPieces(run)
   const saved = estimateRun({
-    agents: agentPieces(run),
+    agents,
     groups: (runView(run).phases ?? []).map((p: EvalPhaseView) => ({ key: p.key, agentIds: p.agentIds })),
-    baseline: family && run.baseline.effort ? { family, effort: run.baseline.effort } : null,
+    baseline,
     ratios: data.ratios,
     prices: data.prices,
-    meter: { subscription: s.meter.subscription, five_hour: intervalsOf(s.meter, 'five_hour', at), seven_day: intervalsOf(s.meter, 'seven_day', at) },
+    meter,
     seed: seedOf(run.key),
     ...(running ? { draws: DRAWS_RUNNING } : {}),
     running
   })
   const used = s.meter.subscription === true ? { five_hour: usedOf(s.meter.last.five_hour, at), seven_day: usedOf(s.meter.last.seven_day, at) } : { five_hour: null, seven_day: null }
   await update($, ev, st => noteSaved(st, key, { ...saved, used }))
+  if (run.hidden) return
+  await guard($, 'tally', () => noteTally($, { key, status: run.status, baseline, agents, windows: stampsOf(s.meter), at }, { data, meter, last: s.meter }))
+}
+
+type EstimateMeter = { subscription: boolean | null; five_hour: unknown[]; seven_day: unknown[] }
+type Pooled = { baseline: TallyRun['baseline'] } & Record<'all' | 'five_hour' | 'seven_day', TallyRun['agents']>
+
+const stampsOf = (m: EvalMeter) => ({ five_hour: m.last.five_hour?.resetsAt ?? null, seven_day: m.last.seven_day?.resetsAt ?? null })
+
+function overallOf(t: TallyState, { data, meter, last }: { data: Data; meter: EstimateMeter; last: EvalMeter }, now: number) {
+  const running = Object.values(t.runs).some(r => r.status === 'running')
+  const one = (baseline: TallyRun['baseline'], agents: TallyRun['agents']) =>
+    estimateRun({ agents, baseline, ratios: data.ratios, prices: data.prices, meter, seed: seedOf('overall'), ...(running ? { draws: DRAWS_RUNNING } : {}), running })
+  const estimates = overallInput(t, stampsOf(last), now).groups.map((g: Pooled) => ({
+    all: one(g.baseline, g.all),
+    five_hour: one(g.baseline, g.five_hour),
+    seven_day: one(g.baseline, g.seven_day)
+  }))
+  return combine(estimates, { tally: t, meter: last, now })
+}
+
+async function noteTally($: EngineInterface, run: TallyRun, inputs: { data: Data; meter: EstimateMeter; last: EvalMeter }) {
+  const dropped: string[] = []
+  const next = await update($, tally, t => {
+    dropped.length = 0
+    const noted = noteTallyRun(t, run, { log: (line: string) => dropped.push(line) }) as TallyState
+    return { ...noted, overall: overallOf(noted, inputs, run.at) }
+  })
+  await guard($, 'tally store', async () => $.store.set(`${TALLY_PREFIX}${await $.session.id()}`, next))
+  for (const line of dropped) $.ui.log(line, { to: 'debug' })
+}
+
+async function loadTally($: EngineInterface) {
+  const own = `${TALLY_PREFIX}${await $.session.id()}`
+  const stored: Record<string, unknown> = {}
+  for (const key of await $.store.keys()) if (key.startsWith(TALLY_PREFIX)) stored[key] = await $.store.get(key)
+  for (const key of staleTallies(stored, own, await $.clock.now())) await $.store.delete(key)
+  const kept = storedTally(stored[own]) as TallyState | null
+  if (kept) await update($, tally, t => (Object.keys(t.runs).length === 0 ? kept : t))
 }
 
 async function readWindow($: EngineInterface, window: number) {
@@ -316,6 +363,7 @@ export const register: Register = on => {
     })
     dataLoad = null
     await guard($, 'meter', () => loadMeter($))
+    await guard($, 'tally', () => loadTally($))
     await guard($, 'context', async () => {
       const { context } = await $.session.usage()
       if (await noteWindow($, context)) await readWindow($, context.window)
@@ -347,6 +395,7 @@ export const register: Register = on => {
         await update($, ev, s => hideFinished(endAllRuns(s, 'cleared', at)))
         for (const run of live) await persist($, run.key)
       })
+      await guard($, 'clear tally', () => update($, tally, () => createTally() as TallyState))
     }
     return next(e)
   })

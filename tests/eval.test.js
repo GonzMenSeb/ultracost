@@ -5,7 +5,7 @@ import { recordPath } from '../src/record.mjs'
 import { readFileSync } from 'node:fs'
 import { loadPrices } from '../src/prices.mjs'
 import { toastText } from '../src/savedText.mjs'
-import { STOPPED, UNKNOWN_PHASE, noteFocus, phaseOpen, setFolds, agentPieces, finishedRuns, hideFinished, noteMainStep, noteMeterReading, noteSaved, noteStored, noteUsage, stoppedRuns } from '../src/eval.mjs'
+import { STOPPED, TALLY_PREFIX, UNKNOWN_PHASE, noteFocus, phaseOpen, setFolds, agentPieces, finishedRuns, hideFinished, noteMainStep, noteMeterReading, noteSaved, noteStored, noteUsage, staleTallies, storedTally, stoppedRuns } from '../src/eval.mjs'
 import {
   activeRuns,
   bandText,
@@ -981,4 +981,30 @@ test('the focused element is kept in the ui state, and the same one is not a cha
   assert.equal(noteFocus(focused, null).ui.focus, null)
   assert.equal(noteFocus(s, null), s)
   assert.equal(noteFocus(focused, 'run:abc').ui.run, focused.ui.run)
+})
+
+const DAY_MS = 24 * 3600 * 1000
+const tallyAt = (...ats) => ({ v: 1, runs: Object.fromEntries(ats.map((at, i) => [`r${i}`, { key: `r${i}`, status: 'completed', baseline: null, agents: [], windows: { five_hour: null, seven_day: null }, at }])) })
+
+test('a stored tally is used only when it is a version 1 tally with a runs map', () => {
+  const good = tallyAt(5)
+  assert.equal(storedTally(good), good)
+  assert.equal(storedTally({ v: 1, runs: {}, overall: { status: 'unknown', count: 0 } })?.v, 1)
+  for (const bad of [undefined, null, 7, 'x', [], { v: 2, runs: {} }, { v: 1 }, { v: 1, runs: null }, { v: 1, runs: [] }]) assert.equal(storedTally(bad), null)
+})
+
+test('the tally keys older than 30 days are stale, never the own key and never a key with a recent run', () => {
+  const now = 100 * DAY_MS
+  const own = `${TALLY_PREFIX}sess-1`
+  const stored = {
+    [own]: tallyAt(1000),
+    [`${TALLY_PREFIX}ancient`]: tallyAt(1000, now - 31 * DAY_MS),
+    [`${TALLY_PREFIX}recent`]: tallyAt(1000, now - 29 * DAY_MS),
+    [`${TALLY_PREFIX}empty`]: tallyAt(),
+    [`${TALLY_PREFIX}broken`]: { v: 1, runs: 'x' },
+    'meter:old': { v: 1, five_hour: [], seven_day: [] }
+  }
+  assert.deepEqual(staleTallies(stored, own, now).sort(), [`${TALLY_PREFIX}ancient`, `${TALLY_PREFIX}broken`, `${TALLY_PREFIX}empty`])
+  assert.deepEqual(staleTallies(undefined, own, now), [])
+  assert.equal(TALLY_PREFIX, 'tally:')
 })

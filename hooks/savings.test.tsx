@@ -102,6 +102,7 @@ async function flow($: any, on: any, options: Options) {
     return { deny: `ENOENT ${path}` }
   })
   on('tool.call', (_: any, e: any) => {
+    if (e.tool === 'TaskStop') return { result: { message: 'stopped', task_id: e.task_id, task_type: 'local_workflow' } }
     toolUseId = e.tool_use_id
     return { result: { status: 'async_launched', taskId: 'w1', runId: 'wf_run001', workflowName: 'map' } }
   })
@@ -148,18 +149,23 @@ async function flow($: any, on: any, options: Options) {
     await measure()
   }
   if (complete) await $.turn.complete({ answer: '', durationMs: 1, isAborted: false, turnId: 't1', reason: 'answer', agentId: 'a1' })
-  if (finish) {
-    await $.session.append({
+  let notified = 0
+  const end = (id: string) =>
+    $.session.append({
       message: {
         type: 'user',
-        content: [{ type: 'text', text: `<task-notification>\n<task-id>w1</task-id>\n<tool-use-id>${toolUseId}</tool-use-id>\n<status>completed</status>\n</task-notification>` }],
+        content: [{ type: 'text', text: `<task-notification>\n<task-id>w1</task-id>\n<tool-use-id>${id}</tool-use-id>\n<status>completed</status>\n</task-notification>` }],
       },
       door: 'queue',
       origin: { kind: 'task-notification' },
-      uuid: 'u1',
+      uuid: `u${(notified += 1)}`,
     })
+  const launch = async () => {
+    await $.tool.call({ tool: 'Workflow', script: SCRIPT })
+    return toolUseId
   }
-  return { writes, toasts, store, clock, id: () => toolUseId, setContext: (next: Record<string, unknown>) => (fill = { window: 200000, ...next }) }
+  if (finish) await end(toolUseId)
+  return { writes, toasts, store, clock, id: () => toolUseId, end, launch, setContext: (next: Record<string, unknown>) => (fill = { window: 200000, ...next }) }
 }
 
 const detail = async ($: any, id: string) => {
@@ -187,7 +193,7 @@ test('the detail shows what a finished run saved, against the session model and 
   expect(record.savings.saved.running).toBe(false)
   expect(record.savings.saved.used.five_hour).toBe(13)
   expect(JSON.stringify(record)).not.toContain('"compact"')
-  expect(Object.keys(w.store)).toEqual([`meter:${SESSION}`])
+  expect(Object.keys(w.store).sort()).toEqual([`meter:${SESSION}`, `tally:${SESSION}`])
 })
 
 test('the saving is drawn as a bar whose cells are text, track and saved colors', async ($, on) => {
@@ -325,7 +331,7 @@ test('a session start removes the stored meter readings that are all older than 
   const old = { v: 1, five_hour: [{ d: 1, u: 1, c: 0, at: 1000 }], seven_day: [] }
   const fresh = { v: 1, five_hour: [{ d: 1, u: 1, c: 0, at: now - 3600 * 1000 }], seven_day: [] }
   const w = await flow($, on, { subscription: true, now, preload: { 'meter:ancient': old, 'meter:recent': fresh } })
-  expect(Object.keys(w.store).sort()).toEqual(['meter:recent', `meter:${SESSION}`].sort())
+  expect(Object.keys(w.store).sort()).toEqual(['meter:recent', `meter:${SESSION}`, `tally:${SESSION}`].sort())
 })
 
 test('the saved block is laid out for the pane and the saved column keeps the same title on a narrow pane', async ($, on) => {
@@ -455,4 +461,86 @@ test('with phases the run view shows the saved block, then the phases, then the 
   expect(heads).toEqual([96, 96, 96])
   expect(await ui.find({ type: 'Text', text: /^▾ / })).toBeUndefined()
   await ui.unmount()
+})
+
+const TALLY = `tally:${SESSION}`
+const tallyOf = (w: { store: Record<string, unknown> }) => w.store[TALLY] as any
+
+test('the session tally is mirrored to the plugin store under tally:<session id>', async ($, on) => {
+  const w = await flow($, on, { subscription: true })
+  const stored = tallyOf(w)
+  expect(Object.keys(stored.runs)).toEqual([w.id()])
+  expect(stored.runs[w.id()]).toMatchObject({
+    key: w.id(),
+    status: 'completed',
+    baseline: { family: 'opus', effort: 'high' },
+    windows: { five_hour: '2026-11-08T12:00:00Z', seven_day: '2026-11-12T12:00:00Z' },
+    at: w.clock.now(),
+  })
+  expect(stored.runs[w.id()].agents.map((a: any) => a.agentId)).toEqual(['a1'])
+  expect(stored.overall).toMatchObject({ status: 'estimated', count: 1, counted: { five_hour: 1, seven_day: 1 }, running: false, subscription: true, baseline: { family: 'opus', effort: 'high' } })
+  expect(stored.overall.limits.five_hour.mid).toBeGreaterThan(0)
+})
+
+test('a running workflow is tallied as running, and the overall says so', async ($, on) => {
+  const w = await flow($, on, { subscription: true, finish: false })
+  expect(tallyOf(w).runs[w.id()].status).toBe('running')
+  expect(tallyOf(w).overall).toMatchObject({ status: 'estimated', count: 1, running: true })
+})
+
+test('a workflow stopped with TaskStop is counted in the session tally', async ($, on) => {
+  const w = await flow($, on, { subscription: true, finish: false })
+  await $.tool.call({ tool: 'TaskStop', task_id: 'w1' })
+  expect(tallyOf(w).runs[w.id()].status).toBe('killed')
+  expect(tallyOf(w).overall).toMatchObject({ status: 'estimated', count: 1, running: false })
+})
+
+test('the session tally counts every ended workflow, past the 20 the list keeps', async ($, on) => {
+  const w = await flow($, on, { subscription: true })
+  for (let i = 0; i < 21; i++) await w.end(await w.launch())
+  expect(Object.keys(tallyOf(w).runs)).toHaveLength(22)
+  expect(tallyOf(w).overall.count).toBe(22)
+  expect(tallyOf(w).overall.status).toBe('estimated')
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  expect((await ui.findAll({ type: 'Button' })).filter((b: any) => String(b.key).startsWith('run:'))).toHaveLength(20)
+  await ui.unmount()
+})
+
+test('a clear resets the session tally and leaves the stored one of the ended session alone', async ($, on) => {
+  const w = await flow($, on, { subscription: true, finish: false })
+  const before = w.id()
+  expect(Object.keys(tallyOf(w).runs)).toEqual([before])
+  await $.session.end({ reason: 'clear', sessionId: SESSION, resume: { id: SESSION } })
+  expect(Object.keys(tallyOf(w).runs)).toEqual([before])
+  await $.agent.spawn({
+    tool_use_id: before,
+    prompt: 'p',
+    description: 'investigate: map',
+    subagentType: 'general-purpose',
+    provider: { plugin: 'engine', tier: 'core' },
+    model: 'sonnet',
+    parentModel: OPUS,
+    background: true,
+    fork: false,
+    workflow: { runId: 'wf_run001', agentIndex: 2 },
+  })
+  await $.turn.complete({ answer: '', durationMs: 1, isAborted: false, turnId: 't2', reason: 'answer', agentId: 'a2' })
+  const next = await w.launch()
+  await w.end(next)
+  expect(Object.keys(tallyOf(w).runs)).toEqual([next])
+  expect(tallyOf(w).overall).toEqual({ status: 'unknown', count: 1 })
+})
+
+test('a session start loads its own stored tally and removes tally keys older than 30 days', async ($, on) => {
+  const now = 100 * 24 * 3600 * 1000
+  const run = (key: string, at: number) => ({ key, status: 'completed', baseline: { family: 'opus', effort: 'high' }, agents: [], windows: { five_hour: null, seven_day: null }, at })
+  const preload = {
+    [TALLY]: { v: 1, runs: { earlier: run('earlier', now - 3600 * 1000) } },
+    'tally:ancient': { v: 1, runs: { old: run('old', 1000) } },
+    'tally:recent': { v: 1, runs: { young: run('young', now - 3600 * 1000) } },
+  }
+  const w = await flow($, on, { subscription: true, now, preload })
+  expect(Object.keys(w.store).filter(k => k.startsWith('tally:')).sort()).toEqual(['tally:recent', TALLY])
+  expect(Object.keys(tallyOf(w).runs).sort()).toEqual(['earlier', w.id()].sort())
+  expect(tallyOf(w).overall.count).toBe(2)
 })
