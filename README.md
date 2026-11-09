@@ -136,13 +136,13 @@ A passing gate prints nothing. ultraguard-eval is how you see that the rules hel
 A run is green while all four hold. Otherwise it turns red and names the first failure.
 
 <p align="center">
-  <img src="assets/eval-red.svg" alt="The same row when a run breaks the plan: a red square, the title ultraguard-eval and the summary 1 running, 1 red.">
+  <img src="assets/eval-red.svg" alt="The same row when a run breaks the plan: a red hollow square, the title ultraguard-eval and the summary 1 running, 1 red.">
 </p>
 
 Select the row, or run `/ultraguard`, to open the pane: one row per workflow, running ones first and ended ones under "finished this session". Enter opens a workflow: the four checks with ✓ or ✗, then its phases, each a row you can fold (Enter, or `a` for all) with the agents that ran in it indented below, a ✓ or ✗ per agent, the model and effort the gate approved and what it actually ran on, and what each saved. A workflow without phases shows the agents in one flat table.
 
 <p align="center">
-  <img src="assets/eval-pane.svg" alt="The ultraguard-eval pane. Above, the run list: one finished workflow, release-notes, under 'finished this session' with the dollars it saved and their margin of error. Below, its detail after Enter: the four checks all passing, then the workflow's three phases, each open with a green circle and its agents below with a green check mark: Collect with two grunt agents approved for haiku at xhigh that ran on haiku at xhigh, Investigate with two investigate agents on sonnet at high, and Decide with a decide agent on opus at high, each with what it saved. Last, the start of the 'ultraguard saved' block, compared with running every agent on Fable at xhigh effort.">
+  <img src="assets/eval-pane.svg" alt="The ultraguard-eval pane. Above, the run list: one finished workflow, release-notes, under 'finished this session', its row selected inside a rounded outline, with the share of the 5-hour limit it saved in violet and the margin of error. Below, its detail after Enter: the four checks all passing, then the workflow's three phases, each open with a hollow green circle and its agents below with a green check mark: Collect with two grunt agents approved for haiku at xhigh that ran on haiku at xhigh, Investigate with two investigate agents on sonnet at high, and Decide with a decide agent on opus at high. Model names are bold in gold (haiku), orange (sonnet) and red (opus), and what each saved runs from aqua to violet. Last, the start of the 'ultraguard saved' block, compared with running every agent on Fable at xhigh effort.">
 </p>
 
 Both parts leave a record in `~/.claude/ultraguard/sessions/<session_id>/` (or under `CLAUDE_CONFIG_DIR`): `<tool_use_id>.gate.json` for each gate decision, pass or deny, and `<tool_use_id>.eval.json` for each run ultraguard-eval saw.
