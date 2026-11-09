@@ -77,6 +77,7 @@ async function flow($: any, on: any, options: Options) {
   let sid = SESSION
   let following: string | null = null
   let fiveReset = FIVE_RESET
+  let muted = false
   mock.env(on, { CLAUDE_CONFIG_DIR: CONFIG })
   const clock = mock.clock(on, { now })
   on('session.id', () => ({ value: sid }))
@@ -139,7 +140,7 @@ async function flow($: any, on: any, options: Options) {
       answer: '',
       toolUses: [],
       stopReason: 'end_turn',
-      usage: { input_tokens: big ? 1000 : 300, output_tokens: big ? 2000 : 100, cache_read_input_tokens: big ? 50000 : 9000, cache_creation_input_tokens: big ? 5000 : 500, model: e.model },
+      usage: muted ? undefined : { input_tokens: big ? 1000 : 300, output_tokens: big ? 2000 : 100, cache_read_input_tokens: big ? 50000 : 9000, cache_creation_input_tokens: big ? 5000 : 500, model: e.model },
     }
   })
   on('ui.render', ($: any, e: any) => {
@@ -207,6 +208,7 @@ async function flow($: any, on: any, options: Options) {
     step,
     pause,
     follow: (next: string) => (following = next),
+    mute: () => (muted = true),
     roll: (reset: string) => (fiveReset = reset),
     setContext: (next: Record<string, unknown>) => (fill = { window: 200000, ...next }),
   }
@@ -353,11 +355,35 @@ test('an agent with no usage leaves the coverage line at "from 1 of 2 agents"', 
 })
 
 test('a run with no estimate yet still shows the effort an agent ran at', async ($, on) => {
-  const w = await flow($, on, { subscription: true, readings: 1, finish: false, complete: false })
+  const w = await flow($, on, { subscription: true, readings: 0, finish: false, complete: false })
+  w.mute()
+  await w.step({ agentId: 'a1', model: SONNET, effort: 'high' })
   const ui = await detail($, w.id())
   expect(await ui.find({ type: 'Text', text: /^ {4}□ investigate: map\s+sonnet high$/ })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /sonnet…/ })).toBeUndefined()
   expect(await ui.find({ type: 'Text', text: /ultraguard saved/ })).toBeUndefined()
+  await ui.unmount()
+})
+
+test('an agent still on its first step already has its usage in the record and the tally, and is estimated again at most every 30 seconds', async ($, on) => {
+  const w = await flow($, on, { subscription: true, readings: 1, finish: false, complete: false })
+  const record = () => JSON.parse(w.writes[`${CONFIG}/ultraguard/sessions/${SESSION}/${w.id()}.eval.json`])
+  expect(record().savings.usage[0].usage.length).toBeGreaterThan(0)
+  expect(tallyOf(w).runs[w.id()].agents[0].pieces.length).toBeGreaterThan(0)
+  await w.step({ agentId: 'a1', model: SONNET, effort: 'high' })
+  await w.clock.settle()
+  const first = tallyOf(w).overall.at
+  expect(first).toBe(w.clock.now())
+  await w.clock.advance(10000)
+  await w.step({ agentId: 'a1', model: SONNET, effort: 'high' })
+  await w.clock.settle()
+  expect(tallyOf(w).overall.at).toBe(first)
+  await w.clock.advance(30000)
+  await w.step({ agentId: 'a1', model: SONNET, effort: 'high' })
+  await w.clock.settle()
+  expect(tallyOf(w).overall.at).toBe(w.clock.now())
+  const ui = await detail($, w.id())
+  expect(await ui.find({ type: 'Text', text: /ultraguard saved/ })).toBeDefined()
   await ui.unmount()
 })
 

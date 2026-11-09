@@ -100,6 +100,7 @@ const ctx = atom({ plugin: 'ultraguard', key: 'context' } as const, createContex
 const tally = atom({ plugin: 'ultraguard', key: 'tally' } as const, createTally() as TallyState, { shape: 'tally-1' })
 
 const windowFrom = new Map<string, number>()
+const estimatedAt = new Map<string, number>()
 let ringHeld = true
 
 type Ids = { toolUseId: string; runId: string }
@@ -595,7 +596,17 @@ export const register: Register = on => {
       if (!result.usage) return
       const data = await getData($)
       const own = agentId !== undefined && (runOfAgent(await read($, ev), agentId) !== null || inflight > 0)
-      await update($, ev, s => noteUsage(s, { agentId: own ? agentId : undefined, effort: e.effort, usage: result.usage, prices: data?.prices }))
+      const out = await update($, ev, s => noteUsage(s, { agentId: own ? agentId : undefined, effort: e.effort, usage: result.usage, prices: data?.prices }))
+      const key = own ? runOfAgent(out, agentId as string) : null
+      const now = await $.clock.now()
+      if (key && out.runs[key]?.status === 'running' && !(now - (estimatedAt.get(key) ?? -Infinity) < OVERALL_EVERY_MS)) {
+        estimatedAt.set(key, now)
+        cap(estimatedAt)
+        void guard($, 'savings so far', async () => {
+          await estimate($, key)
+          await persist($, key)
+        })
+      }
     })
     return result
   })
