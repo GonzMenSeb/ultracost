@@ -10,6 +10,9 @@ const ratios = buildRatios(inputs())
 const within = (a, b, tol = 0.01) => assert.ok(Math.abs(a - b) <= tol, `${a} !~ ${b} (±${tol})`)
 const SINGLE_RUN_FLOOR = { output: 0.227 / Math.SQRT2, fresh: 0.259 / Math.SQRT2, read: 0.273 / Math.SQRT2 }
 const FAMILIES = ['opus', 'sonnet', 'haiku', 'fable']
+const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max']
+const BUCKET_NAMES = ['output', 'fresh', 'read']
+const aa = () => read('published').sources.find((s) => s.id.startsWith('aa-'))
 
 test('measured web research ratio', () => {
   const m = ratios.measured['sonnet:high>opus:high']
@@ -122,10 +125,89 @@ test('ratios stay keyed by family, never by price row', () => {
   for (const config of configs) assert.ok(FAMILIES.includes(config.split(':')[0]), config)
 })
 
-test('priors convert cost to tokens with the input-price ratio', () => {
+test('a prior takes its buckets from the Artificial Analysis token counts of both configurations, fresh and read from the total input', () => {
+  const p = ratios.priors['sonnet:high>opus:xhigh']
+  const run = aa().wholeIndex
+  const ln = (k) => Math.log(run.opus.efforts.xhigh[k] / run.sonnet.efforts.high[k])
+  within(p.output.mu, ln('outputTokens'), 1e-9)
+  within(p.read.mu, ln('inputTokens'), 1e-9)
+  within(p.fresh.mu, ln('inputTokens'), 1e-9)
+  within(Math.exp(p.output.mu), 1.848, 0.001)
+  within(Math.exp(p.fresh.mu), 2.384, 0.001)
+  within(Math.exp(p.read.mu), 2.384, 0.001)
+  within(p.output.sd, 0.61)
+  within(p.read.sd, 0.61)
+  within(p.fresh.sd, 0.64)
+})
+
+test('a prior keeps its scalar, the mean log cost ratio less the input-price ratio, as the fallback', () => {
   const p = ratios.priors['sonnet:high>opus:xhigh']
   within(Math.exp(p.mu), 3.43)
   within(p.sd, 0.61)
+  assert.equal(p.sources, 3)
+  const prices = read('prices').families
+  const logs = read('published').sources
+    .filter((x) => x.cost.sonnet?.high > 0 && x.cost.opus?.xhigh > 0)
+    .map((x) => Math.log(x.cost.opus.xhigh / x.cost.sonnet.high) - Math.log(prices.opus.input / prices.sonnet.input))
+  within(p.mu, logs.reduce((t, x) => t + x, 0) / logs.length, 1e-9)
+  assert.deepEqual(Object.keys(p), ['mu', 'sd', 'sources', 'output', 'fresh', 'read'])
+})
+
+test('every prior between Opus, Sonnet and Haiku carries three buckets that share the scalar sd, the fresh proxy adding 0.2', () => {
+  let checked = 0
+  for (const [key, p] of Object.entries(ratios.priors)) {
+    const [from, to] = key.split('>').map((c) => c.split(':')[0])
+    if (from === 'fable' || to === 'fable') continue
+    for (const name of BUCKET_NAMES) assert.ok(Number.isFinite(p[name].mu), `${key} ${name}`)
+    assert.equal(p.output.sd, p.sd)
+    assert.equal(p.read.sd, p.sd)
+    within(p.fresh.sd, Math.hypot(p.sd, 0.2), 1e-8)
+    checked++
+  }
+  assert.ok(checked > 80)
+})
+
+test('a prior spread wider than 0.6 across sources is every bucket sd, with 0.2 added to fresh', () => {
+  const tokens = { outputTokens: 10, inputTokens: 100 }
+  const run = { efforts: { high: tokens } }
+  const published = {
+    v: 1,
+    sources: [
+      { id: 'a', cost: { haiku: { high: 1 }, sonnet: { high: 2 } }, wholeIndex: { haiku: run, sonnet: { efforts: { high: { outputTokens: 40, inputTokens: 150 } } } } },
+      { id: 'b', cost: { haiku: { high: 1 }, sonnet: { high: 20 } } },
+    ],
+  }
+  const p = buildRatios({ ...inputs(), published }).priors['haiku:high>sonnet:high']
+  const spread = Math.log(10) / Math.SQRT2
+  within(p.mu, (Math.log(2) + Math.log(20)) / 2 - Math.log(20), 1e-9)
+  within(p.sd, spread, 1e-9)
+  within(p.output.sd, spread, 1e-9)
+  within(p.read.sd, spread, 1e-9)
+  within(p.fresh.sd, Math.hypot(spread, 0.2), 1e-9)
+  within(Math.exp(p.output.mu), 4, 1e-9)
+  within(Math.exp(p.read.mu), 1.5, 1e-9)
+  within(Math.exp(p.fresh.mu), 1.5, 1e-9)
+})
+
+test('a prior without token data for both configurations keeps the scalar alone', () => {
+  const scalar = ['mu', 'sd', 'sources']
+  for (const [key, p] of Object.entries(ratios.priors)) {
+    if (key.split(/[>:]/).includes('fable')) assert.deepEqual(Object.keys(p), scalar, key)
+  }
+  const published = read('published')
+  const bare = { ...published, sources: published.sources.map(({ wholeIndex, ...rest }) => rest) }
+  const without = buildRatios({ ...inputs(), published: bare }).priors
+  for (const [key, p] of Object.entries(without)) {
+    assert.deepEqual(Object.keys(p), scalar, key)
+    assert.equal(p.mu, ratios.priors[key].mu)
+    assert.equal(p.sd, ratios.priors[key].sd)
+  }
+  const gap = structuredClone(published)
+  delete gap.sources.find((s) => s.id.startsWith('aa-')).wholeIndex.opus.efforts.max
+  const partial = buildRatios({ ...inputs(), published: gap }).priors
+  assert.deepEqual(Object.keys(partial['sonnet:high>opus:max']), scalar)
+  assert.deepEqual(Object.keys(partial['sonnet:high>opus:xhigh']), [...scalar, ...BUCKET_NAMES])
+  assert.equal(partial['sonnet:high>opus:max'].mu, ratios.priors['sonnet:high>opus:max'].mu)
 })
 
 test('priors never pair a family with itself and need a source', () => {
@@ -154,9 +236,6 @@ test('an unbounded bucket is dropped', () => {
   assert.deepEqual(buildRatios({ ...inputs(), replays: none }).measured, {})
 })
 
-const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max']
-const BUCKET_NAMES = ['output', 'fresh', 'read']
-const aa = () => read('published').sources.find((s) => s.id.startsWith('aa-'))
 const pairsOf = () => EFFORTS.flatMap((a) => EFFORTS.filter((b) => b !== a).map((b) => [a, b]))
 
 test('steps carry three buckets and keep the scalar as the mean log cost ratio over sources', () => {

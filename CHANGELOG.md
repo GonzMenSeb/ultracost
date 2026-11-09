@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.19 - ultraguard
+
+- A prior between two of Opus, Sonnet and Haiku now has a ratio per token type, from Artificial Analysis's token counts of both configurations: output from the output tokens, read and fresh from the total input tokens. Before, one published cost ratio divided by the input-price ratio served all three, which understates a Haiku agent's baseline: Haiku's cache reads cost 10× less than Sonnet's while its other classes cost 20× less. The old ratio stays as the fallback, used for every pair with Fable.
+- `node scripts/priors.mjs` backtests four candidate priors against the replayed workflows and picks the lowest error; the shipped prior is its pick. Mean absolute log error: 0.216 over the 9 bucket cases and 0.161 in dollars, against 0.284 and 0.177 for the old prior. The backtest has 3 workflows on 2 Sonnet-to-Opus transitions and no Haiku pair, so the Haiku side rests on token counts and prices, not on a measurement.
+- Effect on the replay mix: a Haiku agent's baseline dollars rise 46% to 75% against an Opus or Sonnet baseline (Opus xhigh 57%, Sonnet high 75%), so its savings rise with them; a Sonnet agent's Haiku baseline falls 47%.
+
 ## 0.4.18 - ultraguard
 
 - An effort step within one model now has a ratio per token type. The level stays the published multi-source cost ratio; the shape comes from Artificial Analysis's per-effort token counts. On Sonnet 5.5, high to xhigh is now output 2.21, fresh 2.11 and read 3.28 instead of 2.49 for all three. Opus and Haiku take output and input from Artificial Analysis and borrow Sonnet's fresh exponent (0.77), with 0.2 more spread on that bucket; Fable keeps one ratio for all three. On the replay mix dollars and limit figures move about 2% and the tokens-saved figure up to 51%, since most saved tokens are cache reads.

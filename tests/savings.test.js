@@ -203,6 +203,44 @@ test('a fable session falls back to the published prior', () => {
   assert.equal(ratioFor(ratios, 'sonnet:high', 'opus:high').source, 'measured')
 })
 
+test('a cross-family prior uses the three buckets of its own, with the prior sd', () => {
+  const r = ratioFor(ratios, 'haiku:high', 'opus:xhigh')
+  const p = ratios.priors['haiku:high>opus:xhigh']
+  assert.equal(r.source, 'prior')
+  assert.equal(r.tau, 0)
+  assert.equal(r.pairs, 0)
+  assert.deepEqual(r.agentSd, ratios.pooledAgentSd)
+  for (const name of ['output', 'fresh', 'read']) assert.deepEqual(r[name], { mu: p[name].mu, sigma: p[name].sd })
+  const aa = read('published').sources.find((x) => x.id.startsWith('aa-')).wholeIndex
+  const ln = (k) => Math.log(aa.opus.efforts.xhigh[k] / aa.haiku.efforts.high[k])
+  assert.ok(Math.abs(r.output.mu - ln('outputTokens')) < 1e-8)
+  assert.ok(Math.abs(r.read.mu - ln('inputTokens')) < 1e-8)
+  assert.ok(Math.abs(r.fresh.mu - ln('inputTokens')) < 1e-8)
+  assert.ok(r.fresh.sigma > r.output.sigma)
+})
+
+test('a cross-family prior without buckets applies its scalar to all three', () => {
+  const key = 'haiku:high>opus:xhigh'
+  const { mu, sd, sources } = ratios.priors[key]
+  const bare = { ...ratios, priors: { ...ratios.priors, [key]: { mu, sd, sources } } }
+  const r = ratioFor(bare, 'haiku:high', 'opus:xhigh')
+  assert.equal(r.source, 'prior')
+  for (const name of ['output', 'fresh', 'read']) assert.deepEqual(r[name], { mu, sigma: sd })
+  const fable = ratioFor(ratios, 'sonnet:high', 'fable:high')
+  const scalar = ratios.priors['sonnet:high>fable:high']
+  for (const name of ['output', 'fresh', 'read']) assert.deepEqual(fable[name], { mu: scalar.mu, sigma: scalar.sd })
+})
+
+test('a Haiku agent against an Opus baseline is estimated from the prior buckets', () => {
+  const s = run({ agents: [agent('a1', piece(sum('w1'), 'haiku', 'high'))], baseline: { family: 'opus', effort: 'xhigh' } })
+  const p = ratios.priors['haiku:high>opus:xhigh']
+  assert.equal(s.status, 'estimated')
+  assert.deepEqual(s.sources.priors, [{ from: 'haiku:high', to: 'opus:xhigh' }])
+  const [t] = s.transitions
+  assert.equal(t.source, 'prior')
+  for (const name of ['output', 'fresh', 'read']) assert.deepEqual(t[name], { mu: p[name].mu, sigma: p[name].sd })
+})
+
 test('transitions record each source and ratio', () => {
   const [t] = run().transitions
   assert.equal(t.from, 'sonnet:high')
