@@ -34,10 +34,10 @@
   <text x="482" y="212" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" font-weight="700" fill="#4ade80">pass</text>
 
   <g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="13" fill="#a1a1aa" letter-spacing="1">
-    <text x="48" y="158">1 · DRAFT</text>
-    <text x="252" y="158">2 · GATE · STATIC</text>
-    <text x="516" y="158">3 · RUN</text>
-    <text x="692" y="158">4 · ULTRAGUARD-EVAL</text>
+    <text x="48" y="158">1<tspan dx="17.6">DRAFT</tspan></text>
+    <text x="252" y="158">2<tspan dx="17.6">GATE</tspan><tspan dx="17.6">STATIC</tspan></text>
+    <text x="516" y="158">3<tspan dx="17.6">RUN</tspan></text>
+    <text x="692" y="158">4<tspan dx="17.6">ULTRAGUARD-EVAL</tspan></text>
   </g>
 
   <g font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="16" font-weight="700" fill="#e4e4e7">
@@ -81,17 +81,17 @@
   </g>
 
   <g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="13">
-    <text x="516" y="238" fill="#c084fc">opus</text>
-    <text x="516" y="264" fill="#60a5fa">sonnet</text>
-    <text x="516" y="290" fill="#2dd4bf">haiku</text>
+    <text x="516" y="238" fill="#e2484f">opus</text>
+    <text x="516" y="264" fill="#f48815">sonnet</text>
+    <text x="516" y="290" fill="#efb219">haiku</text>
   </g>
-  <g fill="#c084fc">
+  <g fill="#e2484f">
     <circle cx="575" cy="234" r="5"/><circle cx="589" cy="234" r="5"/><circle cx="603" cy="234" r="5"/>
   </g>
-  <g fill="#60a5fa">
+  <g fill="#f48815">
     <circle cx="575" cy="260" r="5"/><circle cx="589" cy="260" r="5"/><circle cx="603" cy="260" r="5"/><circle cx="617" cy="260" r="5"/>
   </g>
-  <g fill="#2dd4bf">
+  <g fill="#efb219">
     <circle cx="575" cy="286" r="5"/><circle cx="589" cy="286" r="5"/><circle cx="603" cy="286" r="5"/>
   </g>
 
@@ -106,7 +106,7 @@
     <rect x="792" y="352" width="136" height="56" rx="10"/>
   </g>
   <rect x="500" y="352" width="220" height="40" rx="10" fill="#1e1e24" stroke="#2a2a31"/>
-  <rect x="516" y="366" width="12" height="12" rx="2" fill="#4ade80"/>
+  <rect x="517" y="367" width="10" height="10" rx="1.5" fill="none" stroke="#4ade80" stroke-width="1.5"/>
 
   <g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="14" fill="#e4e4e7">
     <text x="252" y="376">.gate.json</text>
