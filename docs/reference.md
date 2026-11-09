@@ -327,6 +327,8 @@ An unreadable session model counts as Sonnet. That covers an empty or missing `t
 
 A `model` above the session model is denied as `PAIR`: `model "opus" is above the session model (sonnet).` The reason also says what the session runs, and when the model could not be read it says it is treated as Sonnet.
 
+A rejected model gives way to the next lower one at `xhigh`. When a stage names a model its class does not allow, the `PAIR` message adds `Relaunch on sonnet with effort "xhigh".` (or `haiku`) before the allowed list, naming the highest lower model the class allows at `xhigh`. It adds nothing when the model is allowed but the effort is not, or when no lower model is allowed at `xhigh`. The guidance injected at session start says the same.
+
 ## Deny codes
 
 | Code | Means |

@@ -167,6 +167,8 @@ function coverageLines(saved) {
   const { base, reasons } = coverageText(saved)
   const { measured, others } = sourceLines(saved)
   if (reasons.length === 0 && saved.coverage.used >= saved.coverage.total && others.length === 0) return []
+  const complete = reasons.length === 0 && saved.coverage.used >= saved.coverage.total
+  if (complete) return others
   return [reasons.length ? `${base}: ${reasons.join('; ')}` : base, ...(measured ? [measured] : []), ...others]
 }
 

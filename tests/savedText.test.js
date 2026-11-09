@@ -247,12 +247,13 @@ test('a complete, measured run shows no coverage line', () => {
   assert.ok(!lines(saved()).join('\n').includes('replayed'))
 })
 
-test('sources say how the ratio was obtained, only when they are not measured', () => {
+test('sources say how the ratio was obtained, without a bare agent count above them', () => {
   const chained = lines(saved({ sources: { measuredPairs: 0, chained: [{ from: 'sonnet:high', to: 'opus:xhigh', via: 'high' }], priors: [] } }))
-  assert.deepEqual(chained.slice(-3), ['  from 4 of 4 agents', '  ratio measured at high effort, adjusted with published', '  figures for xhigh'])
+  assert.deepEqual(chained.slice(-3), ['  ± = how far off, 9 times in 10', '  ratio measured at high effort, adjusted with published', '  figures for xhigh'])
   const prior = lines(saved({ sources: { measuredPairs: 0, chained: [], priors: [{ from: 'sonnet:high', to: 'opus:xhigh' }] } }))
-  assert.equal(prior.at(-3), '  from 4 of 4 agents')
+  assert.equal(prior.at(-3), '  ± = how far off, 9 times in 10')
   assert.equal(prior.slice(-2).join(' ').replace(/\s+/g, ' ').trim(), 'no replay measured sonnet high against opus xhigh; using published figures, so ± is wide')
+  assert.ok(!prior.join('\n').includes('from 4 of 4'))
 })
 
 test('an unpriced agent is named in the coverage line, with the measured line after it', () => {

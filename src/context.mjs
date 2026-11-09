@@ -23,6 +23,10 @@ export function noteContext(state, context) {
   return { state: { ...next, tokens }, ask }
 }
 
+export function forgetCompactRead(state) {
+  return state.compact === null && state.asked === 0 && state.misses === 0 ? state : { ...state, compact: null, asked: 0, misses: 0 }
+}
+
 export function noteBreakdown(state, window, breakdown) {
   if (state.asked !== window) return state
   if (breakdown !== null && typeof breakdown === 'object') return { ...state, compact: compactWindowOf(breakdown, window), misses: 0 }

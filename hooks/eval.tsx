@@ -37,7 +37,7 @@ import {
   runView,
   setFolds
 } from '../src/eval.mjs'
-import { contextFill, createContext, noteBreakdown, noteContext } from '../src/context.mjs'
+import { contextFill, createContext, forgetCompactRead, noteBreakdown, noteContext } from '../src/context.mjs'
 import { intervalsOf, staleKeys, storedValue, usedOf } from '../src/meter.mjs'
 import { familyColor, modelColor, savedColor } from '../src/palette.mjs'
 import { loadPrices, priceFamily } from '../src/prices.mjs'
@@ -197,7 +197,7 @@ async function estimate($: EngineInterface, key: string) {
     ...(running ? { draws: DRAWS_RUNNING } : {}),
     running
   })
-  const used = { five_hour: usedOf(s.meter.last.five_hour, at), seven_day: usedOf(s.meter.last.seven_day, at) }
+  const used = s.meter.subscription === true ? { five_hour: usedOf(s.meter.last.five_hour, at), seven_day: usedOf(s.meter.last.seven_day, at) } : { five_hour: null, seven_day: null }
   await update($, ev, st => noteSaved(st, key, { ...saved, used }))
 }
 
@@ -406,6 +406,7 @@ export const register: Register = on => {
         const before = await read($, ev)
         const args = { model: e.model, effort: e.effort }
         if (noteMainStep(before, args) !== before) await update($, ev, s => noteMainStep(s, args))
+        if (before.main.model !== null && typeof e.model === 'string' && before.main.model !== e.model) await update($, ctx, forgetCompactRead)
       })
     }
     const result = yield* next(e)

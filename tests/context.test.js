@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { WINDOW_TRIES, createContext, compactWindowOf, noteContext, noteBreakdown, contextFill } from '../src/context.mjs'
+import { WINDOW_TRIES, createContext, compactWindowOf, forgetCompactRead, noteContext, noteBreakdown, contextFill } from '../src/context.mjs'
 
 const W = 1_000_000
 const breakdown = (rawMaxTokens, isAutoCompactEnabled = true) => ({ rawMaxTokens, isAutoCompactEnabled })
@@ -158,4 +158,14 @@ test('contextFill ignores a compaction window that is not smaller than the windo
 test('contextFill has no percentage while the tokens are unknown', () => {
   const state = { ...createContext(), window: W, compact: 200_000 }
   assert.deepEqual(contextFill(state), { tokens: null, window: 200_000, pct: null })
+})
+
+test('forgetting the compaction read clears the window, the claim and the misses', () => {
+  const read = { tokens: 10, window: 200000, compact: 120000, asked: 200000, misses: 2 }
+  assert.deepEqual(forgetCompactRead(read), { tokens: 10, window: 200000, compact: null, asked: 0, misses: 0 })
+  const fresh = { tokens: null, window: 200000, compact: null, asked: 0, misses: 0 }
+  assert.equal(forgetCompactRead(fresh), fresh)
+  const { state, ask } = noteContext(forgetCompactRead(read), { tokens: 10, window: 200000 })
+  assert.equal(ask, true)
+  assert.equal(state.asked, 200000)
 })
