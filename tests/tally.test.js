@@ -197,8 +197,32 @@ test('combine keeps a group with an empty window in the all totals', () => {
   const s = combine(estimates, { tally: t, meter, now: 3000 })
   assert.equal(s.status, 'estimated')
   assert.deepEqual(s.dollars, estimates[0].all.dollars)
-  assert.equal(s.limits.five_hour, null)
+  assert.deepEqual(s.limits.five_hour, { mid: 0, lo: 0, hi: 0, pm: 0 })
   assert.deepEqual(s.counted, { five_hour: 0, seven_day: 1 })
+})
+
+test('combine keeps learning for an empty window that has too few readings', () => {
+  const meter = meterWith()
+  const t = tallyOf(runInfo('r1', { windows: { five_hour: 'A', seven_day: 'W' } }))
+  const input = overallInput(t, { five_hour: 'B', seven_day: 'W' }, 3000)
+  const estimates = estimateGroups(input, meter)
+  estimates[0].all.limits.readings = { five_hour: 3, seven_day: 8 }
+  const s = combine(estimates, { tally: t, meter, now: 3000 })
+  assert.equal(s.limits.five_hour, null)
+})
+
+test('combine takes the zero range of a window whose agents all ran on the baseline', () => {
+  const meter = meterWith()
+  const t = tallyOf(
+    runInfo('old', { windows: { five_hour: 'A', seven_day: 'W' } }),
+    runInfo('new', { agents: agentsOf('new', 2, 'sonnet', 'xhigh'), windows: { five_hour: 'B', seven_day: 'W' }, at: 2000 })
+  )
+  const input = overallInput(t, { five_hour: 'B', seven_day: 'W' }, 3000)
+  const estimates = estimateGroups(input, meter)
+  assert.equal(estimates[0].five_hour.status, 'none')
+  const s = combine(estimates, { tally: t, meter, now: 3000 })
+  assert.deepEqual(s.limits.five_hour, estimates[0].five_hour.limits.five_hour)
+  assert.notEqual(s.limits.five_hour, null)
 })
 
 test('combine leaves out groups that are not estimated', () => {

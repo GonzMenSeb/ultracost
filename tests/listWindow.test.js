@@ -68,3 +68,11 @@ test('the first drawn row counts three lines even mid-group', () => {
   assert.ok(w.to - w.from <= 2)
   assert.ok(w.from <= 5 && 5 < w.to)
 })
+
+test('the window never ends on a group head whose rows are all hidden', () => {
+  const shape = 'r r h r h r h r r r r r'.split(' ')
+  const items = shape.map((s, i) => (s === 'h' ? { key: `h${i}`, lines: 2, row: false } : { key: `r${i}`, lines: 2, row: true }))
+  const w = listWindow({ items, room: 5, focusKey: 'r1', prevFrom: 11 })
+  assert.ok(w.from <= 1 && 1 < w.to)
+  assert.equal(items[w.to - 1].row, true)
+})

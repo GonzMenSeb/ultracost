@@ -3,6 +3,7 @@ import { usedOf } from './meter.mjs'
 
 const KINDS = ['five_hour', 'seven_day']
 const MAX_RUNS = 500
+const MIN_READINGS = 5
 const SPAN_MS = { five_hour: 5 * 3600 * 1000, seven_day: 7 * 24 * 3600 * 1000 }
 const DROPPED = (n) => `ultraguard: the session tally keeps ${MAX_RUNS} workflows; dropped the ${n} oldest`
 
@@ -92,8 +93,12 @@ export function combine(estimates, { tally, meter, now }) {
   const alls = kept.map((e) => e.all)
   const subscription = meter?.subscription ?? null
   const current = both((k) => meter?.last?.[k]?.resetsAt ?? null)
-  const limitOf = (kind) => addRanges(present(kept.map((e) => (e[kind]?.status === 'estimated' ? e[kind].limits?.[kind] : null))))
   const readings = alls.find((e) => e.limits)?.limits.readings ?? { five_hour: 0, seven_day: 0 }
+  const limitOf = (kind) => {
+    const ranges = present(kept.map((e) => (e[kind] && e[kind].status !== 'unknown' ? e[kind].limits?.[kind] : null)))
+    if (ranges.length) return addRanges(ranges)
+    return readings[kind] >= MIN_READINGS ? { mid: 0, lo: 0, hi: 0, pm: 0 } : null
+  }
   const tokens = present(alls.map((e) => e.tokens))
   return {
     status: 'estimated',

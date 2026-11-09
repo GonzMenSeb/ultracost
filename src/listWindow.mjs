@@ -25,6 +25,7 @@ export function listWindow({ items, room, focusKey, scrolloff = 1, prevFrom = 0 
   while (from < lo && cost(from, hi + 1) > room) from++
   let to = hi + 1
   while (to < n && cost(from, to + 1) <= room) to++
+  if (to < n) while (to > hi + 1 && !items[to - 1].row) to--
   if (to === n) while (from > 0 && cost(from - 1, to) <= room) from--
   return hidden(from, to)
 }
