@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { fmtPct, fmtUsd, fmtTokens, modelLines, phaseHeadLength, phaseLayout, phaseStatus, phaseTitle, savedBlock, agentColumn, listHeader, listCell, toastText } from '../src/savedText.mjs'
+import { fmtPct, fmtUsd, fmtTokens, modelLines, phaseHeadLength, phaseLayout, phaseStatus, phaseTitle, rangeText, savedBlock, agentColumn, listHeader, listCell, toastText } from '../src/savedText.mjs'
 import { modelColor, savedColor } from '../src/palette.mjs'
 
 const range = (mid, pm, lo = mid - pm) => ({ mid, lo, hi: mid + pm, pm })
@@ -63,6 +63,22 @@ test('fmtTokens uses M, k and plain counts on the absolute value', () => {
   assert.equal(fmtTokens(999_900), '1.0M')
 })
 
+test('a range reads low to high, in tenths of a point or in cents', () => {
+  assert.equal(rangeText({ mid: 30.06, lo: 3.04, hi: 91.55 }, 'points'), ' (3.0 to 91.6)')
+  assert.equal(rangeText({ mid: 12.04, lo: 1.2, hi: 35.21 }, 'usd'), ' ($1.20 to $35.21)')
+  assert.equal(rangeText({ mid: 1.4, lo: -0.3, hi: 2.1 }, 'points'), ' (-0.3 to 2.1)')
+  assert.equal(rangeText({ mid: 1.4, lo: -0.04, hi: 2.1 }, 'points'), ' (0.0 to 2.1)')
+})
+
+test('every saving figure of the block reads as a range, never with ±', () => {
+  const wide = { mid: 30.06, lo: 3.04, hi: 91.55, pm: 61.49 }
+  const block = lines(saved({ limits: { five_hour: wide, seven_day: range(0.2, 0.1), readings: { five_hour: 8, seven_day: 8 } }, used: { five_hour: 10, seven_day: 10 }, dollars: { mid: 12.04, lo: 1.2, hi: 35.21, pm: 23.17 } }))
+  assert.ok(block[1].endsWith('+30.1 (3.0 to 91.6)'))
+  assert.ok(block.includes('  $12.04 ($1.20 to $35.21) at API prices'))
+  assert.ok(block.includes('  range = 9 times in 10'))
+  assert.ok(!block.join('\n').includes('±'))
+})
+
 const CONTEXT = { tokens: 125_000, window: 1_000_000, pct: 12.4 }
 const barOf = (line) => line.slice(line.findIndex((s) => s.text === '│') - 25, line.findIndex((s) => s.text === '│') + 1)
 const hex = (s) => typeof s.color === 'string' && s.color.startsWith('#')
@@ -70,23 +86,23 @@ const hex = (s) => typeof s.color === 'string' && s.color.startsWith('#')
 test('the block shows both limit bars, the money line, the tokens and one note', () => {
   assert.deepEqual(lines(saved()), [
     'ultraguard saved  vs every agent on Opus high',
-    '  5-hour  ' + '━'.repeat(10) + '╸' + '─'.repeat(14) + '│' + '   40%  +1.4 ±0.6',
-    '  weekly  ' + '━━━╸' + '─'.repeat(21) + '│' + '   10%  +0.2 ±0.1',
-    '  $2.32 ±$0.59 at API prices',
+    '  5-hour  ' + '━'.repeat(8) + '╸' + '─'.repeat(11) + '│' + '   40%  +1.4 (0.8 to 2.0)',
+    '  weekly  ' + '━━╸' + '─'.repeat(17) + '│' + '   10%  +0.2 (0.1 to 0.3)',
+    '  $2.32 ($1.73 to $2.91) at API prices',
     '  2.9M fewer tokens',
-    '  ± = how far off, 9 times in 10'
+    '  range = 9 times in 10'
   ])
 })
 
 test('the context row leads, with its fill and window', () => {
   const block = lines(saved(), { context: CONTEXT })
-  assert.equal(block[1], '  context ' + '━━━' + '─'.repeat(22) + '│' + '   12%  125k of 1M')
+  assert.equal(block[1], '  context ' + '━━╸' + '─'.repeat(17) + '│' + '   12%  125k of 1M')
   assert.equal(block[2].slice(0, 10), '  5-hour  ')
 })
 
 test('a context with no reading yet shows an empty track and a dash', () => {
   const block = lines(saved(), { context: { tokens: null, window: 1_000_000, pct: null } })
-  assert.equal(block[1], '  context ' + '─'.repeat(25) + '│' + '     —  — of 1M')
+  assert.equal(block[1], '  context ' + '─'.repeat(20) + '│' + '     —  — of 1M')
   assert.equal(lines(saved(), { context: null })[1].slice(0, 10), '  5-hour  ')
 })
 
@@ -108,14 +124,14 @@ test('the model in the header takes its effort color', () => {
 test('the bar segments carry the ink, the track, the limit mark and the saving gradient', () => {
   const [, five] = savedBlock(saved())
   const bar = five.filter((s) => ['━', '╸', '─', '│'].includes(s.text))
-  assert.ok(bar.slice(0, 10).every((s) => s.text === '━' && s.color === 'text' && s.style === 'plain'))
+  assert.ok(bar.slice(0, 8).every((s) => s.text === '━' && s.color === 'text' && s.style === 'plain'))
   const savedCells = bar.filter(hex)
   assert.equal(savedCells.at(-1).color, savedColor(1.4))
   assert.ok(bar.filter((s) => s.text === '─').every((s) => s.color === 'subtle'))
   assert.deepEqual(bar.find((s) => s.text === '│'), { text: '│', style: 'plain', color: 'inactive' })
   const figure = five.find((s) => s.style === 'saved')
   assert.deepEqual(figure, { text: '+1.4', style: 'saved', pct: 1.4 })
-  assert.ok(five.some((s) => s.style === 'dim' && s.text === ' ±0.6'))
+  assert.ok(five.some((s) => s.style === 'dim' && s.text === ' (0.8 to 2.0)'))
 })
 
 test('the last saved cell and the figure share one color for a large saving', () => {
@@ -151,7 +167,14 @@ test('long messages wrap inside the width', () => {
 })
 
 test('no line is wider than the block, which is capped at 56 columns', () => {
-  const states = [saved(), saved({ subscription: false, limits: null }), saved({ tokens: { saved: -8_800_000, outputSaved: -1 }, transitions: [{ from: 'sonnet:high', to: 'opus:high', source: 'measured' }] })]
+  const wide = { five_hour: { mid: 30.06, lo: 3.04, hi: 91.55, pm: 61.49 }, seven_day: { mid: 12.5, lo: -1.25, hi: 40.3, pm: 27.8 }, readings: { five_hour: 8, seven_day: 8 } }
+  const states = [
+    saved(),
+    saved({ subscription: false, limits: null }),
+    saved({ tokens: { saved: -8_800_000, outputSaved: -1 }, transitions: [{ from: 'sonnet:high', to: 'opus:high', source: 'measured' }] }),
+    saved({ limits: wide, used: { five_hour: 60, seven_day: 70 }, dollars: { mid: 12.04, lo: 1.2, hi: 35.21, pm: 23.17 } }),
+    saved({ subscription: false, limits: null, dollars: { mid: 9.5, lo: 1.2, hi: 9.99, pm: 8.3 }, actualDollars: 4.5, baselineDollars: 14 })
+  ]
   for (const state of states) {
     for (const width of [44, 56, 72, 110]) {
       for (const line of savedBlock(state, { width, context: CONTEXT })) {
@@ -167,7 +190,7 @@ test('an API key shows a cost bar from the bill it avoided', () => {
   const block = savedBlock(saved({ subscription: false, limits: null, used: undefined }))
   const cost = text(block[1])
   assert.ok(cost.startsWith('  cost    '))
-  assert.ok(cost.endsWith('  $1.45  +$2.32 ±$0.59'))
+  assert.ok(cost.endsWith('  $1.45  +$2.32 ($1.73 to $2.91)'))
   const cells = block[1].filter(hex)
   assert.equal(cells.at(-1).color, savedColor((100 * 2.32) / 3.77))
   assert.deepEqual(block[1].find((s) => s.style === 'saved'), { text: '+$2.32', style: 'saved', pct: (100 * 2.32) / 3.77 })
@@ -177,19 +200,19 @@ test('an API key shows a cost bar from the bill it avoided', () => {
 
 test('an API key with no baseline cost keeps the dollars as a line', () => {
   const block = lines(saved({ subscription: false, limits: null, baselineDollars: null }))
-  assert.ok(block.includes('  $2.32 ±$0.59 off your API bill'))
+  assert.ok(block.includes('  $2.32 ($1.73 to $2.91) off your API bill'))
   assert.ok(!block.some((l) => l.startsWith('  cost')))
 })
 
 test('no limit reading yet reads at API prices without bars', () => {
   const block = lines(saved({ subscription: null, limits: null }))
-  assert.deepEqual(block.slice(1, 3), ['  $2.32 ±$0.59 at API prices', '  2.9M fewer tokens'])
+  assert.deepEqual(block.slice(1, 3), ['  $2.32 ($1.73 to $2.91) at API prices', '  2.9M fewer tokens'])
   assert.ok(!block.join('\n').includes('5-hour'))
 })
 
 test('a limit with no usage reading draws its figure without a bar', () => {
   const block = lines(saved({ used: { five_hour: null, seven_day: null } }))
-  assert.equal(block[1], '  5-hour  ' + ' '.repeat(34) + '+1.4 ±0.6')
+  assert.equal(block[1], '  5-hour  ' + ' '.repeat(29) + '+1.4 (0.8 to 2.0)')
   assert.ok(!block[1].includes('━') && !block[1].includes('│') && !block[1].includes('%'))
   assert.equal(lines(saved({ used: undefined }))[1], block[1])
 })
@@ -203,14 +226,14 @@ test('an uncalibrated limit says how many readings it has, beside its usage', ()
 
 test('a calibrated window shows next to an uncalibrated one', () => {
   const block = lines(saved({ limits: { five_hour: range(1.4, 0.6), seven_day: null, readings: { five_hour: 8, seven_day: 2 } } }))
-  assert.ok(block[1].endsWith('+1.4 ±0.6'))
+  assert.ok(block[1].endsWith('+1.4 (0.8 to 2.0)'))
   assert.ok(block[2].endsWith('learning 2/5'))
 })
 
 test('a tiny saving reads below 0.1 and a negative one has no plus', () => {
   const tiny = lines(saved({ limits: { five_hour: range(0.04, 0.5), seven_day: range(-0.4, 0.5), readings: { five_hour: 8, seven_day: 8 } } }))
-  assert.ok(tiny[1].endsWith('+<0.1 ±0.5'))
-  assert.ok(tiny[2].endsWith('-0.4 ±0.5'))
+  assert.ok(tiny[1].endsWith('+<0.1 (-0.5 to 0.5)'))
+  assert.ok(tiny[2].endsWith('-0.4 (-0.9 to 0.1)'))
   assert.ok(!tiny[2].includes('+'))
   assert.equal(savedBlock(saved({ limits: { five_hour: range(0.04, 0.5), seven_day: range(-0.4, 0.5), readings: { five_hour: 8, seven_day: 8 } } }))[2].filter(hex).length, 0)
 })
@@ -226,7 +249,7 @@ test('negative saved tokens read as more tokens and wrap inside the width', () =
 
 test('a range below zero says the run may have saved nothing', () => {
   const block = lines(saved({ limits: { five_hour: range(0.4, 1.1, -0.7), seven_day: range(0.1, 0.5, -0.4), readings: { five_hour: 9, seven_day: 9 } } }))
-  assert.deepEqual(block.slice(-2), ['  ± = how far off, 9 times in 10', '  this run may have saved nothing'])
+  assert.deepEqual(block.slice(-2), ['  range = 9 times in 10', '  this run may have saved nothing'])
 })
 
 test('without limit bars the money range decides the nothing-saved line', () => {
@@ -249,10 +272,10 @@ test('a complete, measured run shows no coverage line', () => {
 
 test('sources say how the ratio was obtained, without a bare agent count above them', () => {
   const chained = lines(saved({ sources: { measuredPairs: 0, chained: [{ from: 'sonnet:high', to: 'opus:xhigh', via: 'high' }], priors: [] } }))
-  assert.deepEqual(chained.slice(-3), ['  ± = how far off, 9 times in 10', '  ratio measured at high effort, adjusted with published', '  figures for xhigh'])
+  assert.deepEqual(chained.slice(-3), ['  range = 9 times in 10', '  ratio measured at high effort, adjusted with published', '  figures for xhigh'])
   const prior = lines(saved({ sources: { measuredPairs: 0, chained: [], priors: [{ from: 'sonnet:high', to: 'opus:xhigh' }] } }))
-  assert.equal(prior.at(-3), '  ± = how far off, 9 times in 10')
-  assert.equal(prior.slice(-2).join(' ').replace(/\s+/g, ' ').trim(), 'no replay measured sonnet high against opus xhigh; using published figures, so ± is wide')
+  assert.equal(prior.at(-3), '  range = 9 times in 10')
+  assert.equal(prior.slice(-2).join(' ').replace(/\s+/g, ' ').trim(), 'no replay measured sonnet high against opus xhigh; using published figures, so the range is wide')
   assert.ok(!prior.join('\n').includes('from 4 of 4'))
 })
 
@@ -358,7 +381,7 @@ test('the tokens line joins the families with commas and a last "and"', () => {
   const line = (...families) => {
     const block = lines(saved({ tokens: { saved: -46_000, outputSaved: -1 }, transitions: families.map(transition) }))
     const i = block.findIndex((l) => l.includes('more tokens'))
-    return block.slice(i, block.findIndex((l) => l.startsWith('  ± =')))
+    return block.slice(i, block.findIndex((l) => l.startsWith('  range =')))
   }
   const said = (...families) => line(...families).join(' ').replace(/\s+/g, ' ').trim()
   assert.equal(said('haiku'), '46k more tokens: Haiku read and wrote more, at a lower price per token')
@@ -429,14 +452,17 @@ test('the list header picks the unit any view can show', () => {
 })
 
 test('list cells show the figure, so far, dollars or a dash', () => {
-  assert.equal(text(listCell(view())), '1.4% ± 0.6')
+  assert.equal(text(listCell(view())), '1.4% (0.8 to 2.0)')
   assert.deepEqual(listCell(view()), [
     { text: '1.4%', style: 'saved', pct: 1.4 },
-    { text: ' ± 0.6', style: 'dim' }
+    { text: ' (0.8 to 2.0)', style: 'dim' }
   ])
   assert.equal(text(listCell(view({ saved: saved({ running: true, limits: { five_hour: range(0.6, 0.3), seven_day: null, readings: { five_hour: 6, seven_day: 6 } } }) }))), '0.6% so far')
-  assert.equal(text(listCell(view({ saved: saved({ limits: null, dollars: range(2.32, 1.1) }) }))), '$2.32 ± $1.10')
+  assert.equal(text(listCell(view({ saved: saved({ limits: null, dollars: range(2.32, 1.1) }) }))), '$2.32 ($1.22 to $3.42)')
   assert.equal(text(listCell(view({ saved: saved({ running: true, limits: null, dollars: range(0.63, 0.2) }) }))), '$0.63 so far')
+  const limits = (five_hour) => ({ five_hour, seven_day: null, readings: { five_hour: 8, seven_day: 8 } })
+  assert.equal(text(listCell(view({ saved: saved({ limits: limits({ mid: 4.1, lo: 1.8, hi: 6.4, pm: 2.3 }) }) }))), '4.1% (1.8 to 6.4)')
+  assert.equal(text(listCell(view({ saved: saved({ running: true, limits: limits({ mid: 4.1, lo: 1.8, hi: 6.4, pm: 2.3 }) }) }))), '4.1% so far')
 })
 
 test('list cells show a dash when nothing is known or saved', () => {

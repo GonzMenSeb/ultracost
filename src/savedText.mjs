@@ -18,6 +18,11 @@ export const fmtPct = (x) => (Math.abs(x) < 0.1 ? '< 0.1%' : `${x.toFixed(1)}%`)
 
 export const fmtUsd = (x) => `${x < 0 ? '-' : ''}$${Math.abs(x).toFixed(2)}`
 
+export const rangeText = (range, kind) => {
+  const f = kind === 'usd' ? fmtUsd : tenths
+  return ` (${f(range.lo)} to ${f(range.hi)})`
+}
+
 export function fmtTokens(n) {
   const abs = Math.abs(n)
   if (abs >= 1e6 || Math.round(abs / 1000) >= 1000) return `${(abs / 1e6).toFixed(1)}M`
@@ -31,6 +36,9 @@ const finite = (x) => typeof x === 'number' && Number.isFinite(x)
 const clampPct = (x) => Math.min(100, Math.max(0, x))
 const fmtWindow = (n) => (n % 1e6 === 0 ? `${n / 1e6}M` : fmtTokens(n))
 const signed = (x, fixed) => (Math.abs(x) < 0.05 ? 0 : x).toFixed(fixed)
+const tenths = (x) => (Math.round(x * 10) / 10).toFixed(1)
+const RANGE_NOTE = 'range = 9 times in 10'
+const RANGE_WIDE = 'so the range is wide'
 const LIMIT_KEYS = [
   ['five_hour', '5-hour'],
   ['seven_day', 'weekly']
@@ -101,8 +109,8 @@ function limitRows(saved) {
     const range = saved.limits[key]
     if (!range) return { label, used, usedText, saved: 0, fig: [dim(`learning ${saved.limits.readings?.[key] ?? 0}/5`)], range: null }
     const gain = range.mid > 0 ? range.mid : 0
-    const amount = gain > 0 ? savedSeg(`+${range.mid < 0.1 ? '<0.1' : range.mid.toFixed(1)}`, range.mid) : seg(signed(range.mid, 1))
-    return { label, used, usedText, saved: gain, fig: [amount, dim(` ±${range.pm.toFixed(1)}`)], range }
+    const amount = gain > 0 ? savedSeg(`+${range.mid < 0.1 ? '<0.1' : tenths(range.mid)}`, range.mid) : seg(signed(range.mid, 1))
+    return { label, used, usedText, saved: gain, fig: [amount, dim(rangeText(range, 'points'))], range }
   })
 }
 
@@ -117,7 +125,7 @@ function costRow(saved) {
     used: Math.max(0, Math.min((100 * spent) / base, 100 - gain)),
     usedText: fmtUsd(spent),
     saved: gain,
-    fig: [amount, dim(` ±${fmtUsd(dollars.pm)}`)],
+    fig: [amount, dim(rangeText(dollars, 'usd'))],
     range: dollars
   }
 }
@@ -125,7 +133,7 @@ function costRow(saved) {
 function moneyLine(saved) {
   const { dollars } = saved
   if (!dollars) return null
-  return [seg('  '), bold(fmtUsd(dollars.mid)), dim(` ±${fmtUsd(dollars.pm)}`), seg(saved.subscription === false ? ' off your API bill' : ' at API prices')]
+  return [seg('  '), bold(fmtUsd(dollars.mid)), dim(rangeText(dollars, 'usd')), seg(saved.subscription === false ? ' off your API bill' : ' at API prices')]
 }
 
 function tokenLines(saved, width) {
@@ -156,7 +164,7 @@ function coverageText({ coverage }) {
 
 function sourceLines({ sources }) {
   const adjusted = sources.chained.map((c) => `ratio measured at ${c.via} effort, adjusted with published figures for ${c.to.split(':')[1]}`)
-  const priors = sources.priors.map((p) => `no replay measured ${configText(p.from)} against ${configText(p.to)}; using published figures, so ± is wide`)
+  const priors = sources.priors.map((p) => `no replay measured ${configText(p.from)} against ${configText(p.to)}; using published figures, ${RANGE_WIDE}`)
   return {
     measured: sources.measuredPairs > 0 ? `ratio measured on ${sources.measuredPairs} replayed agents` : null,
     others: [...new Set([...adjusted, ...priors])]
@@ -201,7 +209,7 @@ export function savedBlock(saved, { width = MAX_WIDTH, context = null } = {}) {
 
   const firstRange = rows.find((r) => r.range)?.range ?? saved.dollars
   if (firstRange) {
-    out.push(...proseLines('± = how far off, 9 times in 10', room, 'dim'))
+    out.push(...proseLines(RANGE_NOTE, room, 'dim'))
     if (firstRange.lo < 0) out.push(...proseLines('this run may have saved nothing', room, 'dim'))
   }
   for (const line of coverageLines(saved)) out.push(...proseLines(line, room, 'dim'))
@@ -289,7 +297,7 @@ export function listCell(view) {
   const amount = limit ? fmtPct(range.mid) : fmtUsd(range.mid)
   const figureSeg = limit ? savedSeg(amount, range.mid) : bold(amount)
   if (saved.running) return [figureSeg, dim(' so far')]
-  return [figureSeg, dim(` ± ${limit ? range.pm.toFixed(1) : fmtUsd(range.pm)}`)]
+  return [figureSeg, dim(rangeText(range, limit ? 'points' : 'usd'))]
 }
 
 export function toastText(view) {
