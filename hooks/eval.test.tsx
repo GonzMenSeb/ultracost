@@ -41,7 +41,7 @@ const gateRecord = (toolUseId: string, over: Record<string, unknown> = {}) =>
 const PRICES = { v: 1, families: { opus: { input: 4, output: 20, cacheRead: 0.2, cacheWrite: 5 }, sonnet: { input: 2, output: 10, cacheRead: 0.1, cacheWrite: 2.5 } } }
 const RATIOS = { v: 1, tau: 0.3, pooledAgentSd: { output: 0.4, fresh: 0.2, read: 0.6 }, measured: {}, steps: {}, priors: {} }
 
-async function world($: any, on: any, options: { gate: boolean; launch?: Record<string, unknown>; record?: Record<string, unknown>; stop?: (e: any) => unknown; data?: boolean; focus?: (e: any) => unknown }) {
+async function world($: any, on: any, options: { gate: boolean; launch?: Record<string, unknown>; record?: Record<string, unknown>; stop?: (e: any) => unknown; focus?: (e: any) => unknown; scroll?: (e: any) => unknown }) {
   const writes: Record<string, string> = {}
   const logs: string[] = []
   const toasts: string[] = []
@@ -50,6 +50,7 @@ async function world($: any, on: any, options: { gate: boolean; launch?: Record<
   let launches = 0
   mock.env(on, { CLAUDE_CONFIG_DIR: CONFIG })
   mock.clock(on, { now: 5000 })
+  mock.store(on)
   on('session.id', () => ({ value: SESSION }))
   on('session.end', () => ({ sessionId: SESSION }))
   on('turn.complete', () => ({ text: '' }))
@@ -62,9 +63,9 @@ async function world($: any, on: any, options: { gate: boolean; launch?: Record<
       ? { value: gateRecord(toolUseId, options.record) }
       : String(e.path).endsWith('/saved/map.js')
         ? { value: SCRIPT }
-        : options.data && String(e.path).endsWith('/data/prices.json')
+        : String(e.path).endsWith('/data/prices.json')
           ? { value: JSON.stringify(PRICES) }
-          : options.data && String(e.path).endsWith('/data/ratios.json')
+          : String(e.path).endsWith('/data/ratios.json')
             ? { value: JSON.stringify(RATIOS) }
             : { deny: `ENOENT ${e.path}` },
   )
@@ -76,7 +77,7 @@ async function world($: any, on: any, options: { gate: boolean; launch?: Record<
   let spawned = 0
   on('agent.spawn', (_: any, e: any) => ({ model: FULL[String(e.model)] ?? SONNET, agentId: `a${(spawned += 1)}` }))
   on('ui.focus', (_: any, e: any) => (options.focus ? options.focus(e) : {}))
-  on('ui.scroll', () => ({}))
+  on('ui.scroll', (_: any, e: any) => (options.scroll ? options.scroll(e) : {}))
   on('ui.close', () => ({ value: undefined }))
   on('ui.render', ($: any, e: any) => {
     const { Text } = $.ui.resolve(e)
@@ -326,7 +327,7 @@ const bandRunning = async ($: any) => {
 
 test('a workflow stopped with TaskStop ends as stopped, gets its estimate, record and toast', async ($, on) => {
   on('session.start', (_: any, e: any) => ({ cwd: e.cwd }))
-  const w = await world($, on, { gate: true, data: true })
+  const w = await world($, on, { gate: true })
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
   expect(evalRecordOf(w).savings.saved).toBe(null)
 
@@ -337,6 +338,21 @@ test('a workflow stopped with TaskStop ends as stopped, gets its estimate, recor
   expect(record.status).toBe('killed')
   expect(record.savings.saved).toMatchObject({ running: false })
   expect(w.toasts).toEqual(['ultraguard: map stopped'])
+})
+
+test('a run the host reports stopped when the session is resumed ends as stopped, like a TaskStop', async ($, on) => {
+  on('session.start', (_: any, e: any) => ({ cwd: e.cwd }))
+  const w = await world($, on, { gate: true, data: true })
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await w.end(w.id(), 'stopped')
+  expect(await bandRunning($)).toBe(null)
+  const record = evalRecordOf(w)
+  expect(record.status).toBe('killed')
+  expect(record.savings.saved).toMatchObject({ running: false })
+  expect(w.toasts).toEqual(['ultraguard: map stopped'])
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  expect((await ui.find({ type: 'Box', key: 'box:fold:stopped' }))?.text).toContain('▸ stopped this session  1 workflow')
+  await ui.unmount()
 })
 
 test('a TaskStop by the deprecated shell_id stops the workflow too', async ($, on) => {
@@ -691,14 +707,21 @@ const closePane = async ($: any) => {
 const shortPane = (bodyRows: number) => ({ ...PANE, props: { ...PANE.props, scroll: { offset: 0, bodyRows } } })
 const moreOf = (texts: string[], arrowGlyph: string) => Number(texts.find(t => t.startsWith(`  ${arrowGlyph} `))?.match(/(\d+) more$/)?.[1] ?? 0)
 
-test('the list draws its title, the workflows head, the column header, the rows and the hint in that order', async ($, on) => {
+test('the list draws its title, the overall head, the workflows head, the column header, the rows and the hint in that order', async ($, on) => {
   await world($, on, { gate: true })
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
   const texts = await shown(ui)
-  const steps = [/^ultraguard-eval$/, /^══ workflows {2}1 running ═+$/, /workflow\s+id\s+agents/, /^■ map/, /^↑↓ choose {2}enter details {2}esc close$/].map(p => texts.findIndex(t => p.test(t)))
+  const steps = [
+    /^ultraguard-eval$/,
+    /^══ overall savings for this session so far ═+$/,
+    /^══ workflows {2}1 running ═+$/,
+    /workflow\s+id\s+agents/,
+    /^■ map/,
+    /^↑↓ choose {2}enter details {2}esc close$/,
+  ].map(p => texts.findIndex(t => p.test(t)))
   expect(steps.every(i => i > -1)).toBe(true)
   expect(steps).toEqual([...steps].sort((a, b) => a - b))
-  expect(texts.filter(t => /^══ /.test(t)).map(t => t.length)).toEqual([PANE.props.bodyColumns - 4])
+  expect(texts.filter(t => /^══ /.test(t)).map(t => t.length)).toEqual([PANE.props.bodyColumns - 4, PANE.props.bodyColumns - 4])
   expect(texts.some(t => /more$/.test(t))).toBe(false)
   expect(await ui.find({ type: 'Text', text: /No workflow is running/ })).toBeUndefined()
   await ui.unmount()
@@ -840,5 +863,108 @@ test('an arrow whose focus move does not land leaves the focus where it was', as
   expect(before).toHaveLength(1)
   await arrow($, 1)
   expect(await ringed(ui)).toEqual(before)
+  await ui.unmount()
+})
+
+const autoFocused = async (ui: any) => (await ui.findAll({ type: 'Button' })).filter((b: any) => b.props.autoFocus === true).map((b: any) => String(b.key))
+
+test('the autoFocus sits on the row the pane draws as picked, so a reopened pane starts the ring on it', { plugins: [CLOSER as any] }, async ($, on) => {
+  const w = await world($, on, { gate: true })
+  const ids = [w.id()]
+  for (let i = 0; i < 11; i++) ids.push(await w.launch())
+  const order = [...ids].sort()
+  let ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  expect(await autoFocused(ui)).toEqual([`run:${order[0]}`])
+  await focus($, `run:${order[9]}`)
+  expect(await autoFocused(ui)).toEqual([`run:${order[9]}`])
+  await closePane($)
+  await ui.unmount()
+  ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  expect(await runButtons(ui)).not.toContain(`run:${order[0]}`)
+  expect(await ringed(ui)).toEqual([`box:${order[9]}`])
+  expect(await autoFocused(ui)).toEqual([`run:${order[9]}`])
+  await ui.unmount()
+})
+
+test('the stopped fold row takes the autoFocus while it is the picked row', async ($, on) => {
+  const w = await world($, on, { gate: true })
+  await w.end(await w.launch(), 'killed')
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  await focus($, 'fold:stopped')
+  expect(await autoFocused(ui)).toEqual(['fold:stopped'])
+  await ui.unmount()
+})
+
+test('back from a run view puts the focus on the row that was opened, deep in the open stopped fold too', async ($, on) => {
+  const w = await world($, on, { gate: true })
+  const ids = [w.id()]
+  for (let i = 0; i < 9; i++) ids.push(await w.launch())
+  const order = [...ids].sort()
+  const first = await w.launch()
+  const second = await w.launch()
+  await w.end(first, 'killed')
+  await w.end(second, 'killed')
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  await focus($, 'fold:stopped')
+  await ui.press({ key: 'fold:stopped' })
+  for (const id of [first, order[1]]) {
+    await focus($, `run:${id}`)
+    await ui.press({ key: `run:${id}` })
+    await focus($, 'back')
+    await ui.press({ key: 'back' })
+    expect(await ringed(ui)).toEqual([`box:${id}`])
+    expect(await autoFocused(ui)).toEqual([`run:${id}`])
+  }
+  await ui.unmount()
+})
+
+test('back from a run view of a list with no running run rings the row that was opened', async ($, on) => {
+  const w = await world($, on, { gate: true })
+  const done = w.id()
+  await w.end(done)
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  expect(await ringed(ui)).toEqual([])
+  await ui.press({ key: `run:${done}` })
+  await focus($, 'back')
+  await ui.press({ key: 'back' })
+  expect(await ringed(ui)).toEqual([`box:${done}`])
+  expect(await autoFocused(ui)).toEqual([`run:${done}`])
+  await ui.unmount()
+})
+
+test('a ring that moves to one of the engine stops keeps the focus and the window, and draws no ring until it comes back', async ($, on) => {
+  const w = await world($, on, { gate: true })
+  const ids = [w.id()]
+  for (let i = 0; i < 11; i++) ids.push(await w.launch())
+  const order = [...ids].sort()
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  await focus($, `run:${order[9]}`)
+  const drawn = await runButtons(ui)
+  await $.ui.focus({ component: 'Pane', requestId: 'ultraguard', origin: { kind: 'person' } })
+  expect(await runButtons(ui)).toEqual(drawn)
+  expect(await ringed(ui)).toEqual([])
+  expect(await autoFocused(ui)).toEqual([`run:${order[9]}`])
+  await focus($, `run:${order[9]}`)
+  expect(await ringed(ui)).toEqual([`box:${order[9]}`])
+  await ui.unmount()
+})
+
+test('in a windowed list no scroll takes the window past the top, and a run view scrolls as before', async ($, on) => {
+  const offsets: number[] = []
+  const w = await world($, on, { gate: true, scroll: e => (offsets.push(e.offset), {}) })
+  for (let i = 0; i < 11; i++) await w.launch()
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  const rows = PANE.props.scroll.bodyRows
+  const scroll = (over: Record<string, unknown>) => $.ui.scroll({ component: 'Pane', requestId: 'ultraguard', bodyRows: rows, contentRows: rows + 1, origin: { kind: 'person' }, ...over })
+  await scroll({ offset: 1, by: 1, pointer: { row: 3, column: 4 } })
+  await scroll({ offset: 1, by: rows })
+  await scroll({ offset: 1, by: 1, origin: { kind: 'plugin', name: 'ultraguard' } })
+  await scroll({ offset: 4, by: 4, contentRows: rows + 5, pointer: { row: 3, column: 4 } })
+  await scroll({ offset: 9, by: 9, contentRows: rows + 5 })
+  expect(offsets).toEqual([0, 0, 0, 4, 4])
+  await focus($, `run:${w.id()}`)
+  await ui.press({ key: `run:${w.id()}` })
+  await scroll({ offset: 9, by: 9, contentRows: rows + 9 })
+  expect(offsets.at(-1)).toBe(9)
   await ui.unmount()
 })

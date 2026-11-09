@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { ContextState, EvalAgentView, EvalMeter, EvalPhaseView, EvalState, TallyRun, TallyState } from '../types'
+import type { ContextState, EvalAgentView, EvalMeter, EvalPhaseView, EvalRun, EvalState, TallyOverall, TallyRun, TallyState } from '../types'
 import { sha256Hex } from '../src/fingerprint.mjs'
 import { recordPath } from '../src/record.mjs'
 import {
@@ -12,6 +12,8 @@ import {
   closeRun,
   createState,
   endAllRuns,
+  endedRecord,
+  endTallyRun,
   evalRecord,
   finishedRuns,
   gateWanted,
@@ -39,17 +41,16 @@ import {
   setStoppedOpen,
   staleTallies,
   STOPPED,
-  settledTally,
-  storedTally,
   stoppedOpen,
   stoppedRuns,
   TALLY_PREFIX,
-  TALLY_STORE_MAX
+  TALLY_STORE_MAX,
+  tallyFor
 } from '../src/eval.mjs'
 import { contextFill, createContext, forgetCompactRead, noteBreakdown, noteContext } from '../src/context.mjs'
-import { listWindow } from '../src/listWindow.mjs'
+import { listLayout } from '../src/listWindow.mjs'
 import { intervalsOf, staleKeys, storedValue, usedOf } from '../src/meter.mjs'
-import { STOPPED_FOLD, arrowOf, boxKeyOf, paneNav, stepFocus } from '../src/nav.mjs'
+import { STOPPED_FOLD, arrowOf, boxKeyOf, listShown, paneNav, stepFocus } from '../src/nav.mjs'
 import { familyColor, modelColor, savedColor } from '../src/palette.mjs'
 import { loadPrices, priceFamily } from '../src/prices.mjs'
 import {
@@ -90,8 +91,8 @@ const TITLE = 'ultraguard-eval'
 const KEPT = 20
 const TOAST_MS = 8000
 const DRAWS_RUNNING = 1000
+const OVERALL_EVERY_MS = 30 * 1000
 const TALLY_TOO_BIG = `ultraguard: the session tally is over ${TALLY_STORE_MAX / 1024} KiB, so it is no longer kept in the plugin store`
-const MIN_ROOM = 3
 const agentsText = (n: number) => `${n} agent${n === 1 ? '' : 's'}`
 
 const ev = atom({ plugin: 'ultraguard', key: 'eval' } as const, createState() as EvalState, { shape: 'eval-2' })
@@ -99,6 +100,7 @@ const ctx = atom({ plugin: 'ultraguard', key: 'context' } as const, createContex
 const tally = atom({ plugin: 'ultraguard', key: 'tally' } as const, createTally() as TallyState, { shape: 'tally-1' })
 
 const windowFrom = new Map<string, number>()
+let ringHeld = true
 
 type Ids = { toolUseId: string; runId: string }
 type Notice = { toolUseId: string | null | undefined; taskId: string | null | undefined; status: string }
@@ -200,8 +202,13 @@ async function recordReading($: EngineInterface, rateLimits: unknown) {
   const at = await $.clock.now()
   const before = await read($, ev)
   const after = await update($, ev, s => noteMeterReading(s, rateLimits, at, data.prices))
+  const sid = await $.session.id()
   const grew = (['five_hour', 'seven_day'] as const).some(k => after.meter.mine[k] !== before.meter.mine[k])
-  if (grew) await $.store.set(`meter:${await $.session.id()}`, storedValue(after.meter))
+  if (grew) await $.store.set(`meter:${sid}`, storedValue(after.meter))
+  const t = await read($, tally)
+  const built = t.sid === sid ? t.overall?.windows : undefined
+  const stamps = stampsOf(after.meter)
+  if (built && (built.five_hour !== stamps.five_hour || built.seven_day !== stamps.seven_day)) await noteTally($, sid, null, 'always')
 }
 
 async function loadMeter($: EngineInterface) {
@@ -219,6 +226,7 @@ async function loadMeter($: EngineInterface) {
 }
 
 async function estimate($: EngineInterface, key: string) {
+  const sid = await $.session.id()
   const data = await getData($)
   if (!data) return
   try {
@@ -230,10 +238,9 @@ async function estimate($: EngineInterface, key: string) {
   const s = await read($, ev)
   const run = s.runs[key]
   if (!run) return
-  const family = priceFamily(run.baseline.model)
   const running = run.status === 'running'
-  const baseline = family && run.baseline.effort ? { family, effort: run.baseline.effort } : null
-  const meter = { subscription: s.meter.subscription, five_hour: intervalsOf(s.meter, 'five_hour', at), seven_day: intervalsOf(s.meter, 'seven_day', at) }
+  const baseline = baselineOf(run)
+  const meter = meterOf(s.meter, at)
   const agents = agentPieces(run)
   const saved = estimateRun({
     agents,
@@ -247,18 +254,27 @@ async function estimate($: EngineInterface, key: string) {
     running
   })
   const used = s.meter.subscription === true ? { five_hour: usedOf(s.meter.last.five_hour, at), seven_day: usedOf(s.meter.last.seven_day, at) } : { five_hour: null, seven_day: null }
-  await update($, ev, st => noteSaved(st, key, { ...saved, used }))
-  if (run.hidden) return
-  await guard($, 'tally', () => noteTally($, { key, status: run.status, baseline, agents, windows: stampsOf(s.meter), at }, { data, meter, last: s.meter }))
+  const after = await update($, ev, st => noteSaved(st, key, { ...saved, used }))
+  const current = after.runs[key]
+  if (!current || current.hidden || (running && current.status !== 'running')) return
+  await guard($, 'tally', () => noteTally($, sid, { key, status: run.status, baseline, agents, windows: stampsOf(s.meter), at }, running ? 'due' : 'always'))
 }
 
-type EstimateMeter = { subscription: boolean | null; five_hour: unknown[]; seven_day: unknown[] }
 type Pooled = { baseline: TallyRun['baseline'] } & Record<'all' | 'five_hour' | 'seven_day', TallyRun['agents']>
+type Build = 'missing' | 'due' | 'always'
 
 const stampsOf = (m: EvalMeter) => ({ five_hour: m.last.five_hour?.resetsAt ?? null, seven_day: m.last.seven_day?.resetsAt ?? null })
+const meterOf = (m: EvalMeter, at: number) => ({ subscription: m.subscription, five_hour: intervalsOf(m, 'five_hour', at), seven_day: intervalsOf(m, 'seven_day', at) })
+const tallyKey = (sid: string) => `${TALLY_PREFIX}${sid}`
 
-function overallOf(t: TallyState, { data, meter, last }: { data: Data; meter: EstimateMeter; last: EvalMeter }, now: number) {
+function baselineOf(run: EvalRun) {
+  const family = priceFamily(run.baseline.model)
+  return family && run.baseline.effort ? { family, effort: run.baseline.effort } : null
+}
+
+function overallOf(t: TallyState, data: Data, last: EvalMeter, now: number): TallyOverall {
   const running = Object.values(t.runs).some(r => r.status === 'running')
+  const meter = meterOf(last, now)
   const one = (baseline: TallyRun['baseline'], agents: TallyRun['agents']) =>
     estimateRun({ agents, baseline, ratios: data.ratios, prices: data.prices, meter, seed: seedOf('overall'), draws: DRAWS_RUNNING, running })
   const estimates = overallInput(t, stampsOf(last), now).groups.map((g: Pooled) => ({
@@ -266,32 +282,71 @@ function overallOf(t: TallyState, { data, meter, last }: { data: Data; meter: Es
     five_hour: one(g.baseline, g.five_hour),
     seven_day: one(g.baseline, g.seven_day)
   }))
-  return combine(estimates, { tally: t, meter: last, now })
+  return { ...combine(estimates, { tally: t, meter: last, now }), windows: stampsOf(last), at: now }
 }
 
-async function noteTally($: EngineInterface, run: TallyRun, inputs: { data: Data; meter: EstimateMeter; last: EvalMeter }) {
+let tallyQueue: Promise<void> = Promise.resolve()
+
+type Ending = { key: string; status: string }
+
+function noteTally($: EngineInterface, sid: string, run: TallyRun | null, build: Build, ifAbsent = false, ending: Ending | null = null) {
+  const done = tallyQueue.then(() => tallyTurn($, sid, run, build, ifAbsent, ending)).catch(err => note($, 'tally', err))
+  tallyQueue = done
+  return done
+}
+
+async function tallyTurn($: EngineInterface, sid: string, run: TallyRun | null, build: Build, ifAbsent: boolean, ending: Ending | null) {
+  if ((await $.session.id()) !== sid) return
+  const data = await getData($)
+  if (!data) return
+  let t = await read($, tally)
+  if (t.sid !== sid) {
+    const stored = await $.store.get(tallyKey(sid))
+    t = await update($, tally, cur => tallyFor(cur, sid, stored) as TallyState)
+  }
+  if (ending) {
+    const was = t.runs[ending.key]?.status
+    t = await update($, tally, cur => (cur.sid === sid ? (endTallyRun(cur, ending.key, ending.status) as TallyState) : cur))
+    if (t.runs[ending.key]?.status !== was) build = 'always'
+  }
   const dropped: string[] = []
-  const next = await update($, tally, t => {
-    dropped.length = 0
-    const noted = noteTallyRun(t, run, { log: (line: string) => dropped.push(line) }) as TallyState
-    return { ...noted, overall: overallOf(noted, inputs, run.at) }
-  })
-  await guard($, 'tally store', async () => {
-    const key = `${TALLY_PREFIX}${await $.session.id()}`
-    if (JSON.stringify(next).length <= TALLY_STORE_MAX) return $.store.set(key, next)
-    await $.store.delete(key)
-    dropped.push(TALLY_TOO_BIG)
-  })
+  if (run) {
+    t = await update($, tally, cur => {
+      dropped.length = 0
+      return cur.sid === sid ? (noteTallyRun(cur, run, { log: (line: string) => dropped.push(line), ifAbsent }) as TallyState) : cur
+    })
+  }
+  if (t.sid !== sid) return
+  const now = await $.clock.now()
+  const due = build === 'always' || !t.overall || (build === 'due' && !(now - t.overall.at < OVERALL_EVERY_MS))
+  if (due) {
+    const overall = overallOf(t, data, (await read($, ev)).meter, now)
+    t = await update($, tally, cur => (cur.sid === sid ? { ...cur, overall } : cur))
+    if (t.sid !== sid) return
+  }
+  if ((run || due) && Object.keys(t.runs).length > 0) {
+    await guard($, 'tally store', async () => {
+      if (JSON.stringify(t).length <= TALLY_STORE_MAX) return $.store.set(tallyKey(sid), t)
+      await $.store.delete(tallyKey(sid))
+      dropped.push(TALLY_TOO_BIG)
+    })
+  }
   for (const line of dropped) $.ui.log(line, { to: 'debug' })
 }
 
 async function loadTally($: EngineInterface) {
-  const own = `${TALLY_PREFIX}${await $.session.id()}`
+  const sid = await $.session.id()
   const stored: Record<string, unknown> = {}
   for (const key of await $.store.keys()) if (key.startsWith(TALLY_PREFIX)) stored[key] = await $.store.get(key)
-  for (const key of staleTallies(stored, own, await $.clock.now())) await $.store.delete(key)
-  const kept = settledTally(storedTally(stored[own])) as TallyState | null
-  if (kept) await update($, tally, t => (Object.keys(t.runs).length === 0 ? kept : t))
+  for (const key of staleTallies(stored, tallyKey(sid), await $.clock.now())) await $.store.delete(key)
+  await noteTally($, sid, null, 'always')
+}
+
+async function swapTally($: EngineInterface, ended: string) {
+  const sid = await $.session.id()
+  const next = sid === ended ? null : sid
+  const stored = next === null ? undefined : await $.store.get(tallyKey(next))
+  await update($, tally, cur => tallyFor(cur, next, stored) as TallyState)
 }
 
 async function readWindow($: EngineInterface, window: number) {
@@ -373,6 +428,7 @@ async function endRuns($: EngineInterface, notices: Notice[]) {
     const before = await read($, ev)
     const out = await update($, ev, s => noteRunEnd(s, { ...n, at }))
     const run = (n.toolUseId && out.runs[n.toolUseId]) || Object.values(out.runs).find(r => (n.toolUseId && r.toolUseId === n.toolUseId) || (n.taskId && r.taskId === n.taskId))
+    if (!run && n.toolUseId) await guard($, 'orphan end', () => endOrphan($, n.toolUseId as string, n.status, at))
     if (!run || run.status === 'running') continue
     const fresh = before.runs[run.key]?.status === 'running'
     if (fresh) await guard($, 'savings', () => estimate($, run.key))
@@ -384,6 +440,18 @@ async function endRuns($: EngineInterface, notices: Notice[]) {
       })
     }
   }
+}
+
+async function endOrphan($: EngineInterface, key: string, status: string, at: number) {
+  const sid = await $.session.id()
+  await noteTally($, sid, null, 'missing', false, { key, status })
+  const t = await read($, tally)
+  if (t.sid !== sid || t.runs[key]?.status !== status) return
+  const dir = await configDir($)
+  const path = dir ? recordPath(dir, sid, key, 'eval') : null
+  if (!path) return
+  const ended = endedRecord(JSON.parse(await $.fs.read(path)), status, at)
+  if (ended) await $.fs.write(path, `${JSON.stringify(ended, null, 2)}\n`)
 }
 
 async function reconcile($: EngineInterface) {
@@ -412,6 +480,7 @@ export const register: Register = on => {
 
   on('session.measure', async ($, e, next) => {
     if (e.changed.includes('rateLimits')) await guard($, 'measure', () => recordReading($, e.rateLimits))
+    await guard($, 'tally', async () => noteTally($, await $.session.id(), null, 'missing'))
     let ask = false
     await guard($, 'context', async () => {
       ask = await noteWindow($, e.context)
@@ -434,14 +503,17 @@ export const register: Register = on => {
         await update($, ev, s => hideFinished(endAllRuns(s, 'cleared', at)))
         for (const run of live) await persist($, run.key)
       })
-      await guard($, 'clear tally', () => update($, tally, () => createTally() as TallyState))
     }
-    return next(e)
+    const done = await next(e)
+    if (e.reason === 'clear' || e.reason === 'resume') await guard($, 'swap tally', () => swapTally($, e.sessionId))
+    return done
   })
 
   on('tool.call', { tool: 'Workflow' }, async ($, e, next) => {
     const toolUseId = e.tool_use_id
+    let sid = null as string | null
     await guard($, 'launch', async () => {
+      sid = await $.session.id()
       const fingerprint = await fingerprintOf($, e).catch(() => null)
       const at = await $.clock.now()
       await update($, ev, s => noteLaunch(s, { toolUseId, fingerprint, at }))
@@ -454,7 +526,11 @@ export const register: Register = on => {
       const at = await $.clock.now()
       const name = out.workflowName || (out.summary ? out.summary.slice(0, 48) : null)
       const s = await update($, ev, st => noteLaunchResult(st, { toolUseId, isError, taskId: out.taskId ?? null, runId: out.runId ?? null, name, at }))
-      if (s.runs[toolUseId]) await persist($, toolUseId)
+      const run = s.runs[toolUseId]
+      if (!run) return
+      await persist($, toolUseId)
+      const entry = { key: toolUseId, status: run.status, baseline: baselineOf(run), agents: agentPieces(run), windows: stampsOf(s.meter), at }
+      if (sid !== null) await noteTally($, sid, entry, 'always', true)
     })
     return ran
   })
@@ -562,10 +638,14 @@ export const register: Register = on => {
   })
 
   on('ui.focus', { component: 'Pane', requestId: PANE }, async ($, e, next) => {
-    await guard($, 'focus', () => update($, ev, s => noteFocus(s, e.element ?? null)))
-    const done = await next(e)
     const element = e.element
-    if (element) {
+    if (element !== undefined) await guard($, 'focus', () => update($, ev, s => noteFocus(s, element)))
+    if (ringHeld !== (element !== undefined)) {
+      ringHeld = element !== undefined
+      await guard($, 'focus ring', async () => $.ui.invalidate('ui.render'))
+    }
+    const done = await next(e)
+    if (element !== undefined) {
       await guard($, 'focus scroll', async () => {
         await $.ui.scroll({ to: { key: boxKeyOf(element) }, in: PANE })
       })
@@ -574,22 +654,24 @@ export const register: Register = on => {
   })
 
   on('ui.scroll', { component: 'Pane', requestId: PANE }, async ($, e, next) => {
+    const state = await read($, ev).catch(() => null)
     const dir = arrowOf(e)
-    if (dir === 0) return next(e)
+    const before = state?.ui.focus ?? null
+    const target = state && dir !== 0 ? stepFocus(paneNav(state), before, dir) : null
     let moved = false
-    await guard($, 'arrow', async () => {
-      const state = await read($, ev)
-      const before = state.ui.focus ?? null
-      const target = stepFocus(paneNav(state), before, dir)
-      if (target === null) return
-      await update($, ev, s => noteFocus(s, target))
-      try {
-        moved = (await $.ui.focus({ requestId: PANE, key: target })).deny === undefined
-      } finally {
-        if (!moved) await update($, ev, s => noteFocus(s, before))
-      }
-    })
-    return moved ? {} : next(e)
+    if (target !== null) {
+      await guard($, `arrow to ${target}`, async () => {
+        await update($, ev, s => noteFocus(s, target))
+        try {
+          moved = (await $.ui.focus({ requestId: PANE, key: target })).deny === undefined
+        } finally {
+          if (!moved) await update($, ev, s => noteFocus(s, before))
+        }
+      })
+    }
+    if (moved) return {}
+    const last = state && listShown(state) ? Math.max(0, e.contentRows - e.bodyRows - 1) : e.offset
+    return e.offset > last ? next({ ...e, offset: last }) : next(e)
   })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
@@ -616,9 +698,10 @@ export const register: Register = on => {
     const open = [...runs, ...finished, ...stopped].find(v => v.key === state.ui.run)
     const { reachable, resting } = paneNav(state)
     const focusKey = reachable.includes(state.ui.focus ?? '') ? (state.ui.focus ?? null) : resting
-    const picked = (key: string) => e.props.isFocused && focusKey === key
+    const picked = (key: string) => e.props.isFocused && ringHeld && focusKey === key
     const width = e.props.bodyColumns - 4
-    const overall = open ? null : ((await read($, tally)).overall ?? null)
+    const held = open ? null : await read($, tally)
+    const overall = held?.overall && held.sid === (await $.session.id()) ? held.overall : null
     const stored = await read($, ctx)
     const wanted = open ? Boolean(open.saved) : overall?.status === 'estimated'
     const live = wanted ? await $.session.usage().then(u => u?.context ?? null, () => null) : null
@@ -792,15 +875,16 @@ export const register: Register = on => {
 
     const all = [...runs, ...finished, ...stopped]
     const foldOpen = stoppedOpen(state)
-    const nameWidth = Math.min(30, Math.max(12, ...all.map(v => v.title.length + 4)))
-    const agentsWidth = Math.max(12, ...runs.map(v => countsWidth(v.counts) + 2), ...[...finished, ...stopped].map(v => endedText(v).length + 2))
+    const agentsWidth = Math.max(12, ...runs.map(v => countsWidth(v.counts) + 2), ...[...finished, ...(foldOpen ? stopped : [])].map(v => endedText(v).length + 2))
+    const cellWidth = Math.max(...[listHeader(all), ...all.map(v => listCell(v))].map(segs => segs.reduce((n, g) => n + g.text.length, 0)))
+    const nameWidth = Math.max(12, Math.min(30, width - 9 - agentsWidth - cellWidth, Math.max(0, ...all.map(v => v.title.length + 4))))
     type Draw = (first: boolean) => any
-    const runRow = (v: (typeof all)[number], live: boolean, autoFocus: boolean): Draw => first => {
+    const runRow = (v: (typeof all)[number], live: boolean): Draw => first => {
       const rowKey = `run:${v.key}`
       const here = picked(rowKey)
       return (
         <Box key={boxKeyOf(rowKey)} marginTop={first ? 0 : -1} {...ring(here)}>
-          <Button key={rowKey} plain autoFocus={autoFocus ? true : undefined} onPress={() => update($, ev, s => openRun(s, v.key))}>{ZERO_WIDTH}</Button>
+          <Button key={rowKey} plain autoFocus={rowKey === focusKey ? true : undefined} onPress={() => update($, ev, s => openRun(s, v.key))}>{ZERO_WIDTH}</Button>
           <Text wrap="truncate-end">
             <Text color={tone(v.ok)}>{mark(here, '□', '■')}</Text>
             {' '}
@@ -816,7 +900,7 @@ export const register: Register = on => {
       const here = picked(STOPPED_FOLD)
       return (
         <Box key={boxKeyOf(STOPPED_FOLD)} marginTop={first ? 0 : -1} {...ring(here)}>
-          <Button key={STOPPED_FOLD} plain onPress={() => update($, ev, s => setStoppedOpen(s, !stoppedOpen(s)))}>{ZERO_WIDTH}</Button>
+          <Button key={STOPPED_FOLD} plain autoFocus={focusKey === STOPPED_FOLD ? true : undefined} onPress={() => update($, ev, s => setStoppedOpen(s, !stoppedOpen(s)))}>{ZERO_WIDTH}</Button>
           {line(foldLine({ open: foldOpen, count: stopped.length, picked: here }))}
         </Box>
       )
@@ -828,8 +912,8 @@ export const register: Register = on => {
       if (head) items.push({ key: `head:${head}`, lines: 2, row: false, first: false, draw: () => <Box flexDirection="column"><Text> </Text>{line(subHead(head, { width }))}</Box> })
       rows.forEach((r, i) => items.push({ ...r, lines: i === 0 ? 3 : 2, row: true, first: i === 0 }))
     }
-    const ended = (list: typeof all) => list.map(v => ({ key: `run:${v.key}`, draw: runRow(v, false, false) }))
-    group(runs.map((v, i) => ({ key: `run:${v.key}`, draw: runRow(v, true, i === 0) })))
+    const ended = (list: typeof all) => list.map(v => ({ key: `run:${v.key}`, draw: runRow(v, false) }))
+    group(runs.map(v => ({ key: `run:${v.key}`, draw: runRow(v, true) })))
     group(ended(finished), FINISHED_TITLE)
     if (stopped.length > 0) group([{ key: STOPPED_FOLD, draw: foldRow }, ...(foldOpen ? ended(stopped) : [])])
 
@@ -852,20 +936,17 @@ export const register: Register = on => {
     ]
     const hint = !e.props.isFocused ? FOCUS_HINT : focusKey === STOPPED_FOLD ? FOLD_HINT(foldOpen) : LIST_HINT
     const bottom = all.length > 0 ? [<Text> </Text>, <Text dimColor>{hint}</Text>] : []
-    const full = e.props.scroll.bodyRows - top.length - bottom.length
-    const windowed = items.reduce((n, it) => n + it.lines, 0) > full
-    const shown = windowed
-      ? listWindow({ items, room: Math.max(MIN_ROOM, full - 2), focusKey, prevFrom: windowFrom.get(e.surface) })
-      : { from: 0, to: items.length, above: 0, below: 0 }
+    const shown = listLayout({ items, bodyRows: e.props.scroll.bodyRows, fixed: top.length + bottom.length, focusKey, prevFrom: windowFrom.get(e.surface) })
     windowFrom.set(e.surface, shown.from)
     const more = (n: number, text: (n: number) => string) => (n > 0 ? <Text dimColor>{text(n)}</Text> : <Text> </Text>)
     return (
       <Box flexDirection="column">
         {top}
-        {windowed && more(shown.above, MORE_ABOVE)}
+        {shown.windowed && more(shown.above, MORE_ABOVE)}
         {items.slice(shown.from, shown.to).map((it, i) => it.draw(it.first || i === 0))}
-        {windowed && more(shown.below, MORE_BELOW)}
+        {shown.windowed && more(shown.below, MORE_BELOW)}
         {bottom}
+        {Array.from({ length: shown.pad }, () => <Text> </Text>)}
       </Box>
     )
   }).catch(($, e, next) => {

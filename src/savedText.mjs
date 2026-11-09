@@ -43,6 +43,7 @@ const RANGE_NOTE = 'range = 9 times in 10'
 const RANGE_WIDE = 'so the range is wide'
 const MIXED_BASELINE = "vs your session's model at each launch"
 const RUN_NOTHING = 'this run may have saved nothing'
+const ALL_ON_BASELINE = "every agent ran on your session's model and effort, so nothing was saved"
 const OVERALL_TITLE = 'overall savings for this session'
 const workflows = (n) => `${n} workflow${n === 1 ? '' : 's'}`
 const OVERALL_COUNT = workflows
@@ -63,6 +64,7 @@ export const MORE_BELOW = (n) => `  ↓ ${n} more`
 export const LIST_HINT = '↑↓ choose  enter details  esc close'
 export const FOLD_HINT = (open) => `↑↓ choose  enter ${open ? 'folds' : 'opens'} the stopped ones  esc close`
 export const FOCUS_HINT = 'ctrl+x tab: focus this pane'
+export const SAME_MODEL = 'same model'
 
 export const RULE = '═'
 export const SUB_RULE = '─'
@@ -246,7 +248,7 @@ export function savedBlock(saved, { width = MAX_WIDTH, headWidth = width, contex
   const room = Math.min(width, MAX_WIDTH)
   const head = [sectionHead(saved.running ? 'ultraguard saved so far' : 'ultraguard saved', { width: headWidth })]
   if (saved.baseline) head.push(baselineLine(saved.baseline))
-  if (saved.status === 'none') return [...head, ...proseLines("every agent ran on your session's model and effort, so nothing was saved", room)]
+  if (saved.status === 'none') return [...head, ...proseLines(ALL_ON_BASELINE, room)]
   if (!saved.baseline) return [...head, ...proseLines("ultraguard could not read your session's model or effort, so it has no estimate", room)]
 
   if (saved.status !== 'estimated') {
@@ -263,6 +265,7 @@ export function overallBlock(overall, { width = MAX_WIDTH, context = null } = {}
   if (!(overall?.count > 0)) return []
   const room = Math.min(width, MAX_WIDTH)
   const head = sectionHead(overall.running ? `${OVERALL_TITLE} so far` : OVERALL_TITLE, { extra: OVERALL_COUNT(overall.count), width })
+  if (overall.status === 'none') return [head, baselineLine(overall.baseline), ...proseLines(ALL_ON_BASELINE, room)]
   if (overall.status !== 'estimated') return [head, ...proseLines(NO_ESTIMATE, room, 'dim')]
   const out = [head, baselineLine(overall.baseline), ...savedBody(overall, { width: room, context, nothing: OVERALL_NOTHING })]
   if (overall.subscription === true && overall.limits) {
@@ -356,6 +359,7 @@ export function endedText(view) {
 export function listCell(view) {
   if (!view.ok) return []
   const saved = view.saved
+  if (saved?.status === 'none') return [dim(SAME_MODEL)]
   if (saved?.status !== 'estimated') return [dim(DASH)]
   const limit = fiveHourOf(saved)
   const range = limit || saved.dollars

@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { listWindow } from '../src/listWindow.mjs'
+import { listLayout, listWindow } from '../src/listWindow.mjs'
 
 const rows = (count) => Array.from({ length: count }, (_, i) => ({ key: `r${i}`, lines: i === 0 ? 3 : 2, row: true }))
 
@@ -75,4 +75,45 @@ test('the window never ends on a group head whose rows are all hidden', () => {
   const w = listWindow({ items, room: 5, focusKey: 'r1', prevFrom: 11 })
   assert.ok(w.from <= 1 && 1 < w.to)
   assert.equal(items[w.to - 1].row, true)
+})
+
+const group = (prefix, count, head) => [
+  ...(head ? [{ key: `head:${prefix}`, lines: 2, row: false }] : []),
+  ...Array.from({ length: count }, (_, i) => ({ key: `${prefix}${i}`, lines: i === 0 ? 3 : 2, row: true }))
+]
+const drawnLines = (items, from, to) => items.slice(from, to).reduce((n, it, i) => n + (i === 0 && it.row ? Math.max(it.lines, 3) : it.lines), 0)
+const SHAPES = [group('r', 15), [...group('r', 4), ...group('f', 6, true), ...group('s', 3)], group('f', 9, true), group('r', 2)]
+
+test('a windowed list overflows the body by one row with the pad last, so the arrows reach the plugin as scrolls and the top stays put', () => {
+  for (const items of SHAPES) {
+    const keys = items.filter((it) => it.row).map((it) => it.key)
+    const total = items.reduce((n, it) => n + it.lines, 0)
+    for (const fixed of [4, 11, 13]) {
+      for (let bodyRows = fixed + 1; bodyRows <= fixed + 45; bodyRows++) {
+        let prevFrom = 0
+        for (const focusKey of [...keys, ...[...keys].reverse()]) {
+          const out = listLayout({ items, bodyRows, fixed, focusKey, prevFrom })
+          prevFrom = out.from
+          const at = items.findIndex((it) => it.key === focusKey)
+          const where = `fixed ${fixed} bodyRows ${bodyRows} focus ${focusKey}`
+          assert.ok(out.from <= at && at < out.to, where)
+          assert.equal(out.windowed, fixed + total > bodyRows, where)
+          if (!out.windowed) {
+            assert.deepEqual([out.from, out.to, out.above, out.below, out.pad], [0, items.length, 0, 0, 0], where)
+            continue
+          }
+          const rows = fixed + 2 + drawnLines(items, out.from, out.to) + out.pad
+          if (bodyRows - fixed - 2 >= 3) {
+            assert.ok(out.pad >= 1, where)
+            assert.equal(rows, bodyRows + 1, where)
+          } else {
+            assert.equal(out.pad, 1, where)
+            assert.ok(rows > bodyRows + 1, where)
+          }
+          assert.equal(out.above, items.slice(0, out.from).filter((it) => it.row).length, where)
+          assert.equal(out.below, items.slice(out.to).filter((it) => it.row).length, where)
+        }
+      }
+    }
+  }
 })

@@ -19,6 +19,8 @@ export function paneNav(state) {
   return { reachable: [...filled.map((p) => `phase:${p.key}`), 'all', 'back'], resting: first ? `phase:${first}` : 'back' }
 }
 
+export const listShown = (state) => ![...activeRuns(state), ...finishedRuns(state), ...stoppedRuns(state)].some((r) => r.key === state.ui.run)
+
 export function stepFocus({ reachable, resting }, focus, dir) {
   const current = reachable.includes(focus) ? focus : resting
   const at = reachable.indexOf(current)

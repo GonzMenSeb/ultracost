@@ -1,6 +1,7 @@
 import { priceFamily } from './prices.mjs'
 import { createMeter, mergeStored, noteRequest, noteReading } from './meter.mjs'
 import { seedOf } from './stats.mjs'
+import { createTally } from './tally.mjs'
 
 export const EVAL_VERSION = 1
 export const DEFAULT_MAX_OPUS = 3
@@ -9,6 +10,7 @@ export const STOPPED = 'killed'
 
 const FAMILIES = ['opus', 'sonnet', 'haiku']
 const ENDING = new Set(['completed', 'failed', STOPPED])
+const NOTICE_STATUS = { stopped: STOPPED }
 const MAX_ENDED = 20
 const MAX_LAUNCHES = 100
 const MAX_EARLY = 32
@@ -347,7 +349,8 @@ export function hideFinished(state) {
 
 export function noteSaved(state, key, saved) {
   const run = get(state.runs, key)
-  return run ? setRun(state, { ...run, saved }) : state
+  if (!run || (saved?.running && run.status !== 'running')) return state
+  return setRun(state, { ...run, saved })
 }
 
 export function noteAgentDone(state, { agentId }) {
@@ -382,7 +385,7 @@ export function openRun(state, key) {
 }
 
 export function closeRun(state) {
-  return state.ui.run === null ? state : { ...state, ui: { ...state.ui, run: null, folds: {} } }
+  return state.ui.run === null ? state : { ...state, ui: { ...state.ui, run: null, folds: {}, focus: `run:${state.ui.run}` } }
 }
 
 export function noteFocus(state, key) {
@@ -418,7 +421,8 @@ export function parseTaskNotifications(source) {
     const status = pick('status')
     const toolUseId = pick('tool-use-id')
     const taskId = pick('task-id')
-    if (status && (toolUseId || taskId)) out.push({ toolUseId, taskId, status: status.toLowerCase() })
+    const said = status?.toLowerCase()
+    if (said && (toolUseId || taskId)) out.push({ toolUseId, taskId, status: NOTICE_STATUS[said] ?? said })
   }
   return out
 }
@@ -515,8 +519,25 @@ export function storedTally(value) {
 
 export function settledTally(tally) {
   if (!tally) return tally
+  const { overall, ...kept } = tally
   const runs = Object.fromEntries(Object.entries(tally.runs).map(([key, r]) => [key, r.status === 'running' ? { ...r, status: 'cleared' } : r]))
-  return { ...tally, runs, ...(tally.overall ? { overall: { ...tally.overall, running: false } } : {}) }
+  return { ...kept, runs }
+}
+
+export function endTallyRun(tally, key, status) {
+  const held = tally?.runs?.[key]
+  if (!held || !ENDING.has(status) || (held.status !== 'running' && held.status !== 'cleared')) return tally
+  return { ...tally, runs: { ...tally.runs, [key]: { ...held, status } } }
+}
+
+export function endedRecord(record, status, at) {
+  if (record === null || typeof record !== 'object' || record.kind !== 'eval' || record.status !== 'running' || !ENDING.has(status)) return null
+  return { ...record, status, endedAt: iso(at) }
+}
+
+export function tallyFor(current, sid, stored) {
+  if (current?.sid === sid) return current
+  return { ...(settledTally(storedTally(stored)) ?? createTally()), sid }
 }
 
 export function staleTallies(stored, sessionKey, now) {

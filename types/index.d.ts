@@ -180,12 +180,15 @@ export type TallyRun = {
   at: number
 }
 
-export type TallyOverall =
+export type TallyOverall = (
   | (Omit<Saved, 'agents' | 'groups'> & { count: number; counted: Record<MeterWindow, number> })
-  | { status: 'unknown'; count: number }
+  | { status: 'none'; count: number; running: boolean; baseline: { family: string; effort: string } | null }
+  | { status: 'unknown'; count: number; running: boolean }
+) & { windows: Record<MeterWindow, string | null>; at: number }
 
 export type TallyState = {
   v: number
+  sid?: string | null
   runs: Record<string, TallyRun>
   overall?: TallyOverall
 }

@@ -5,7 +5,7 @@ import { recordPath } from '../src/record.mjs'
 import { readFileSync } from 'node:fs'
 import { loadPrices } from '../src/prices.mjs'
 import { toastText } from '../src/savedText.mjs'
-import { STOPPED, TALLY_PREFIX, UNKNOWN_PHASE, noteFocus, phaseOpen, setFolds, agentPieces, finishedRuns, hideFinished, noteMainStep, noteMeterReading, noteSaved, noteStored, noteUsage, staleTallies, storedTally, settledTally, stoppedRuns, setStoppedOpen, stoppedOpen } from '../src/eval.mjs'
+import { STOPPED, TALLY_PREFIX, UNKNOWN_PHASE, noteFocus, phaseOpen, setFolds, agentPieces, finishedRuns, hideFinished, noteMainStep, noteMeterReading, noteSaved, noteStored, noteUsage, staleTallies, storedTally, settledTally, endTallyRun, endedRecord, stoppedRuns, setStoppedOpen, stoppedOpen, tallyFor } from '../src/eval.mjs'
 import {
   activeRuns,
   bandText,
@@ -535,6 +535,12 @@ test('openRun and closeRun move the pane between its list and a run', () => {
   assert.equal(closeRun(s), s)
 })
 
+test('closing a run puts the list focus on its row', () => {
+  const s = noteFocus(openRun(createState(), TU), 'back')
+  assert.equal(closeRun(s).ui.focus, `run:${TU}`)
+  assert.equal(closeRun(createState()).ui.focus ?? null, null)
+})
+
 test('parseTaskNotifications reads the end of a run from a notification row', () => {
   const row = [
     '<task-notification>',
@@ -554,6 +560,24 @@ test('parseTaskNotifications reads the end of a run from a notification row', ()
   assert.deepEqual(parseTaskNotifications('no notification here'), [])
   assert.deepEqual(parseTaskNotifications(undefined), [])
   assert.deepEqual(parseTaskNotifications('<task-notification><tool-use-id>toolu_3</tool-use-id><status>failed</status>'), [{ toolUseId: 'toolu_3', taskId: null, status: 'failed' }])
+})
+
+test('a stopped notification from a resume ends the run as stopped, like a TaskStop', () => {
+  const row = [
+    '<task-notification>',
+    '<task-id>w1</task-id>',
+    `<tool-use-id>${TU}</tool-use-id>`,
+    '<status>stopped</status>',
+    "<summary>Dynamic workflow \"map\" didn't finish before the previous session ended</summary>",
+    '</task-notification>'
+  ].join('\n')
+  const [n] = parseTaskNotifications(row)
+  assert.deepEqual(n, { toolUseId: TU, taskId: 'w1', status: STOPPED })
+  const s = noteRunEnd(compliant(), { ...n, at: 77 })
+  assert.equal(s.runs[TU].status, STOPPED)
+  assert.equal(s.runs[TU].endedAt, 77)
+  assert.equal(activeRuns(s).length, 0)
+  assert.deepEqual(stoppedRuns(s).map((r) => r.key), [TU])
 })
 
 test('a notification drives noteRunEnd; an unknown launch changes nothing', () => {
@@ -935,7 +959,7 @@ test('a toggle beats the default and survives a redraw; opening another run rese
   assert.equal(phaseOpen(first, all.ui.folds), false)
   assert.deepEqual(openRun(all, 'other').ui, { run: 'other', folds: {} })
   assert.equal(openRun(all, TU).ui.run, TU)
-  assert.deepEqual(closeRun(all).ui, { run: null, folds: {} })
+  assert.deepEqual(closeRun(all).ui, { run: null, folds: {}, focus: `run:${TU}` })
   assert.equal(phaseOpen({ key: 'x', open: false }, null), false)
 })
 
@@ -1032,13 +1056,61 @@ test('the store keeps the tallies of the 3 newest other sessions, never the own 
   assert.deepEqual(staleTallies(stored, own, now).sort(), [`${TALLY_PREFIX}s4`, `${TALLY_PREFIX}s5`])
 })
 
-test('a tally loaded from the store has no running runs left, and its overall is not so far', () => {
+test('a tally loaded from the store has no running runs left and drops its overall to be built again', () => {
   const t = tallyAt(5, 6)
   t.runs.r1.status = 'running'
   t.overall = { status: 'unknown', count: 2, running: true }
   const settled = settledTally(t)
   assert.deepEqual(Object.values(settled.runs).map((r) => r.status), ['completed', 'cleared'])
-  assert.equal(settled.overall.running, false)
+  assert.equal('overall' in settled, false)
   assert.equal(t.runs.r1.status, 'running')
+  assert.equal(t.overall.running, true)
   assert.equal(settledTally(null), null)
+})
+
+test('tallyFor keeps the tally of the session it belongs to and swaps in the stored or a fresh one for another', () => {
+  const mine = { ...tallyAt(5), sid: 's1', overall: { status: 'unknown', count: 1, running: false } }
+  assert.equal(tallyFor(mine, 's1', tallyAt(9, 10)), mine)
+  const stored = { ...tallyAt(7), sid: 's2', overall: { status: 'unknown', count: 1, running: true } }
+  stored.runs.r0.status = 'running'
+  const resumed = tallyFor(mine, 's2', stored)
+  assert.equal(resumed.sid, 's2')
+  assert.deepEqual(Object.values(resumed.runs).map((r) => [r.key, r.status, r.at]), [['r0', 'cleared', 7]])
+  assert.equal('overall' in resumed, false)
+  for (const none of [undefined, null, { v: 2, runs: {} }]) assert.deepEqual(tallyFor(mine, 's3', none), { v: 1, runs: {}, sid: 's3' })
+  assert.deepEqual(tallyFor({ v: 1, runs: {} }, 's1', undefined), { v: 1, runs: {}, sid: 's1' })
+})
+
+test('a late end notice settles a stored run that was running or settled as cleared, and leaves an ended one alone', () => {
+  const t = tallyAt(5, 6)
+  t.runs.r1.status = 'running'
+  assert.equal(endTallyRun(t, 'r1', STOPPED).runs.r1.status, STOPPED)
+  assert.equal(endTallyRun(settledTally(t), 'r1', STOPPED).runs.r1.status, STOPPED)
+  assert.equal(endTallyRun(t, 'r0', STOPPED), t)
+  assert.equal(endTallyRun(t, 'nope', STOPPED), t)
+  assert.equal(endTallyRun(t, 'r1', 'running'), t)
+  assert.equal(endTallyRun(null, 'r1', STOPPED), null)
+  assert.equal(t.runs.r1.status, 'running')
+})
+
+test('endedRecord ends a running eval record with the status and time of the notice, and nothing else', () => {
+  const record = { session_id: 's1', kind: 'eval', key: 'k', status: 'running', startedAt: '1970-01-01T00:00:01.000Z', endedAt: null }
+  assert.deepEqual(endedRecord(record, STOPPED, 5000), { ...record, status: STOPPED, endedAt: '1970-01-01T00:00:05.000Z' })
+  assert.equal(endedRecord({ ...record, status: 'completed' }, STOPPED, 5000), null)
+  assert.equal(endedRecord({ ...record, kind: 'gate' }, STOPPED, 5000), null)
+  assert.equal(endedRecord(record, 'running', 5000), null)
+  for (const bad of [null, 'x', 3]) assert.equal(endedRecord(bad, STOPPED, 5000), null)
+})
+
+test('a running estimate never replaces the saved of a run that has ended', () => {
+  let s = launched()
+  s = noteSaved(s, TU, { status: 'estimated', running: true, n: 1 })
+  assert.deepEqual(s.runs[TU].saved, { status: 'estimated', running: true, n: 1 })
+  s = noteSaved(s, TU, { status: 'estimated', running: true, n: 2 })
+  assert.equal(s.runs[TU].saved.n, 2)
+  s = noteRunEnd(s, { toolUseId: TU, status: 'completed', at: 5 })
+  const ended = noteSaved(s, TU, { status: 'estimated', running: false, n: 3 })
+  assert.equal(ended.runs[TU].saved.n, 3)
+  assert.equal(noteSaved(ended, TU, { status: 'estimated', running: true, n: 4 }), ended)
+  assert.equal(noteSaved(s, TU, { status: 'estimated', running: true, n: 4 }), s)
 })
