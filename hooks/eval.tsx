@@ -201,8 +201,6 @@ async function estimate($: EngineInterface, key: string) {
   await update($, ev, st => noteSaved(st, key, { ...saved, used }))
 }
 
-const forgetTokens = (x: ContextState) => (x.tokens === null ? x : { ...x, tokens: null })
-
 async function readWindow($: EngineInterface, window: number) {
   const r = await $.session.usage({ breakdown: 'summary' }).catch(() => null)
   await update($, ctx, x => noteBreakdown(x, window, r?.context.breakdown))
@@ -329,17 +327,6 @@ export const register: Register = on => {
     return done
   })
 
-  on('session.compact', async ($, e, next) => {
-    const done = await next(e)
-    if (e.agentId === undefined) {
-      await guard($, 'compact', async () => {
-        const { context } = await $.session.usage()
-        if (await noteWindow($, context)) await readWindow($, context.window)
-      })
-    }
-    return done
-  })
-
   on('command.run', { command: 'ultraguard' }, async $ => {
     const opened = await openPane($)
     return { text: opened.isPlaced ? 'ultraguard-eval opened.' : `ultraguard-eval is not shown yet: ${opened.reason}` }
@@ -351,7 +338,6 @@ export const register: Register = on => {
         const live = Object.values((await read($, ev)).runs).filter(r => r.status === 'running')
         const at = await $.clock.now()
         await update($, ev, s => hideFinished(endAllRuns(s, 'cleared', at)))
-        await update($, ctx, forgetTokens)
         for (const run of live) await persist($, run.key)
       })
     }
@@ -533,9 +519,12 @@ export const register: Register = on => {
         </Text>
       ))
       const width = e.props.bodyColumns - 4
+      const stored = await read($, ctx)
+      const live = open.saved ? await $.session.usage().then(u => u.context, () => null) : null
+      const context = contextFill(live ? { ...stored, window: live.window > 0 ? live.window : stored.window, tokens: typeof live.tokens === 'number' ? live.tokens : null } : stored)
       const saved = open.saved && (
         <Box flexDirection="column">
-          {savedBlock(open.saved, { width, context: contextFill(await read($, ctx)) }).map(line)}
+          {savedBlock(open.saved, { width, context }).map(line)}
           <Text> </Text>
         </Box>
       )

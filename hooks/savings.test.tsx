@@ -79,7 +79,7 @@ async function flow($: any, on: any, options: Options) {
   on('session.end', () => ({ sessionId: SESSION }))
   on('session.start', (_: any, e: any) => ({ cwd: e.cwd }))
   on('session.messages', () => ({ value: notices }))
-  const fill = { window: 200000, ...context }
+  let fill: Record<string, unknown> = { window: 200000, ...context }
   on('session.usage', (_: any, e: any) => ({
     value: { startedAt: 0, context: e.breakdown && compact ? { ...fill, breakdown: { rawMaxTokens: compact, isAutoCompactEnabled: true } } : fill, rateLimits: subscription ? limits(percent) : [] }
   }))
@@ -159,7 +159,7 @@ async function flow($: any, on: any, options: Options) {
       uuid: 'u1',
     })
   }
-  return { writes, toasts, store, clock, id: () => toolUseId }
+  return { writes, toasts, store, clock, id: () => toolUseId, setContext: (next: Record<string, unknown>) => (fill = { window: 200000, ...next }) }
 }
 
 const detail = async ($: any, id: string) => {
@@ -212,6 +212,14 @@ test('the context row measures against the compaction window when one is set', a
   const w = await flow($, on, { subscription: true, context: { tokens: 50000 }, compact: 100000 })
   const ui = await detail($, w.id())
   expect(await ui.find({ type: 'Text', text: /^ +context +[━╸─│ ]+ +50% +50k of 100k$/ })).toBeDefined()
+  await ui.unmount()
+})
+
+test('the context row reads the live usage when it is drawn, so a compaction empties it', async ($, on) => {
+  const w = await flow($, on, { subscription: true, context: { tokens: 50000 } })
+  w.setContext({})
+  const ui = await detail($, w.id())
+  expect(await ui.find({ type: 'Text', text: /^ +context +[─│ ]+ +— +— of 200k$/ })).toBeDefined()
   await ui.unmount()
 })
 
