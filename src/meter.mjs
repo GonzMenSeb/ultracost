@@ -4,10 +4,12 @@ const KINDS = ['five_hour', 'seven_day']
 const MAX_INTERVALS = 200
 const MAX_AGE_MS = 30 * 24 * 3600 * 1000
 const MIN_RISE = 0.1
+const JUMP_RISE = 2
 
 const round1 = (x) => Math.round(x * 10) / 10
 const both = (make) => Object.fromEntries(KINDS.map((k) => [k, make(k)]))
 const finite = (...xs) => xs.every((x) => typeof x === 'number' && Number.isFinite(x))
+const percent = (x) => finite(x) && x >= 0 && x <= 100
 
 export function createMeter() {
   return {
@@ -53,7 +55,7 @@ export function noteReading(meter, rateLimits, at, prices) {
   const next = { ...meter, subscription: true, acc: { ...meter.acc }, last: { ...meter.last }, mine: { ...meter.mine } }
   for (const kind of KINDS) {
     const entry = rateLimits.find((r) => r && r.kind === kind)
-    if (!entry || !finite(entry.percentUsed)) continue
+    if (!entry || !percent(entry.percentUsed)) continue
     const reading = { pct: entry.percentUsed, resetsAt: entry.resetsAt ?? null }
     const last = meter.last[kind]
     next.last[kind] = reading
@@ -62,6 +64,10 @@ export function noteReading(meter, rateLimits, at, prices) {
       continue
     }
     const d = round1(reading.pct - last.pct)
+    if (d >= JUMP_RISE) {
+      next.acc[kind] = {}
+      continue
+    }
     if (d < MIN_RISE) continue
     const units = unitsOf(meter.acc[kind], prices)
     if (!units || !(units.u > 0)) {
@@ -75,10 +81,31 @@ export function noteReading(meter, rateLimits, at, prices) {
   return next
 }
 
+export function noteBoundary(meter) {
+  return { ...meter, acc: both(() => ({})), last: both(() => null) }
+}
+
 export function usedOf(last, now) {
   if (!last || !finite(last.pct)) return null
   const reset = typeof last.resetsAt === 'string' ? Date.parse(last.resetsAt) : NaN
   return Number.isFinite(reset) && reset <= now ? null : last.pct
+}
+
+export function snapshotOf(meter) {
+  return both((k) => {
+    const last = meter?.last?.[k]
+    return last && finite(last.pct) ? { pct: last.pct, resetsAt: last.resetsAt ?? null } : null
+  })
+}
+
+export function riseOf(snapshot, last, now) {
+  return both((k) => {
+    const from = snapshot?.[k]
+    const to = last?.[k]
+    if (!from || !to || !finite(from.pct, to.pct) || from.resetsAt !== to.resetsAt || usedOf(to, now) === null) return null
+    const d = round1(to.pct - from.pct)
+    return d >= 0 ? d : null
+  })
 }
 
 const newest = (list) => [...list].sort((a, b) => b.at - a.at).slice(0, MAX_INTERVALS)
@@ -87,14 +114,14 @@ export function intervalsOf(meter, kind, now) {
   const seen = new Set()
   const fresh = [...meter.others[kind], ...meter.mine[kind]].filter((i) => {
     const id = `${i.at}:${i.d}:${i.u}:${i.c}`
-    if (i.at < now - MAX_AGE_MS || seen.has(id)) return false
+    if (i.at < now - MAX_AGE_MS || i.d >= JUMP_RISE || seen.has(id)) return false
     seen.add(id)
     return true
   })
   return newest(fresh)
 }
 
-const validInterval = (i) => i !== null && typeof i === 'object' && finite(i.d, i.u, i.c, i.at) && i.d > 0 && i.u > 0 && i.c >= 0
+const validInterval = (i) => i !== null && typeof i === 'object' && finite(i.d, i.u, i.c, i.at) && i.d > 0 && i.d < JUMP_RISE && i.u > 0 && i.c >= 0
 
 function intervalsIn(value, kind) {
   if (value === null || typeof value !== 'object' || value.v !== 1 || !Array.isArray(value[kind])) return []
