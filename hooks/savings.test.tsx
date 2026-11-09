@@ -61,10 +61,10 @@ const drain = async (stream: AsyncGenerator<unknown, unknown>) => {
   return r.value
 }
 
-type Options = { subscription: boolean; gate?: boolean; agents?: number; readings?: number; finish?: boolean; complete?: boolean; preload?: Record<string, unknown>; now?: number; record?: Record<string, unknown> }
+type Options = { subscription: boolean; context?: { tokens?: number }; compact?: number; gate?: boolean; agents?: number; readings?: number; finish?: boolean; complete?: boolean; preload?: Record<string, unknown>; now?: number; record?: Record<string, unknown> }
 
 async function flow($: any, on: any, options: Options) {
-  const { subscription, gate = true, agents = 1, readings = 6, finish = true, complete = true, preload = {}, now = 5000, record = {} } = options
+  const { subscription, context = {}, compact, gate = true, agents = 1, readings = 6, finish = true, complete = true, preload = {}, now = 5000, record = {} } = options
   const writes: Record<string, string> = {}
   const toasts: string[] = []
   const store: Record<string, unknown> = { ...preload }
@@ -79,7 +79,10 @@ async function flow($: any, on: any, options: Options) {
   on('session.end', () => ({ sessionId: SESSION }))
   on('session.start', (_: any, e: any) => ({ cwd: e.cwd }))
   on('session.messages', () => ({ value: notices }))
-  on('session.usage', () => ({ value: { startedAt: 0, context: { window: 200000 }, rateLimits: subscription ? limits(percent) : [] } }))
+  const fill = { window: 200000, ...context }
+  on('session.usage', (_: any, e: any) => ({
+    value: { startedAt: 0, context: e.breakdown && compact ? { ...fill, breakdown: { rawMaxTokens: compact, isAutoCompactEnabled: true } } : fill, rateLimits: subscription ? limits(percent) : [] }
+  }))
   on('session.measure', (_: any, e: any) => ({ changed: e.changed }))
   on('command.register', () => ({ value: { command: 'ultraguard' } }))
   on('turn.complete', () => ({ text: '' }))
@@ -119,7 +122,7 @@ async function flow($: any, on: any, options: Options) {
     return <Text>engine</Text>
   })
   const step = (over: Record<string, unknown>) => drain($.turn.step({ turnId: 't1', index: (index += 1), model: SONNET, messageCount: 1, ...over }))
-  const measure = () => $.session.measure({ context: { window: 200000 }, rateLimits: subscription ? limits(percent) : [], changed: ['rateLimits'] })
+  const measure = () => $.session.measure({ context: fill, rateLimits: subscription ? limits(percent) : [], changed: ['rateLimits'] })
 
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
   await step({ model: OPUS, effort: 'high' })
@@ -168,13 +171,12 @@ const detail = async ($: any, id: string) => {
 test('the detail shows what a finished run saved, against the session model and effort', async ($, on) => {
   const w = await flow($, on, { subscription: true })
   const ui = await detail($, w.id())
-  expect(await ui.find({ type: 'Text', text: /ultraguard saved/ })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: /compared with running every agent on Opus at high effort/ })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: /of your 5-hour limit/ })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: /of your weekly limit/ })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: /at API prices/ })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: /± = how far off the estimate can be, 9 times out of 10/ })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: /from 1 of 1 agents/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /ultraguard saved\s+vs every agent on Opus high/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^ +5-hour +[━╸─│ ]+ +13% +\+\d+\.\d ±\d+\.\d$/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^ +weekly +[━╸─│ ]+ +3% +\+/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^ +\$\d+\.\d\d ±\$\d+\.\d\d at API prices$/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^ +± = how far off, 9 times in 10$/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /from 1 of 1 agents/ })).toBeUndefined()
   expect(await ui.find({ type: 'Text', text: /^ +agent\s+5h saves {3}ran on$/ })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /saved of 5-hour limit/ })).toBeUndefined()
   await ui.unmount()
@@ -182,13 +184,49 @@ test('the detail shows what a finished run saved, against the session model and 
   expect(record.savings.baseline).toEqual({ model: OPUS, effort: 'high' })
   expect(record.savings.saved.status).toBe('estimated')
   expect(record.savings.saved.running).toBe(false)
+  expect(record.savings.saved.used.five_hour).toBe(13)
+  expect(JSON.stringify(record)).not.toContain('"compact"')
   expect(Object.keys(w.store)).toEqual([`meter:${SESSION}`])
 })
 
-test('an API session shows dollars and no limit lines', async ($, on) => {
+test('the saving is drawn as a bar whose cells are text, track and saved colors', async ($, on) => {
+  const w = await flow($, on, { subscription: true })
+  const ui = await detail($, w.id())
+  const cells = await ui.findAll({ type: 'Text', text: /^[━╸]$/ })
+  const colors = cells.map((c: any) => String(c.props.color))
+  expect(colors).toContain('text')
+  expect(colors.some((c: string) => /^#[0-9a-f]{6}$/.test(c))).toBe(true)
+  expect((await ui.findAll({ type: 'Text', text: /^─$/ })).every((c: any) => c.props.color === 'subtle')).toBe(true)
+  expect((await ui.findAll({ type: 'Text', text: /^│$/ })).every((c: any) => c.props.color === 'inactive')).toBe(true)
+  await ui.unmount()
+})
+
+test('the context row shows the live fill against the window', async ($, on) => {
+  const w = await flow($, on, { subscription: true, context: { tokens: 50000 } })
+  const ui = await detail($, w.id())
+  expect(await ui.find({ type: 'Text', text: /^ +context +[━╸─│ ]+ +25% +50k of 200k$/ })).toBeDefined()
+  await ui.unmount()
+})
+
+test('the context row measures against the compaction window when one is set', async ($, on) => {
+  const w = await flow($, on, { subscription: true, context: { tokens: 50000 }, compact: 100000 })
+  const ui = await detail($, w.id())
+  expect(await ui.find({ type: 'Text', text: /^ +context +[━╸─│ ]+ +50% +50k of 100k$/ })).toBeDefined()
+  await ui.unmount()
+})
+
+test('the context row waits with a dash until the first response of a window', async ($, on) => {
+  const w = await flow($, on, { subscription: true })
+  const ui = await detail($, w.id())
+  expect(await ui.find({ type: 'Text', text: /^ +context +[─│ ]+ +— +— of 200k$/ })).toBeDefined()
+  await ui.unmount()
+})
+
+test('an API session shows a cost bar and no limit lines', async ($, on) => {
   const w = await flow($, on, { subscription: false })
   const ui = await detail($, w.id())
-  expect(await ui.find({ type: 'Text', text: /off your API bill/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^ +cost +[━╸─│ ]+ +\$\d+\.\d\d +\+\$\d+\.\d\d ±\$\d+\.\d\d$/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /off your API bill/ })).toBeUndefined()
   expect(await ui.find({ type: 'Text', text: /5-hour/ })).toBeUndefined()
   expect(await ui.find({ type: 'Text', text: /^ +agent\s+API saves {3}ran on$/ })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /5h saves/ })).toBeUndefined()
@@ -198,8 +236,8 @@ test('an API session shows dollars and no limit lines', async ($, on) => {
 test('a subscription with too few readings says it is still learning', async ($, on) => {
   const w = await flow($, on, { subscription: true, readings: 2 })
   const ui = await detail($, w.id())
-  expect(await ui.find({ type: 'Text', text: /learning how fast your limit fills/ })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: /of your 5-hour limit/ })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: /learning \d\/5$/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /\+\d+\.\d ±/ })).toBeUndefined()
   await ui.unmount()
 })
 
@@ -281,11 +319,11 @@ test('a session start removes the stored meter readings that are all older than 
   expect(Object.keys(w.store).sort()).toEqual(['meter:recent', `meter:${SESSION}`].sort())
 })
 
-test('the saved block wraps instead of cutting, and the saved column keeps the same title on a narrow pane', async ($, on) => {
+test('the saved block is laid out for the pane and the saved column keeps the same title on a narrow pane', async ($, on) => {
   const w = await flow($, on, { subscription: false })
   const narrow = await $.ui.mount({ ...PANE, props: { ...PANE.props, bodyColumns: 60 }, surface: 'terminal' })
   await narrow.press({ key: `run:${w.id()}` })
-  expect((await narrow.find({ type: 'Text', text: /compared with running every agent/ }))?.props.wrap).toBe('wrap')
+  expect((await narrow.find({ type: 'Text', text: /vs every agent on Opus high/ }))?.props.wrap).toBe('truncate-end')
   expect((await narrow.find({ type: 'Text', text: /^ +agent\s/ }))?.text).toMatch(/^ +agent\s+API saves {3}ran on$/)
   await narrow.unmount()
   const wide = await $.ui.mount({ ...PANE, props: { ...PANE.props, bodyColumns: 140 }, surface: 'terminal' })

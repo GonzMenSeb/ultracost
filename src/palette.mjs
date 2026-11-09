@@ -8,7 +8,8 @@ const FAMILY_EFFORT = { haiku: 'xhigh', sonnet: 'high', opus: 'high' }
 const SAVED_STOPS = [
   [1, [0.86, 0.1, 205]],
   [10, [0.72, 0.14, 255]],
-  [20, [0.6, 0.18, 292]]
+  [20, [0.6, 0.18, 292]],
+  [40, [0.42, 0.2, 302]]
 ]
 
 const rampOf = (model) => RAMP[model === 'fable' ? 'opus' : model]

@@ -1,7 +1,8 @@
-import { savedColor } from './palette.mjs'
+import { modelColor, savedColor } from './palette.mjs'
+import { MAX_WIDTH, layoutOf, rowLine } from './bars.mjs'
+import { limitMessages, wrapText } from './limitText.mjs'
 
 const FAMILY_STYLES = new Set(['opus', 'sonnet', 'haiku', 'fable'])
-const AMOUNT_COLUMN = 36
 const DASH = '—'
 
 const seg = (text, style = 'plain') => ({ text, style })
@@ -26,45 +27,115 @@ export function fmtTokens(n) {
 
 const fiveHourOf = (saved) => (saved?.subscription === true && saved.limits?.five_hour) || null
 
-function figure(amount, label, range, pm, tail, pct) {
-  const left = [seg('  '), pct === undefined ? bold(amount) : savedSeg(amount, pct), seg(label)]
-  const pad = Math.max(AMOUNT_COLUMN - textOf(left), 2)
-  return { range, line: [...left, seg(' '.repeat(pad)), dim(`± ${pm}`), ...tail] }
+const finite = (x) => typeof x === 'number' && Number.isFinite(x)
+const clampPct = (x) => Math.min(100, Math.max(0, x))
+const fmtWindow = (n) => (n % 1e6 === 0 ? `${n / 1e6}M` : fmtTokens(n))
+const signed = (x, fixed) => (Math.abs(x) < 0.05 ? 0 : x).toFixed(fixed)
+const LIMIT_KEYS = [
+  ['five_hour', '5-hour'],
+  ['seven_day', 'weekly']
+]
+
+function wrapLine(line, width) {
+  const words = [[]]
+  for (const part of line) {
+    for (const piece of part.text.split(/(?<= )/)) {
+      if (piece === '') continue
+      words[words.length - 1].push({ ...part, text: piece })
+      if (piece.endsWith(' ')) words.push([])
+    }
+  }
+  const trim = (l) => l.map((p, i) => (i === l.length - 1 ? { ...p, text: p.text.trimEnd() } : p))
+  const lines = [[seg('  ')]]
+  let used = 2
+  for (const word of words) {
+    if (word.length === 0) continue
+    const full = textOf(word)
+    const bare = word[word.length - 1].text.endsWith(' ') ? full - 1 : full
+    if (used > 2 && used + bare > width) {
+      lines[lines.length - 1] = trim(lines[lines.length - 1])
+      lines.push([seg('  ')])
+      used = 2
+    }
+    lines[lines.length - 1].push(...word)
+    used += full
+  }
+  lines[lines.length - 1] = trim(lines[lines.length - 1])
+  return lines
+}
+
+const proseLines = (text, width, style = 'plain') => wrapText(text, Math.max(width - 2, 10)).map((l) => [seg(`  ${l}`, style)])
+
+function modelSeg(baseline) {
+  const color = modelColor(baseline.family, baseline.effort)
+  return color ? { text: capitalize(baseline.family), style: 'bold', color } : familySeg(baseline.family)
+}
+
+function headLines(saved, width) {
+  const head = bold(saved.running ? 'ultraguard saved so far' : 'ultraguard saved')
+  if (!saved.baseline) return [[head]]
+  const vs = [dim('vs every agent on '), modelSeg(saved.baseline), dim(` ${saved.baseline.effort}`)]
+  const oneLine = [head, dim('  '), ...vs]
+  return textOf(oneLine) <= width ? [oneLine] : [[head], vs]
+}
+
+function contextRow(context) {
+  if (!context || !(context.window > 0)) return null
+  const known = finite(context.pct)
+  const of = fmtWindow(context.window)
+  return {
+    label: 'context',
+    used: known ? clampPct(context.pct) : 0,
+    usedText: known ? `${Math.round(context.pct)}%` : DASH,
+    saved: 0,
+    fig: [dim(`${finite(context.tokens) ? fmtTokens(context.tokens) : DASH} of ${of}`)],
+    range: null
+  }
 }
 
 function limitRows(saved) {
   if (saved.subscription !== true || !saved.limits) return []
-  const { limits } = saved
-  return [
-    ['five_hour', '5-hour', 'your 5-hour limit'],
-    ['seven_day', 'weekly', 'your weekly limit']
-  ].map(([key, name, label]) => {
-    const range = limits[key]
-    if (range) return figure(fmtPct(range.mid), ` of ${label}`, range, range.pm.toFixed(1), [], range.mid)
-    const readings = limits.readings?.[key] ?? 0
-    return { line: [dim(`  ${name} limit: learning how fast your limit fills, ${readings} of 5 readings so far`)] }
+  return LIMIT_KEYS.map(([key, label]) => {
+    const used = finite(saved.used?.[key]) ? clampPct(saved.used[key]) : null
+    const usedText = used === null ? '' : `${Math.round(used)}%`
+    const range = saved.limits[key]
+    if (!range) return { label, used, usedText, saved: 0, fig: [dim(`learning ${saved.limits.readings?.[key] ?? 0}/5`)], range: null }
+    const gain = range.mid > 0 ? range.mid : 0
+    const amount = gain > 0 ? savedSeg(`+${range.mid < 0.1 ? '<0.1' : range.mid.toFixed(1)}`, range.mid) : seg(signed(range.mid, 1))
+    return { label, used, usedText, saved: gain, fig: [amount, dim(` ±${range.pm.toFixed(1)}`)], range }
   })
 }
 
-function dollarRow(saved) {
-  const { dollars, baselineDollars, baseline } = saved
-  if (!dollars) return null
-  const tail = []
-  if (baselineDollars > 0 && dollars.mid > 0) {
-    tail.push(dim(`   ${Math.round((100 * dollars.mid) / baselineDollars)}% of the ${fmtUsd(baselineDollars)} ${capitalize(baseline.family)} would cost`))
+function costRow(saved) {
+  const { dollars, baselineDollars: base, actualDollars } = saved
+  if (saved.subscription !== false || !dollars || !(base > 0)) return null
+  const gain = dollars.mid > 0 ? Math.min(100, (100 * dollars.mid) / base) : 0
+  const spent = finite(actualDollars) ? actualDollars : base - dollars.mid
+  const amount = gain > 0 ? savedSeg(`+${fmtUsd(dollars.mid)}`, gain) : seg(fmtUsd(dollars.mid))
+  return {
+    label: 'cost',
+    used: Math.max(0, Math.min((100 * spent) / base, 100 - gain)),
+    usedText: fmtUsd(spent),
+    saved: gain,
+    fig: [amount, dim(` ±${fmtUsd(dollars.pm)}`)],
+    range: dollars
   }
-  const label = saved.subscription === false ? ' off your API bill' : ' at API prices'
-  return figure(fmtUsd(dollars.mid), label, dollars, fmtUsd(dollars.pm), tail)
 }
 
-function tokensLine(saved) {
-  if (!saved.tokens) return null
+function moneyLine(saved) {
+  const { dollars } = saved
+  if (!dollars) return null
+  return [seg('  '), bold(fmtUsd(dollars.mid)), dim(` ±${fmtUsd(dollars.pm)}`), seg(saved.subscription === false ? ' off your API bill' : ' at API prices')]
+}
+
+function tokenLines(saved, width) {
+  if (!saved.tokens) return []
   const n = fmtTokens(saved.tokens.saved)
-  if (saved.tokens.saved >= 0) return [seg('  '), bold(n), seg(' fewer tokens')]
+  if (saved.tokens.saved >= 0) return [[seg('  '), bold(n), seg(' fewer tokens')]]
   const families = [...new Set(saved.transitions.filter((t) => t.source !== 'identical').map((t) => t.from.split(':')[0]))]
   const joiner = (i) => (i === families.length - 1 ? ' and ' : ', ')
   const who = families.length ? families.flatMap((f, i) => (i ? [seg(joiner(i)), familySeg(f)] : [familySeg(f)])) : [seg('the agents')]
-  return [seg('  '), bold(n), seg(' more tokens: '), ...who, seg(' read and wrote more, at a lower price per token')]
+  return wrapLine([bold(n), seg(' more tokens: '), ...who, seg(' read and wrote more, at a lower price per token')], width)
 }
 
 function coverageText({ coverage }) {
@@ -92,37 +163,46 @@ function sourceLines({ sources }) {
   }
 }
 
-const versusLine = (baseline) => [
-  dim('compared with running every agent on '),
-  familySeg(baseline.family),
-  dim(` at ${baseline.effort} effort, your session's setting`)
-]
-
-export function savedBlock(saved) {
-  const head = [bold(saved.running ? 'ultraguard saved so far' : 'ultraguard saved')]
-  if (saved.status === 'none') return [head, [seg("  every agent ran on your session's model and effort, so nothing was saved")]]
-  if (!saved.baseline) return [head, [seg("  ultraguard could not read your session's model or effort, so it has no estimate")]]
-
-  const out = [head, versusLine(saved.baseline)]
+function coverageLines(saved) {
   const { base, reasons } = coverageText(saved)
+  const { measured, others } = sourceLines(saved)
+  if (reasons.length === 0 && saved.coverage.used >= saved.coverage.total && others.length === 0) return []
+  return [reasons.length ? `${base}: ${reasons.join('; ')}` : base, ...(measured ? [measured] : []), ...others]
+}
+
+export function savedBlock(saved, { width = MAX_WIDTH, context = null } = {}) {
+  const room = Math.min(width, MAX_WIDTH)
+  const head = headLines(saved, room)
+  if (saved.status === 'none') return [...head, ...proseLines("every agent ran on your session's model and effort, so nothing was saved", room)]
+  if (!saved.baseline) return [...head, ...proseLines("ultraguard could not read your session's model or effort, so it has no estimate", room)]
+
   if (saved.status !== 'estimated') {
-    out.push([dim(`  ${base}${reasons.length ? `: ${reasons.join('; ')}` : ''}`)])
-    return out
+    const { base, reasons } = coverageText(saved)
+    return [...head, ...proseLines(`${base}${reasons.length ? `: ${reasons.join('; ')}` : ''}`, room, 'dim')]
   }
 
-  const rows = [...limitRows(saved), dollarRow(saved)].filter(Boolean)
-  const first = rows.find((r) => r.range)
-  if (first && first.range.lo < 0) first.line.push(dim('   this run may have saved nothing'))
-  out.push(...rows.map((r) => r.line))
-  const tokens = tokensLine(saved)
-  if (tokens) out.push(tokens)
+  const limits = limitRows(saved)
+  const cost = costRow(saved)
+  const rows = [contextRow(context), ...limits, cost].filter(Boolean)
+  const out = [...head]
+  if (rows.length > 0) {
+    const layout = layoutOf(rows, room)
+    out.push(...rows.map((r) => rowLine(r, layout)))
+  }
+  for (const message of limitMessages(limits)) out.push(...proseLines(message, room))
 
-  const { measured, others } = sourceLines(saved)
-  const coverage = reasons.length ? `${base}: ${reasons.join('; ')}` : measured ? `${base}  ${measured}` : base
-  const lines = ['± = how far off the estimate can be, 9 times out of 10', coverage]
-  if (reasons.length && measured) lines.push(measured)
-  lines.push(...others)
-  out.push(...lines.map((l) => [dim(`  ${l}`)]))
+  if (!cost) {
+    const money = moneyLine(saved)
+    if (money) out.push(money)
+  }
+  out.push(...tokenLines(saved, room))
+
+  const firstRange = rows.find((r) => r.range)?.range ?? saved.dollars
+  if (firstRange) {
+    out.push(...proseLines('± = how far off, 9 times in 10', room, 'dim'))
+    if (firstRange.lo < 0) out.push(...proseLines('this run may have saved nothing', room, 'dim'))
+  }
+  for (const line of coverageLines(saved)) out.push(...proseLines(line, room, 'dim'))
   return out
 }
 

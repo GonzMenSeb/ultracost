@@ -74,6 +74,7 @@ export type Saved = {
     seven_day: SavedRange | null
     readings: { five_hour: number; seven_day: number }
   } | null
+  used?: { five_hour: number | null; seven_day: number | null }
   agents: { agentId: string; dollars: number | null; five_hour: number | null }[]
   groups?: { key: string; dollars: number | null; five_hour: number | null; used: number; total: number }[]
   coverage: { used: number; total: number; unpriced: number; noRatio: string[] }
@@ -170,8 +171,16 @@ export type EvalState = {
   meter: EvalMeter
 }
 
+export type ContextState = {
+  tokens: number | null
+  window: number
+  compact: number | null
+  asked: number
+  misses: number
+}
+
 declare module 'claude-code' {
   interface PluginState {
-    ultraguard: { eval: Shaped<EvalState> }
+    ultraguard: { eval: Shaped<EvalState>; context: Shaped<ContextState> }
   }
 }

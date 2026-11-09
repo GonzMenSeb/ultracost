@@ -75,6 +75,12 @@ export function noteReading(meter, rateLimits, at, prices) {
   return next
 }
 
+export function usedOf(last, now) {
+  if (!last || !finite(last.pct)) return null
+  const reset = typeof last.resetsAt === 'string' ? Date.parse(last.resetsAt) : NaN
+  return Number.isFinite(reset) && reset <= now ? null : last.pct
+}
+
 const newest = (list) => [...list].sort((a, b) => b.at - a.at).slice(0, MAX_INTERVALS)
 
 export function intervalsOf(meter, kind, now) {

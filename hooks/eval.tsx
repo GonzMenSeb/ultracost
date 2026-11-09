@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { EvalAgentView, EvalPhaseView, EvalState } from '../types'
+import type { ContextState, EvalAgentView, EvalPhaseView, EvalState } from '../types'
 import { sha256Hex } from '../src/fingerprint.mjs'
 import { recordPath } from '../src/record.mjs'
 import {
@@ -37,7 +37,8 @@ import {
   runView,
   setFolds
 } from '../src/eval.mjs'
-import { intervalsOf, staleKeys, storedValue } from '../src/meter.mjs'
+import { contextFill, createContext, noteBreakdown, noteContext } from '../src/context.mjs'
+import { intervalsOf, staleKeys, storedValue, usedOf } from '../src/meter.mjs'
 import { familyColor, modelColor, savedColor } from '../src/palette.mjs'
 import { loadPrices, priceFamily } from '../src/prices.mjs'
 import { agentColumn, listCell, listHeader, modelLines, phaseHeadLength, phaseLayout, phaseStatus, phaseTitle, savedBlock, toastText } from '../src/savedText.mjs'
@@ -51,10 +52,11 @@ const TOAST_MS = 8000
 const DRAWS_RUNNING = 1000
 
 const ev = atom({ plugin: 'ultraguard', key: 'eval' } as const, createState() as EvalState, { shape: 'eval-2' })
+const ctx = atom({ plugin: 'ultraguard', key: 'context' } as const, createContext() as ContextState, { shape: 'context-1' })
 
 type Ids = { toolUseId: string; runId: string }
 type Notice = { toolUseId: string | null | undefined; taskId: string | null | undefined; status: string }
-type Segment = { text: string; style: string; pct?: number }
+type Segment = { text: string; style: string; pct?: number; color?: string }
 type Data = { prices: any; ratios: any }
 type WorkflowOutput = { taskId?: string; runId?: string; workflowName?: string; summary?: string; error?: string }
 
@@ -66,6 +68,7 @@ const countsWidth = (c: { opus: number; sonnet: number; haiku: number }) => {
 }
 
 const segmentLook = (g: Segment) => {
+  if (g.color) return { weight: g.style === 'bold' ? ('bold' as const) : undefined, color: g.color }
   if (g.style === 'saved') return { weight: 'bold' as const, color: savedColor(g.pct ?? 0) }
   const family = familyColor(g.style)
   if (family) return { weight: 'bold' as const, color: family }
@@ -194,7 +197,25 @@ async function estimate($: EngineInterface, key: string) {
     ...(running ? { draws: DRAWS_RUNNING } : {}),
     running
   })
-  await update($, ev, st => noteSaved(st, key, saved))
+  const used = { five_hour: usedOf(s.meter.last.five_hour, at), seven_day: usedOf(s.meter.last.seven_day, at) }
+  await update($, ev, st => noteSaved(st, key, { ...saved, used }))
+}
+
+const forgetTokens = (x: ContextState) => (x.tokens === null ? x : { ...x, tokens: null })
+
+async function readWindow($: EngineInterface, window: number) {
+  const r = await $.session.usage({ breakdown: 'summary' }).catch(() => null)
+  await update($, ctx, x => noteBreakdown(x, window, r?.context.breakdown))
+}
+
+async function noteWindow($: EngineInterface, context: { tokens?: number; window: number; percent?: number }) {
+  let ask = false
+  await update($, ctx, x => {
+    const next = noteContext(x, context)
+    ask = next.ask
+    return next.state
+  })
+  return ask
 }
 
 let inflight = 0
@@ -290,12 +311,33 @@ export const register: Register = on => {
     })
     dataLoad = null
     await guard($, 'meter', () => loadMeter($))
+    await guard($, 'context', async () => {
+      const { context } = await $.session.usage()
+      if (await noteWindow($, context)) await readWindow($, context.window)
+    })
     return next(e)
   })
 
   on('session.measure', async ($, e, next) => {
     if (e.changed.includes('rateLimits')) await guard($, 'measure', () => recordReading($, e.rateLimits))
-    return next(e)
+    let ask = false
+    await guard($, 'context', async () => {
+      ask = await noteWindow($, e.context)
+    })
+    const done = await next(e)
+    if (ask) await guard($, 'context window', () => readWindow($, e.context.window))
+    return done
+  })
+
+  on('session.compact', async ($, e, next) => {
+    const done = await next(e)
+    if (e.agentId === undefined) {
+      await guard($, 'compact', async () => {
+        const { context } = await $.session.usage()
+        if (await noteWindow($, context)) await readWindow($, context.window)
+      })
+    }
+    return done
   })
 
   on('command.run', { command: 'ultraguard' }, async $ => {
@@ -309,6 +351,7 @@ export const register: Register = on => {
         const live = Object.values((await read($, ev)).runs).filter(r => r.status === 'running')
         const at = await $.clock.now()
         await update($, ev, s => hideFinished(endAllRuns(s, 'cleared', at)))
+        await update($, ctx, forgetTokens)
         for (const run of live) await persist($, run.key)
       })
     }
@@ -447,7 +490,6 @@ export const register: Register = on => {
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const { Box, Button, Text } = $.ui.resolve(e)
     const line = lineOf(Text)
-    const wrapped = lineOf(Text, 'wrap')
     const state = await read($, ev)
     const runs = activeRuns(state).map(r => runView(r))
     const finished = finishedRuns(state).map(r => runView(r))
@@ -490,15 +532,15 @@ export const register: Register = on => {
           {c.ok ? c.detail && <Text dimColor>{`  ${c.detail}`}</Text> : <Text color="error">{`  ${c.reason}`}</Text>}
         </Text>
       ))
+      const width = e.props.bodyColumns - 4
       const saved = open.saved && (
         <Box flexDirection="column">
-          {savedBlock(open.saved).map(wrapped)}
+          {savedBlock(open.saved, { width, context: contextFill(await read($, ctx)) }).map(line)}
           <Text> </Text>
         </Box>
       )
 
       const filled = (phases ?? []).filter(p => p.total > 0)
-      const width = e.props.bodyColumns - 4
       const { field, savedAt, savedWidth, modelsAt } = phaseLayout({
         labels: open.agents.map((a: EvalAgentView) => a.label),
         heads: filled.map(phaseHeadLength),

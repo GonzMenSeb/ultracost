@@ -441,6 +441,7 @@ ultraguard-eval writes this file for each workflow run it saw, next to the gate'
 | `agents` | one entry per agent, with `agent_id`, `label`, `askedModel`, `ranModel`, `approved` (the matched stage's model and effort), `sent` (each distinct model and effort the agent's requests used), `done`, `phase` (the agent's phase title, or `null`), `ok` and `reason` |
 | `phases` | one entry per phase shown in the detail, with `title` (`null` for the "phase unknown" group), `state` and the `agents` ids in it. `null` when the run has no phases |
 | `savings` | per-agent usage by configuration, the baseline configuration, each transition's source and ratio, the seed, and the results (see [Savings](#savings)) |
+| `savings.saved.used` | optional. The limit use drawn in the gray part of the bars: `{ five_hour, seven_day }`, each a percent (0 to 100) or `null` when there is no reading. Frozen at the last estimate. Absent on records written before 0.4.14, which draw the row without a bar |
 
 ## ultraguard-eval
 
@@ -605,37 +606,45 @@ Enter on a run shows the four checks, then the run's phases like Claude Code's o
 What a run costs runs warm, what it saved runs cool. Colors sit in the characters, never in a fill.
 
 - **Models and efforts:** the model name is bold in its color and the effort word stays dim. Haiku is gold, Sonnet orange and Opus red, each deepening from `low` to `xhigh` (Opus at `xhigh` is the deep crimson, `#d63150`). A count such as `sonnet 32` and a family name in the saved block use the usual shade of the family: Haiku at `xhigh`, Sonnet and Opus at `high`. Fable takes the Opus colors.
-- **Saved:** a percentage of the 5-hour limit is bold and runs from aqua at 1% through azure at 10% to violet at 20% and above, between those points in even steps of perceived color. The same color marks the saved figure of an agent and of a phase. Dollars and tokens stay plain.
+- **Saved:** a percentage of the 5-hour limit is bold and runs from cyan at 1% through blue at 10% and violet at 20% to the deep purple `#641aa5` at 40% and above, between those points in even steps of perceived color. Darker means more saved. The same color marks the saving in a bar, the `+N` figure beside it, and the saved figure of an agent and of a phase. Dollars and tokens stay plain.
+- **Bars:** the used part takes the theme's `text` color, the empty track `subtle` and the limit mark `inactive`, so they follow the terminal's theme.
 - **Status:** green and red stay for the squares, the circles and the check marks (hollow, filled on the focused row), and mean only as approved or not.
 
-The colors are tuned for a dark terminal: each one keeps at least 3:1 contrast on a `#262626` background.
+The colors are tuned for a dark terminal: each one keeps at least 3:1 contrast on a `#262626` background, except the saved colors past 20%. They fall from 3.6:1 at 20% (violet) to about 1.6:1 at 40% and above (the deep purple), so a large saving is faint on a dark terminal. Light terminals read the deep purple well.
 
 ### What the pane shows
 
 The row above the prompt keeps its meaning, with a hollow square: green and red still mean only enforced or evaded.
 
-Workflow detail (Enter on a run), after the four checks:
+Workflow detail (Enter on a run), after the four checks, at width 56:
 
 ```
-ultraguard saved
-compared with running every agent on Opus at high effort, your session's setting
-  1.4% of your 5-hour limit        ± 0.6
-  0.2% of your weekly limit        ± 0.1
-  $2.32 at API prices              ± $0.59   62% of the $3.77 Opus would cost
+ultraguard saved  vs every agent on Opus high
+  context ━━━━━━━━━━╸──────────────│   42%  84k of 200k
+  5-hour  ━━━━━━━━━━━━━━───────────│   40%  +15.0 ±4.0
+  weekly  ━━━╸─────────────────────│   10%  +2.4 ±0.9
+  without ultraguard you would have been past half of
+  your 5-hour limit already
+  $2.32 ±$0.59 at API prices
   2.9M fewer tokens
-  ± = how far off the estimate can be, 9 times out of 10
-  from 4 of 4 agents  ratio measured on 4 replayed agents
+  ± = how far off, 9 times in 10
 ```
 
 The agent table gets one more column, "5h saves" (or "API saves" when no limit figure shows), with each agent's median, and each phase row shows the figure of its agents.
 
+- **Width:** the block is at most 56 columns wide and has the same compact layout at every pane width. Text wraps at the block's width.
+- **Bars:** one thick-line bar per row: context, 5-hour and weekly. `━` is a full cell, `╸` a half cell and `─` the empty track. `│` marks 100% of the limit. When use plus saving passes 100%, the bar grows past the mark, up to 150%, and a `»` caps the last cell when it passes 150%.
+- **Row text:** after the bar, the used percent (context: the share of the window), then the saving as `+N ±M` in points of the limit. Context shows the tokens against the window, such as `84k of 200k`. A saving of 0 or less shows without a `+`, and a window still learning shows `learning 3/5`.
+- **Saving color:** the saved cells run on the gradient described under [Colors](#colors). The last saved cell and the `+N` figure share one color.
+- **Used part:** the gray part of a limit bar is the use frozen at the last estimate, from the record's `used`. A record with no `used`, or a window with no reading, draws the row without a bar.
+- **Context row:** it reads the session's live context window as a status line does: tokens against the model's window, or against the smaller compaction window when auto-compaction is on. Right after a fresh session or a compaction it shows an empty track and a dash until the next response.
 - **Running:** the heading reads "ultraguard saved so far".
-- **API key:** the first line is "$2.32 off your API bill", with no limit lines.
-- **Limit not calibrated:** "5-hour limit: learning how fast your limit fills, 3 of 5 readings so far".
-- **More tokens:** "8.8M more tokens: Sonnet read and wrote more, at a lower price per token". With two or more families it reads "Haiku, Opus and Sonnet read and wrote more…".
-- **Range below zero:** the first figure line ends with "this run may have saved nothing".
-- **Sources:** "ratio measured on N replayed agents"; "ratio measured at high effort, adjusted with published figures for xhigh"; "no replay measured sonnet medium against opus high; using published figures, so ± is wide".
-- **Coverage:** "from 5 of 6 agents: ultraguard has no price for the model one agent ran on".
+- **API key:** the bars are context and cost. The cost bar shows the dollars spent as the used part and `+$2.32 ±$0.59` as the saving. There is no limit row, no limit message and no money line.
+- **Limit not calibrated:** the row reads `learning 3/5` instead of the saving, with the readings so far.
+- **Limit messages:** they sit under the bars, one per kind. "without ultraguard you would have blown past your 5-hour limit" when use plus saving would have passed 100%. "... would have had only 2% of your 5-hour limit left" when it comes within 10 points of the limit. "... would have been past half of your 5-hour limit already" when use plus saving passes 50% and use alone stays under it. Rows of the same kind join, except the "only N% left" kind: "5-hour and weekly limits". For the first two kinds, a saving under 2% is hedged: "would likely have" when the low end of the range still lands in the same band, "might have" when it does not. For the half kind, a margin under 5 points over half is hedged with "likely".
+- **Money and tokens:** on a subscription the money line reads `$2.32 ±$0.59 at API prices`. The tokens line is "2.9M fewer tokens", or "8.8M more tokens: Sonnet read and wrote more, at a lower price per token". With two or more families it reads "Haiku, Opus and Sonnet read and wrote more…". Each is on its own line.
+- **Note:** the dim line "± = how far off, 9 times in 10" follows, and under it "this run may have saved nothing" when the range reaches below zero.
+- **Coverage:** these dim lines appear only when something is off: "from 3 of 4 agents: ultraguard has no price for the model one agent ran on", "ratio measured at high effort, adjusted with published figures for xhigh", "no replay measured sonnet medium against opus high; using published figures, so ± is wide". When they show, "ratio measured on N replayed agents" comes with them.
 - **Nothing to estimate:** "every agent ran on your session's model and effort, so nothing was saved"; "ultraguard could not read your session's model or effort, so it has no estimate".
 
 Run list: a dim header row `workflow  id  agents  5h saves` (or `API saves`). Green rows show `1.4% ± 0.6`, running rows `0.6% so far`, red rows keep their reason.

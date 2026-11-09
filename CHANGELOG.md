@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.14 - ultraguard
+
+- The "ultraguard saved" block in ultraguard-eval now draws bars. One thick-line bar per row: context, 5-hour and weekly (API key users get context and cost). The used part is in the theme's text color, the saving is colored, and the rest is a track. A mark at 100 percent shows the limit, and a cap shows when use plus saving passes 150 percent of it. The block is at most 56 columns wide, the same compact layout at every pane width.
+- The saving is a gradient, darker meaning more saved: cyan at 1 percent, blue at 10, violet at 20 and a deep purple (`#641aa5`) at 40 percent, flat after. The last saved cell and the `+N` figure have the same color.
+- Limit messages sit under the bars. They say when use plus saving would have passed the limit ("without ultraguard you would have blown past your 5-hour limit"), come within 10 points of it ("...would have had only 2% of your 5-hour limit left"), or passed half of it while use alone stayed under half ("...would have been past half of your 5-hour limit already"). A saving under 2 percent, or a margin under 5 points over half, is hedged with "likely" or "might".
+- The footer puts the money line and the tokens line each on their own line, then the dim note "± = how far off, 9 times in 10", and "this run may have saved nothing" when the range reaches below zero. The coverage lines (from N of M agents, missing prices or ratios, published-figure priors) appear only when something is off.
+- The context row reads the session's live context window the way a status line does: tokens against the model's window, or against the smaller compaction window when auto-compaction is on. Right after a fresh session or a compaction it shows an empty track and a dash until the next response.
+- The limit usage drawn in the gray part is frozen at the last estimate and stored on the saved record as `used: { five_hour, seven_day }` (percent or null). Records written before 0.4.14 have no `used` and draw the row without a bar.
+- The deep purple end of the gradient (`#641aa5`) has low contrast on dark terminals, about 1.6 to 1 on `#262626`, so a large saving is hard to read there. Light terminals read it well.
+
 ## 0.4.13 - ultraguard
 
 - The workflow detail in ultraguard-eval has a new layout. The columns are the agent, then what it saved, then "ran on" last, so the saved figure sits right after the labels, near its phase or agent. The approved model and effort are gone from the rows; a dim line under the phases says "✓ ran as the gate approved  ✗ did not".

@@ -58,19 +58,25 @@ test('a family is drawn in the shade of its usual effort', () => {
   assert.equal(familyColor('opus'), modelColor('opus', 'high'))
 })
 
-test('saved runs from light blue at 1% to violet at 20%, flat outside', () => {
+test('saved runs from light blue at 1% to violet at 20% and on to deep purple at 40%, flat outside', () => {
   assert.equal(savedColor(1), '#79e4f0')
   assert.equal(savedColor(10), '#65a7fa')
   assert.equal(savedColor(20), '#8565e1')
+  assert.equal(savedColor(40), '#641aa5')
   assert.equal(savedColor(0), savedColor(1))
   assert.equal(savedColor(-3), savedColor(1))
-  assert.equal(savedColor(35), savedColor(20))
   assert.equal(savedColor(NaN), savedColor(1))
+  assert.equal(savedColor(40.001), savedColor(40))
+  assert.equal(savedColor(80), savedColor(40))
 })
 
-test('saved colors deepen with the percentage and read on a dark terminal', () => {
-  const steps = [1, 3, 5, 8, 10, 12, 15, 18, 20]
-  const lum = steps.map((p) => luminance(savedColor(p)))
-  assert.deepEqual([...lum].sort((a, b) => b - a), lum)
-  for (const p of steps) assert.ok(contrast(savedColor(p)) >= 3, `${p}%`)
+test('saved colors deepen with the percentage, to 40%', () => {
+  const lum = []
+  for (let p = 1; p <= 40; p += 0.5) lum.push(luminance(savedColor(p)))
+  for (let i = 1; i < lum.length; i++) assert.ok(lum[i] <= lum[i - 1] + 1e-3, `luminance rises at step ${i}`)
+  assert.ok(luminance(savedColor(40)) < luminance(savedColor(20)))
+})
+
+test('saved colors up to 20% read on a dark terminal', () => {
+  for (const p of [1, 3, 5, 8, 10, 12, 15, 18, 20]) assert.ok(contrast(savedColor(p)) >= 3, `${p}%`)
 })

@@ -151,13 +151,17 @@ If a workflow is running, there is no ultraguard-eval row and `/ultraguard` is n
 
 ### See what it saved
 
-For each tracked run, ultraguard shows what it saved against running every agent of the workflow on your session's model at your session's effort. That is what Claude Code does when a stage pins nothing. Open a run in the pane to see:
+For each tracked run, ultraguard shows what it saved against running every agent of the workflow on your session's model at your session's effort. That is what Claude Code does when a stage pins nothing. Open a run in the pane to see the "ultraguard saved" block, one bar per row:
 
-- **On a subscription:** the percent of your 5-hour limit and of your weekly limit saved, in the percentages `/usage` shows.
-- **On an API key:** the dollars saved at API prices.
-- **Tokens:** how many fewer tokens the agents used. It can read "more tokens" when the cheaper model read and wrote more at a lower price per token.
+- **Context:** how full the session's context window is, as a status line shows it. Right after a fresh session or a compaction it shows an empty bar and a dash until the next response.
+- **On a subscription:** a 5-hour and a weekly bar. The used part is plain, the saving is colored, darker meaning more saved, and `+1.4 ±0.6` is the percent of the limit saved, in the percentages `/usage` shows. A mark at the end of the bar is 100 percent of the limit.
+- **On an API key:** a cost bar with the dollars spent and the dollars saved at API prices.
+- **Limit messages:** under the bars, when the saving mattered: without ultraguard you would have passed your 5-hour limit, come within 10 points of it, or passed half of it. A small saving is hedged with "likely" or "might".
+- **Money and tokens:** on a subscription, the dollars saved at API prices, then how many fewer tokens the agents used, each on its own line. It can read "more tokens" when the cheaper model read and wrote more at a lower price per token.
 
-Each percentage and dollar figure has a `±`: how far off the estimate can be, 9 times out of 10. The token figure is the median, with no `±`. A figure ultraguard cannot back is shown as unknown, never as 0.
+Each `±` is how far off the estimate can be, 9 times out of 10. The token figure is the median, with no `±`. A figure ultraguard cannot back is shown as unknown, never as 0. When something is off, such as agents left out of the estimate or ratios from published figures, a dim line says so.
+
+The bar shows the limit use as it was at the last estimate, not live. The deep purple of the largest savings is hard to read on dark terminals.
 
 Limit figures need 5 readings. ultraguard learns how fast your own limit fills from the `/usage` percentages as you work, and until a window has 5 readings the pane says "learning how fast your limit fills, 3 of 5 readings so far".
 
