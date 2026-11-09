@@ -16,21 +16,19 @@
 
 ## The problem
 
-With ultracode on, your session runs Opus 5.5 or Fable. A workflow fans out to many subagents, and each one inherits the session's model and effort unless its stage pins them. So a single multi-step task can start a dozen top-tier agents, most of them doing work a cheaper model handles just as well.
+With ultracode on, your session runs a top-tier model such as Opus or Fable. A workflow fans out to many subagents, and each one inherits the session's model and effort unless its stage pins them. So a single multi-step task can start a dozen top-tier agents, most of them doing work a cheaper model handles just as well.
 
-Pinning models is not enough on its own. In this project's own history, a workflow launched 10 research agents at once, all on Opus: six web-research and four code-mapping agents, every one labeled `synth:`. The label claimed synthesis. The work was reading.
+Pinning models is not enough on its own. In this project's own history a workflow launched 10 Opus agents at once, six web research and four code mapping, all labeled `synth:`. The label claimed synthesis; the work was reading.
 
 ## What ultraguard does
 
 <p align="center">
-  <img src="assets/flow.svg" alt="Flow: at session start ultraguard loads the policy into Claude's context; when Claude launches a workflow the gate checks every agent() call and passes or denies the launch; while the workflow runs, ultraguard-eval checks each agent against what the gate approved and shows the run green or red.">
+  <img src="assets/flow.svg" alt="Flow: the policy loads at session start, the gate passes or denies each workflow launch, and ultraguard-eval shows the run green or red.">
 </p>
 
 1. **At session start** it gives Claude the delegation policy, so Claude writes compliant workflow scripts the first time.
 2. **Before launch** a gate reads the workflow script and denies it if any `agent()` call breaks the policy. It never runs the script and makes no model call.
 3. **During the run** ultraguard-eval watches the agents the workflow spawns and shows, above the prompt, whether the run matches what the gate approved.
-
-Every gate decision and every run is written to a small JSON file, so you can check afterwards what happened.
 
 ## Install
 
@@ -46,9 +44,9 @@ The marketplace and the plugin are both named `ultraguard`. Start a new session 
 Two things people trip on:
 
 - **Node 18 or later must be on `PATH`.** The hooks run with whatever `node` is found there.
-- **`dontAsk` mode refuses every launch** unless `permissions.allow` has a `Workflow` entry. ultraguard never allows a launch itself; it only denies. ultraguard warns you at session start when your settings files set `dontAsk` without a `Workflow` allow rule. Details are in the [reference](docs/reference.md).
+- **In `dontAsk` mode, add a `Workflow` entry to `permissions.allow`.** ultraguard only denies, so without that rule `dontAsk` refuses every launch. ultraguard warns at session start when the rule is missing. Details are in the [reference](docs/reference.md#prerequisites-and-install).
 
-The gate needs Claude Code 2.1.295 or later. ultraguard is pinned to and live-tested on 2.1.319.
+The gate needs Claude Code 2.1.295 or later.
 
 ### See it work
 
@@ -56,11 +54,22 @@ The gate needs Claude Code 2.1.295 or later. ultraguard is pinned to and live-te
 2. Give Claude a multi-step task, or ask it outright to use a workflow.
 3. When Claude launches the workflow, a `□ ultraguard-eval` row appears above the prompt. Green means the run matches what the gate approved.
 
-Claude Code shows only one plugin row above the prompt. If another plugin draws there (Cognee's memory row does), ultraguard's row is hidden: turn that plugin's row off, or run `/ultraguard` to open the pane directly.
+Claude Code shows only one plugin row above the prompt, so another plugin's row (Cognee's memory row, for one) can hide ultraguard's. `/ultraguard` still opens the pane. If a workflow is running, there is no row and `/ultraguard` is not a command, ultraguard is not loaded in that session.
 
 <p align="center">
   <img src="assets/eval-green.svg" alt="The Claude Code prompt while a workflow runs, with a row above it: a green hollow square, the title ultraguard-eval and the summary 1 running.">
 </p>
+
+### Get the most out of it
+
+ultraguard only acts on workflows, so the more of your work runs as workflows, the more it saves. Two things help:
+
+- **Always run in ultracode.** Turn it on with `/effort ultracode` in each session, since it is per session. In ultracode Claude runs a workflow for every substantive task.
+- **Opt in to orchestration in your CLAUDE.md.** Without such an opt-in, Claude asks before orchestrating many agents. Add this line to `~/.claude/CLAUDE.md` to apply it to every project:
+
+```
+- ALWAYS use the Workflow tool for any parallelizable work: independent tasks, multi-file or multi-module sweeps, audits, reviews, research, migrations, or checking a result from several angles. This is my standing opt-in to multi-agent orchestration, so do not ask first. Scout inline to find the work list, then fan out with `pipeline()`/`parallel()`. Work sequentially only when steps depend on each other or the task is trivial.
+```
 
 ## The rules
 
@@ -77,8 +86,6 @@ Every `agent()` call carries a label that starts with a class, such as `decide:`
 - `build:`, `fix:` and `combine:` carry out work whose design is already decided. They run on Sonnet or Opus.
 - `code:` and `grunt:` do fully specified, fixed-shape work with nothing to decide: a table, a count, an extraction or a check over named inputs. They run on Sonnet, or on Haiku at `medium`, `high` or `xhigh`, and Haiku `medium` is the default.
 
-Opus is spent where a wrong call is expensive. Everything else goes to the cheapest model that does the job as well.
-
 ### Each rule and the waste it prevents
 
 | Rule | Waste it prevents |
@@ -88,10 +95,10 @@ Opus is spent where a wrong call is expensive. Everything else goes to the cheap
 | Investigation is `investigate:`, on Sonnet only. A `decide:`, `judge:` or `design:` label, or a fanned-out `synth:` label, that contains a word like research, map, explore, search, find or audit is denied. | Research dressed up as `decide:` or `synth:` to get Opus. |
 | `judge:` may run on Sonnet for one yes/no review, with a `pass`, `evidence`, `blocked_on` schema. | Opus spent on checks a cheaper model answers just as well. Findings lists and scores stay on Opus. |
 | `decide:`, `synth:` and `design:` may run on Sonnet for the simpler agents of a fan-out of more than 3. | Paying Opus for the long tail of a big fan-out, while the hardest items stay on Opus. |
-| Haiku only for `code:` and `grunt:`, at `medium`, `high` or `xhigh`. | Cheap output that has to be redone. Haiku gets work where two agents would produce the same result and a script can check it; a replay of five fixed-shape tasks matched the recorded answer on all 30 Haiku runs, at 6 to 11 times less cost than Sonnet (see the [Haiku evidence](docs/reference.md#haiku-evidence)). Discovery, review and anything that weighs evidence stay on Sonnet or Opus. |
+| Haiku only for `code:` and `grunt:`, at `medium`, `high` or `xhigh`. | Cheap output that has to be redone. See the [Haiku evidence](docs/reference.md#haiku-evidence). |
 | Every Sonnet and Haiku agent has a `blocked_on` field in its output schema. | A cheaper agent making a decision it does not own. It reports the open question instead, and Claude re-runs that stage as `decide:`. |
 | Efforts are `medium`, `high` or `xhigh`: never `low`, never `max`. Models are `opus`, `sonnet` and `haiku`: never Fable or Mythos as an agent model. | `max` burning tokens on stages that do not need it, `low` producing work that gets redone, and workers on the most expensive models. |
-| No agent uses a model above the session's. A Fable session counts as Opus. | A workflow reaching past the model you chose for the session. |
+| No agent uses a model above the session's. A Fable session counts as Opus. On a Sonnet session the Opus classes run on Sonnet. | A workflow reaching past the model you chose for the session. |
 
 The fix the gate suggests when a fan-out has too many Opus agents: keep the 3 most complex on Opus and run the rest on Sonnet.
 
@@ -114,7 +121,7 @@ await parallel([
 ])
 ```
 
-For Opus work over a list whose size is only known at run time, the alternative is a loop that runs 3 at a time. The full rules, the deny codes and how the gate counts concurrency are in the [reference](docs/reference.md).
+The full rules, the deny codes, how the gate counts concurrency and the other patterns it accepts are in the [reference](docs/reference.md).
 
 ## When the gate says no
 
@@ -122,11 +129,11 @@ For Opus work over a list whose size is only known at run time, the alternative 
   <img src="assets/terminal-deny.svg" alt="The deny reason Claude sees: ultraguard blocked this Workflow launch (2 problems). Line 3 of ten-opus.js gets LABEL and FANOUT: the synth: research label reads like investigation, and up to 10 Opus agents can run at once where the limit is 3, with the slice(0, 3) fix. The reason also says that a fixed list, table or count over named inputs is grunt:, on Haiku or Sonnet. It ends: If this is your second deny for the same workflow, stop and ask the user.">
 </p>
 
-The deny shows in your terminal, and its reason goes to Claude. Each line names the script line, a code such as `FANOUT` or `LABEL` and what is wrong. The reason then lists the allowed models and efforts for each failing class, and, for a label that reads like investigation, says that a fixed list, table or count over named inputs is `grunt:`. Claude reads it, fixes the script and launches again. The reason ends with "If this is your second deny for the same workflow, stop and ask the user," so a second deny turns into a question for you rather than a loop. Problems only you can fix, such as an environment variable that overrides the pinned model, are flagged so Claude tells you instead of relaunching.
+The deny shows in your terminal, and its reason goes to Claude. Each line names the script line, a code such as `FANOUT` or `LABEL` and what is wrong. Claude fixes the script and launches again. The reason ends with "If this is your second deny for the same workflow, stop and ask the user," so a second deny turns into a question for you rather than a loop. Problems only you can fix, such as an environment variable that overrides the pinned model, are flagged so Claude tells you instead of relaunching.
 
 ## Know it was enforced
 
-A passing gate prints nothing. ultraguard-eval is how you see that the rules held. It uses no model; it runs four checks on each running workflow:
+A passing gate prints nothing. ultraguard-eval shows that the rules held. It uses no model and runs four checks on each running workflow:
 
 1. **Approved by the gate.** The gate passed this launch, and the script that ran is the exact script the gate read.
 2. **Every agent matches the plan.** Each agent's label matches a stage the gate approved, and it runs on that stage's model.
@@ -139,33 +146,37 @@ A run is green while all four hold. Otherwise it turns red and names the first f
   <img src="assets/eval-red.svg" alt="The same row when a run breaks the plan: a red hollow square, the title ultraguard-eval and the summary 1 running, 1 red.">
 </p>
 
-Select the row, or run `/ultraguard`, to open the pane: one row per workflow, running ones first and ended ones under "finished this session". Enter opens a workflow: the four checks with ✓ or ✗, then its phases. Each phase is a block you can fold (Enter, or `a` for all) with the saved figure next to its title, and, while folded, the models that ran in it; open, it lists its agents with a ✓ or ✗, what each saved and the model and effort it ran on. A workflow without phases shows the agents in one flat table. The focused row is drawn inside a rounded outline.
+Select the row, or run `/ultraguard`, to open the pane. It opens with the [overall savings](#see-what-it-saved) for this session, then the workflows: running ones first, then ended ones under a "finished this session" rule. Each workflow takes 2 lines. The list scrolls in a window of its own, with "↑ N more" and "↓ N more" lines, so the overall savings stay in view.
+
+A workflow stopped with TaskStop ends as stopped instead of staying "running", with its final estimate, a record with status `killed` and a toast `ultraguard: <title> stopped`. Stopped workflows go into a folded "stopped this session" row at the end of the list; Enter opens it.
+
+Enter on a workflow opens its view: the "ultraguard saved" block, its phases, then the four checks with ✓ or ✗. Phases start folded, each with its saved figure and the models that ran in it. Enter opens or folds a phase, and `a` all of them. An open phase lists its agents with ✓ or ✗, what each saved and the model and effort it ran on. A workflow without phases shows its agents in one table.
 
 <p align="center">
-  <img src="assets/eval-pane.svg" alt="The ultraguard-eval pane. Above, the run list: one finished workflow, release-notes, under 'finished this session' with the dollars it saved and their margin of error. Below, its detail after Enter: the four checks all passing, then the workflow's three phases as blocks, each with a green circle, its agent count and its saved figure. Collect is the focused block, drawn inside a rounded outline with a filled circle, and lists its two grunt agents, each with a green check mark, what it saved and haiku at xhigh, the model it ran on. Investigate lists two investigate agents on sonnet at high, and Decide a decide agent on opus at high. Last, the 'ultraguard saved' block: a header naming Fable, in its color, at xhigh as the baseline every agent is compared with, then three bars that end at a vertical mark for the limit. The context bar is at 42%, 84k of 200k. The 5-hour bar is at 41% and its saving, drawn from light blue to darker violet along the bar, reads +19.3 ±2.4. The weekly bar is at 12% with 'learning 1/5' in place of a saving. Below, the note that without ultraguard you would have been past half of your 5-hour limit already, the money line ($1.37 ±$0.31 at API prices), the tokens line (41k fewer tokens) and the note that ± is how far off, 9 times in 10.">
+  <img src="assets/eval-pane.svg" alt="The ultraguard-eval pane: the overall savings for this session above the workflow list, then the view of one finished workflow with its saved block, folded phases and four passing checks.">
 </p>
 
-Both parts leave a record in `~/.claude/ultraguard/sessions/<session_id>/` (or under `CLAUDE_CONFIG_DIR`): `<tool_use_id>.gate.json` for each gate decision, pass or deny, and `<tool_use_id>.eval.json` for each run ultraguard-eval saw.
-
-If a workflow is running, there is no ultraguard-eval row and `/ultraguard` is not a command, ultraguard is not loaded in that session.
+The gate and ultraguard-eval each leave a record in `~/.claude/ultraguard/sessions/<session_id>/` (or under `CLAUDE_CONFIG_DIR`): `<tool_use_id>.gate.json` for each gate decision, pass or deny, and `<tool_use_id>.eval.json` for each run ultraguard-eval saw.
 
 ### See what it saved
 
-For each tracked run, ultraguard shows what it saved against running every agent of the workflow on your session's model at your session's effort. That is what Claude Code does when a stage pins nothing. Open a run in the pane to see the "ultraguard saved" block, one bar per row:
+ultraguard compares each run against every agent of the workflow running on your session's model at your session's effort, which is what Claude Code does when a stage pins nothing. A run's "ultraguard saved" block starts with "vs every agent on" that model and effort, then shows:
 
-- **Context:** how full the session's context window is, as a status line shows it. Right after a fresh session or a compaction it shows an empty bar and a dash until the next response.
-- **On a subscription:** a 5-hour and a weekly bar. The used part is plain, the saving is colored, darker meaning more saved, and `+1.4 ±0.6` is the percent of the limit saved, in the percentages `/usage` shows. A mark in the bar is 100 percent of the limit. It sits at the end of the bar until a row's use plus saving passes 100 percent. Then it moves into the bar on every row, and the saving can spill past it.
+- **Context:** how full the session's context window is, as a status line shows it. After a fresh session or a compaction it shows an empty bar and a dash until the next response.
+- **On a subscription:** a 5-hour and a weekly bar. The used part is plain and the saving is colored, darker for more saved. `+1.4 (0.8 to 2.0)` is the percent of the limit saved, as `/usage` shows it. A mark for 100 percent of the limit sits at the end of the bar until a row's use plus saving passes 100 percent. Then it moves into the bar on every row, and the saving can spill past it.
 - **On an API key:** a cost bar with the dollars spent and the dollars saved at API prices.
-- **Limit messages:** under the bars, when the saving mattered: without ultraguard you would have passed your 5-hour limit, come within 10 points of it, or passed half of it. A small saving is hedged with "likely" or "might".
-- **Money and tokens:** on a subscription, the dollars saved at API prices, then how many fewer tokens the agents used, each on its own line. It can read "more tokens" when the cheaper model read and wrote more at a lower price per token.
+- **Limit messages:** when the saving mattered, a line under the bars says that without ultraguard you would have passed your 5-hour limit, come within 10 points of it, or passed half of it. A small saving is hedged with "likely" or "might".
+- **Money and tokens:** on a subscription, the dollars saved at API prices, such as `$2.42 ($0.94 to $5.03) at API prices`, then how many fewer tokens the agents used. It can read "more tokens" when the cheaper model read and wrote more at a lower price per token.
 
-Each `±` is how far off the estimate can be, 9 times out of 10. The token figure is the median, with no `±`. A figure ultraguard cannot back is shown as unknown, never as 0. When something is off, such as agents left out of the estimate or ratios from published figures, a dim line says so.
+Each saving has a range from low to high that holds 9 times in 10, as the dim line `range = 9 times in 10` says. When the 5-hour range (on an API key, the cost range) starts below zero, a dim line says the run may have saved nothing. The token figure is the median, with no range. A figure ultraguard cannot back shows as unknown, never as 0, and a dim line flags anything off, such as agents left out of the estimate or ratios from published figures. On a subscription the list shows a finished run's 5-hour saving with its range, such as `5.8% (2.2 to 12.2)`, and a running one's as `3.8% so far`.
 
-The bar shows the limit use as it was at the last estimate, not live. The deep purple of the largest savings is hard to read on dark terminals.
+The overall savings at the top of the list pool every workflow of the session, stopped ones included, into one estimate per baseline, with the same rows as a run's block. They say "so far" while a workflow runs, count the workflows, keep counting past the 20 runs the list keeps, and reset on /clear, which starts a new session. The 5-hour and weekly rows count only the workflows of the current window, and a dim line says how many count when some ran in an earlier one. When your session's model or effort changed between launches, the line reads "vs your session's model at each launch" and the low, middle and high ends of each baseline's estimate are added.
 
-Limit figures need 5 readings. ultraguard learns how fast your own limit fills from the `/usage` percentages as you work, and until a window has 5 readings its row reads "learning 3/5" in place of the saving.
+The bars show limit use as of the last estimate, not live. The deep purple of the largest savings is hard to read on dark terminals.
 
-The ratios between models come from 22 replayed agents. The replays measured two transitions: Sonnet at high against Opus at high, and Sonnet at high against Opus at medium. Other efforts of the same model are chained from those with published effort steps, and every other pair, the same model at another effort included, uses published figures. The pane says which, and the `±` is wide for published figures. The results table is in the [reference](docs/reference.md#calibration-results).
+Limit figures need 5 readings. ultraguard learns how fast your limit fills from the `/usage` percentages as you work, and until a window has 5 readings its row reads "learning 3/5" in place of the saving.
+
+The ratios between models come from 22 replayed agents, which measured Sonnet at high against Opus at high and against Opus at medium. Other efforts of the same model are chained from those with published effort steps. Every other pair, the same model at another effort included, uses published figures; the pane says which, and their range is wide. The results are in the [reference](docs/reference.md#calibration-results).
 
 ## Tuning
 
@@ -173,18 +184,18 @@ The policy is one file, [`policy/default.json`](policy/default.json):
 
 - `classes`: what each class owns and its allowed model and effort pairs, plus `fanoutPairs` and `verdictPairs` for the Sonnet exceptions.
 - `limits`: `maxConcurrentOpus` (3) and `bigFanout` (3).
-- `labelCheck`: the words that mark a label as investigation, and the classes they apply to.
+- `labelCheck`: the words that mark a label as investigation, the classes checked (`classes`, plus `fanoutClasses` inside a fan-out), and the classes it points to (`use` for investigation, `fixed` for fixed-shape work).
 
-To change it, edit the file in your own copy, bump the patch version in `package.json`, `.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json`, and run `npm test`. A broken policy blocks every launch. The [reference](docs/reference.md) describes every key.
+To change it, edit the file in your own copy and run `npm test`. A broken policy blocks every launch. The version bump is in [Changing the policy](docs/reference.md#changing-the-policy), and the [reference](docs/reference.md#the-policy-file) describes every key.
 
 ## Limits
 
-- Whether a label is honest is only partly enforceable. The word check catches the common case; a misleading label without those words passes.
+- A misleading label without the checked words passes. The word check catches only the common case.
 - Only `Workflow` launches are gated. Agent tool calls are not.
-- The threat model is a cooperative Claude writing workflow scripts. ultraguard is not a sandbox, and deliberate evasion is out of scope.
+- ultraguard assumes a cooperative Claude writing workflow scripts. It is not a sandbox.
 - ultraguard-eval observes and reports. It never stops a running workflow.
 
-The full list is in the [reference](docs/reference.md).
+The full list is in the [reference](docs/reference.md#scope-and-limits).
 
 ## Development
 
