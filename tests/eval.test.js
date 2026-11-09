@@ -562,6 +562,24 @@ test('parseTaskNotifications reads the end of a run from a notification row', ()
   assert.deepEqual(parseTaskNotifications('<task-notification><tool-use-id>toolu_3</tool-use-id><status>failed</status>'), [{ toolUseId: 'toolu_3', taskId: null, status: 'failed' }])
 })
 
+test('a stopped notification from a resume ends the run as stopped, like a TaskStop', () => {
+  const row = [
+    '<task-notification>',
+    '<task-id>w1</task-id>',
+    `<tool-use-id>${TU}</tool-use-id>`,
+    '<status>stopped</status>',
+    "<summary>Dynamic workflow \"map\" didn't finish before the previous session ended</summary>",
+    '</task-notification>'
+  ].join('\n')
+  const [n] = parseTaskNotifications(row)
+  assert.deepEqual(n, { toolUseId: TU, taskId: 'w1', status: STOPPED })
+  const s = noteRunEnd(compliant(), { ...n, at: 77 })
+  assert.equal(s.runs[TU].status, STOPPED)
+  assert.equal(s.runs[TU].endedAt, 77)
+  assert.equal(activeRuns(s).length, 0)
+  assert.deepEqual(stoppedRuns(s).map((r) => r.key), [TU])
+})
+
 test('a notification drives noteRunEnd; an unknown launch changes nothing', () => {
   let s = compliant()
   const [n] = parseTaskNotifications(`<task-notification><task-id>w1</task-id><tool-use-id>${TU}</tool-use-id><status>completed</status></task-notification>`)

@@ -853,8 +853,9 @@ export const register: Register = on => {
 
     const all = [...runs, ...finished, ...stopped]
     const foldOpen = stoppedOpen(state)
-    const nameWidth = Math.min(30, Math.max(12, ...all.map(v => v.title.length + 4)))
-    const agentsWidth = Math.max(12, ...runs.map(v => countsWidth(v.counts) + 2), ...[...finished, ...stopped].map(v => endedText(v).length + 2))
+    const agentsWidth = Math.max(12, ...runs.map(v => countsWidth(v.counts) + 2), ...[...finished, ...(foldOpen ? stopped : [])].map(v => endedText(v).length + 2))
+    const cellWidth = Math.max(...[listHeader(all), ...all.map(v => listCell(v))].map(segs => segs.reduce((n, g) => n + g.text.length, 0)))
+    const nameWidth = Math.max(12, Math.min(30, width - 9 - agentsWidth - cellWidth, Math.max(0, ...all.map(v => v.title.length + 4))))
     type Draw = (first: boolean) => any
     const runRow = (v: (typeof all)[number], live: boolean): Draw => first => {
       const rowKey = `run:${v.key}`

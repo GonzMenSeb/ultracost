@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { fmtPct, fmtUsd, fmtTokens, modelLines, phaseHeadLength, phaseLayout, phaseStatus, phaseTitle, rangeText, savedBlock, savedBody, overallBlock, sectionHead, subHead, baselineLine, RULE, SUB_RULE, agentColumn, listHeader, listCell, toastText, WORKFLOWS_HEAD, RUNNING_EXTRA, NO_RUNNING, FINISHED_TITLE, STOPPED_TITLE, MORE_ABOVE, MORE_BELOW, LIST_HINT, FOLD_HINT, FOCUS_HINT, PHASES_HEAD, AGENTS_HEAD, CHECKS_HEAD, foldLine, endedText } from '../src/savedText.mjs'
+import { fmtPct, fmtUsd, fmtTokens, modelLines, phaseHeadLength, phaseLayout, phaseStatus, phaseTitle, rangeText, savedBlock, savedBody, overallBlock, sectionHead, subHead, baselineLine, RULE, SUB_RULE, agentColumn, listHeader, listCell, toastText, SAME_MODEL, WORKFLOWS_HEAD, RUNNING_EXTRA, NO_RUNNING, FINISHED_TITLE, STOPPED_TITLE, MORE_ABOVE, MORE_BELOW, LIST_HINT, FOLD_HINT, FOCUS_HINT, PHASES_HEAD, AGENTS_HEAD, CHECKS_HEAD, foldLine, endedText } from '../src/savedText.mjs'
 import { modelColor, savedColor } from '../src/palette.mjs'
 import { createTally, noteTallyRun, overallInput, combine } from '../src/tally.mjs'
 import { estimateRun } from '../src/savings.mjs'
@@ -552,10 +552,15 @@ test('list cells show the figure, so far, dollars or a dash', () => {
   assert.equal(text(listCell(view({ saved: saved({ running: true, limits: limits({ mid: 4.1, lo: 1.8, hi: 6.4, pm: 2.3 }) }) }))), '4.1% so far')
 })
 
-test('list cells show a dash when nothing is known or saved', () => {
+test('list cells show a dash when nothing is known', () => {
   assert.equal(text(listCell(view({ saved: null }))), '—')
   assert.equal(text(listCell(view({ saved: saved({ status: 'unknown', dollars: null, limits: null }) }))), '—')
-  assert.equal(text(listCell(view({ saved: saved({ status: 'none', limits: null }) }))), '—')
+})
+
+test('a run whose agents all ran on the session model and effort reads a dim same model', () => {
+  assert.equal(SAME_MODEL, 'same model')
+  assert.deepEqual(listCell(view({ saved: saved({ status: 'none', limits: null }) })), [{ text: SAME_MODEL, style: 'dim' }])
+  assert.deepEqual(listCell(view({ saved: saved({ status: 'none', running: true }) })), [{ text: SAME_MODEL, style: 'dim' }])
 })
 
 test('the list strings: section titles, more lines, hints, all without middle dots', () => {
@@ -572,7 +577,7 @@ test('the list strings: section titles, more lines, hints, all without middle do
   assert.equal(FOLD_HINT(true), '↑↓ choose  enter folds the stopped ones  esc close')
   assert.equal(FOCUS_HINT, 'ctrl+x tab: focus this pane')
   assert.deepEqual([PHASES_HEAD, AGENTS_HEAD, CHECKS_HEAD], ['phases', 'agents', 'checks'])
-  const all = [WORKFLOWS_HEAD, RUNNING_EXTRA(1), NO_RUNNING, FINISHED_TITLE, STOPPED_TITLE, MORE_ABOVE(1), MORE_BELOW(1), LIST_HINT, FOLD_HINT(true), FOLD_HINT(false), FOCUS_HINT]
+  const all = [SAME_MODEL, WORKFLOWS_HEAD, RUNNING_EXTRA(1), NO_RUNNING, FINISHED_TITLE, STOPPED_TITLE, MORE_ABOVE(1), MORE_BELOW(1), LIST_HINT, FOLD_HINT(true), FOLD_HINT(false), FOCUS_HINT]
   assert.ok(all.every((s) => !s.includes('·')))
 })
 

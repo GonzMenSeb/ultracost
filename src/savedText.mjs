@@ -64,6 +64,7 @@ export const MORE_BELOW = (n) => `  ↓ ${n} more`
 export const LIST_HINT = '↑↓ choose  enter details  esc close'
 export const FOLD_HINT = (open) => `↑↓ choose  enter ${open ? 'folds' : 'opens'} the stopped ones  esc close`
 export const FOCUS_HINT = 'ctrl+x tab: focus this pane'
+export const SAME_MODEL = 'same model'
 
 export const RULE = '═'
 export const SUB_RULE = '─'
@@ -358,6 +359,7 @@ export function endedText(view) {
 export function listCell(view) {
   if (!view.ok) return []
   const saved = view.saved
+  if (saved?.status === 'none') return [dim(SAME_MODEL)]
   if (saved?.status !== 'estimated') return [dim(DASH)]
   const limit = fiveHourOf(saved)
   const range = limit || saved.dollars

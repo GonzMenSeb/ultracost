@@ -340,6 +340,21 @@ test('a workflow stopped with TaskStop ends as stopped, gets its estimate, recor
   expect(w.toasts).toEqual(['ultraguard: map stopped'])
 })
 
+test('a run the host reports stopped when the session is resumed ends as stopped, like a TaskStop', async ($, on) => {
+  on('session.start', (_: any, e: any) => ({ cwd: e.cwd }))
+  const w = await world($, on, { gate: true, data: true })
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await w.end(w.id(), 'stopped')
+  expect(await bandRunning($)).toBe(null)
+  const record = evalRecordOf(w)
+  expect(record.status).toBe('killed')
+  expect(record.savings.saved).toMatchObject({ running: false })
+  expect(w.toasts).toEqual(['ultraguard: map stopped'])
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  expect((await ui.find({ type: 'Box', key: 'box:fold:stopped' }))?.text).toContain('▸ stopped this session  1 workflow')
+  await ui.unmount()
+})
+
 test('a TaskStop by the deprecated shell_id stops the workflow too', async ($, on) => {
   const w = await world($, on, { gate: true })
   await stopRun($, { shell_id: 'w1' })

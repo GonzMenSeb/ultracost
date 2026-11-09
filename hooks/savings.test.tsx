@@ -62,10 +62,10 @@ const drain = async (stream: AsyncGenerator<unknown, unknown>) => {
   return r.value
 }
 
-type Options = { subscription: boolean; context?: { tokens?: number }; compact?: number; gate?: boolean; agents?: number; readings?: number; finish?: boolean; complete?: boolean; launched?: boolean; preload?: Record<string, unknown>; now?: number; record?: Record<string, unknown> }
+type Options = { subscription: boolean; context?: { tokens?: number }; compact?: number; gate?: boolean; agents?: number; readings?: number; finish?: boolean; complete?: boolean; launched?: boolean; preload?: Record<string, unknown>; now?: number; record?: Record<string, unknown>; name?: string }
 
 async function flow($: any, on: any, options: Options) {
-  const { subscription, context = {}, compact, gate = true, agents = 1, readings = 6, finish = true, complete = true, launched = true, preload = {}, now = 5000, record = {} } = options
+  const { subscription, context = {}, compact, gate = true, agents = 1, readings = 6, finish = true, complete = true, launched = true, preload = {}, now = 5000, record = {}, name = 'map' } = options
   const writes: Record<string, string> = {}
   const toasts: string[] = []
   const store: Record<string, unknown> = { ...preload }
@@ -126,7 +126,7 @@ async function flow($: any, on: any, options: Options) {
   on('tool.call', (_: any, e: any) => {
     if (e.tool === 'TaskStop') return { result: { message: 'stopped', task_id: e.task_id, task_type: 'local_workflow' } }
     toolUseId = e.tool_use_id
-    return { result: { status: 'async_launched', taskId: 'w1', runId: 'wf_run001', workflowName: 'map' } }
+    return { result: { status: 'async_launched', taskId: 'w1', runId: 'wf_run001', workflowName: name } }
   })
   on('agent.spawn', () => ({ model: SONNET, agentId: `a${(spawned += 1)}` }))
   on('turn.step', async function* (_: any, e: any) {
@@ -175,11 +175,11 @@ async function flow($: any, on: any, options: Options) {
     if (complete) await done('a1')
   }
   let notified = 0
-  const end = (id: string) =>
+  const end = (id: string, status = 'completed') =>
     $.session.append({
       message: {
         type: 'user',
-        content: [{ type: 'text', text: `<task-notification>\n<task-id>w1</task-id>\n<tool-use-id>${id}</tool-use-id>\n<status>completed</status>\n</task-notification>` }],
+        content: [{ type: 'text', text: `<task-notification>\n<task-id>w1</task-id>\n<tool-use-id>${id}</tool-use-id>\n<status>${status}</status>\n</task-notification>` }],
       },
       door: 'queue',
       origin: { kind: 'task-notification' },
@@ -816,3 +816,43 @@ for (const bodyRows of [20, 24, 28]) {
     await ui.unmount()
   })
 }
+
+const LONG = 'a-rather-long-workflow-name-for-the-list'
+const listRow = async (ui: any, id: string) => String((await ui.find({ type: 'Box', key: `box:${id}` }))?.text ?? '').replace(/^\u200b/, '')
+const headerRow = async (ui: any) => String((await ui.find({ type: 'Text', text: /workflow\s+id\s+agents/ }))?.text ?? '')
+
+test('the list columns are sized from the pane width, so the saves cell is not cut and long titles are', async ($, on) => {
+  const w = await flow($, on, { subscription: true, name: LONG })
+  const done = w.id()
+  await w.end(await w.launch(), 'killed')
+  for (const columns of [44, 60, 80, 120]) {
+    const width = columns - 4
+    const ui = await $.ui.mount({ ...PANE, props: { ...PANE.props, bodyColumns: columns }, surface: 'terminal' })
+    const row = await listRow(ui, done)
+    const cell = row.match(/-?\d+\.\d% \(-?\d+\.\d to -?\d+\.\d\)$/)?.[0] ?? ''
+    expect(cell).not.toBe('')
+    const name = Math.max(12, Math.min(30, LONG.length + 4, width - 9 - 12 - cell.length))
+    expect(row.length - cell.length).toBe(name + 9 + 12)
+    expect(row.startsWith(`□ ${LONG.slice(0, name - 4)}… `)).toBe(true)
+    expect((await headerRow(ui)).indexOf('5h saves')).toBe(2 + name + 9 + 12)
+    if (columns === 44) expect(name).toBe(12)
+    else expect(row.length).toBeLessThanOrEqual(width)
+    await ui.unmount()
+  }
+})
+
+test('a stopped row widens the agents column only while the stopped fold is open', async ($, on) => {
+  const w = await flow($, on, { subscription: true, name: LONG })
+  const done = w.id()
+  const stopped = await w.launch()
+  await w.end(stopped, 'killed')
+  const ui = await $.ui.mount({ ...PANE, props: { ...PANE.props, bodyColumns: 80 }, surface: 'terminal' })
+  const closed = await listRow(ui, done)
+  expect(closed.slice(30 + 9)).toMatch(/^done \d\d:\d\d {2}\d+\.\d% \(/)
+  await ui.press({ key: 'fold:stopped' })
+  const open = await listRow(ui, done)
+  expect(open.slice(30 + 9)).toMatch(/^done \d\d:\d\d {5}\d+\.\d% \(/)
+  expect((await listRow(ui, stopped)).slice(30 + 9, 30 + 9 + 15)).toMatch(/^stopped \d\d:\d\d {2}$/)
+  expect(open.length).toBeLessThanOrEqual(76)
+  await ui.unmount()
+})
