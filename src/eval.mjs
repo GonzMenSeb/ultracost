@@ -389,6 +389,12 @@ export function noteFocus(state, key) {
   return (state.ui.focus ?? null) === key ? state : { ...state, ui: { ...state.ui, focus: key } }
 }
 
+export const stoppedOpen = (state) => state.ui.list?.stoppedOpen ?? false
+
+export function setStoppedOpen(state, open) {
+  return stoppedOpen(state) === open ? state : { ...state, ui: { ...state.ui, list: { ...state.ui.list, stoppedOpen: open } } }
+}
+
 export function setFolds(state, keys, folded) {
   const current = state.ui.folds || {}
   if (keys.every((k) => current[k] === folded)) return state

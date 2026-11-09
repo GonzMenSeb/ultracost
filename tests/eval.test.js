@@ -5,7 +5,7 @@ import { recordPath } from '../src/record.mjs'
 import { readFileSync } from 'node:fs'
 import { loadPrices } from '../src/prices.mjs'
 import { toastText } from '../src/savedText.mjs'
-import { STOPPED, TALLY_PREFIX, UNKNOWN_PHASE, noteFocus, phaseOpen, setFolds, agentPieces, finishedRuns, hideFinished, noteMainStep, noteMeterReading, noteSaved, noteStored, noteUsage, staleTallies, storedTally, settledTally, stoppedRuns } from '../src/eval.mjs'
+import { STOPPED, TALLY_PREFIX, UNKNOWN_PHASE, noteFocus, phaseOpen, setFolds, agentPieces, finishedRuns, hideFinished, noteMainStep, noteMeterReading, noteSaved, noteStored, noteUsage, staleTallies, storedTally, settledTally, stoppedRuns, setStoppedOpen, stoppedOpen } from '../src/eval.mjs'
 import {
   activeRuns,
   bandText,
@@ -981,6 +981,21 @@ test('the focused element is kept in the ui state, and the same one is not a cha
   assert.equal(noteFocus(focused, null).ui.focus, null)
   assert.equal(noteFocus(s, null), s)
   assert.equal(noteFocus(focused, 'run:abc').ui.run, focused.ui.run)
+})
+
+test('the stopped fold starts closed, opens and closes, and opening or closing a run leaves it alone', () => {
+  const s = compliant()
+  assert.deepEqual(createState().ui, { run: null, folds: {} })
+  assert.equal(stoppedOpen(s), false)
+  assert.equal(setStoppedOpen(s, false), s)
+  const open = setStoppedOpen(s, true)
+  assert.equal(open.ui.list.stoppedOpen, true)
+  assert.equal(stoppedOpen(open), true)
+  assert.equal(setStoppedOpen(open, true), open)
+  assert.equal(stoppedOpen(setStoppedOpen(open, false)), false)
+  assert.equal(stoppedOpen(openRun(open, TU)), true)
+  assert.equal(stoppedOpen(closeRun(openRun(open, TU))), true)
+  assert.equal(stoppedOpen({ ...s, ui: { run: null } }), false)
 })
 
 const DAY_MS = 24 * 3600 * 1000

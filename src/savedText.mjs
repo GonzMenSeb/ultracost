@@ -50,6 +50,20 @@ const OVERALL_NOTHING = 'these workflows may have saved nothing'
 const OVERALL_SCOPE = (label, n) => `${label} counts the ${workflows(n)} of this window`
 const NO_ESTIMATE = 'no estimate yet'
 
+export const PHASES_HEAD = 'phases'
+export const AGENTS_HEAD = 'agents'
+export const CHECKS_HEAD = 'checks'
+export const WORKFLOWS_HEAD = 'workflows'
+export const RUNNING_EXTRA = (n) => (n > 0 ? `${n} running` : 'none running')
+export const NO_RUNNING = 'No workflow is running.'
+export const FINISHED_TITLE = 'finished this session'
+export const STOPPED_TITLE = 'stopped this session'
+export const MORE_ABOVE = (n) => `  ↑ ${n} more`
+export const MORE_BELOW = (n) => `  ↓ ${n} more`
+export const LIST_HINT = '↑↓ choose  enter details  esc close'
+export const FOLD_HINT = (open) => `↑↓ choose  enter ${open ? 'folds' : 'opens'} the stopped ones  esc close`
+export const FOCUS_HINT = 'ctrl+x tab: focus this pane'
+
 export const RULE = '═'
 export const SUB_RULE = '─'
 const rule = (text) => ({ text, style: 'plain', color: 'subtle' })
@@ -329,6 +343,14 @@ export function modelLines(counts, width) {
 export function listHeader(views) {
   const limit = views.some((v) => fiveHourOf(v.saved))
   return [dim(limit ? '5h saves' : 'API saves')]
+}
+
+export function foldLine({ open, count, picked }) {
+  return [dim(open ? '▾' : '▸'), seg(' '), picked ? bold(STOPPED_TITLE) : seg(STOPPED_TITLE), dim(`  ${workflows(count)}`)]
+}
+
+export function endedText(view) {
+  return view.status === STOPPED ? `stopped ${view.stoppedClock ?? ''}`.trim() : `done ${view.endedClock ?? ''}`.trim()
 }
 
 export function listCell(view) {

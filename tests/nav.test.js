@@ -1,8 +1,8 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { sha256Hex } from '../src/fingerprint.mjs'
-import { STOPPED, closeRun, createState, noteLaunch, noteLaunchResult, noteRunEnd, openRun } from '../src/eval.mjs'
-import { arrowOf, boxKeyOf, paneNav, stepFocus } from '../src/nav.mjs'
+import { STOPPED, closeRun, createState, noteLaunch, noteLaunchResult, noteRunEnd, openRun, setStoppedOpen } from '../src/eval.mjs'
+import { STOPPED_FOLD, arrowOf, boxKeyOf, paneNav, stepFocus } from '../src/nav.mjs'
 
 const SCRIPT = "await agent('x', { label: 'investigate: map', model: 'sonnet', effort: 'high' })\n"
 
@@ -23,13 +23,39 @@ test('the list reaches every run, running ones first, and rests on the first run
   assert.equal(nav.resting, 'run:toolu_b')
 })
 
-test('a stopped run stays open, and the list stops are not changed by it', () => {
+test('a stopped run stays open, and back on the list it sits behind the stopped fold', () => {
   let s = run(createState(), 'toolu_a', 1000)
   s = run(s, 'toolu_b', 2000)
   s = openRun(s, 'toolu_a')
   s = noteRunEnd(s, { toolUseId: null, taskId: 't-toolu_a', status: STOPPED, at: 3000 })
   assert.deepEqual(paneNav(s), { reachable: ['back'], resting: 'back' })
-  assert.deepEqual(paneNav(closeRun(s)), { reachable: ['run:toolu_b'], resting: 'run:toolu_b' })
+  assert.deepEqual(paneNav(closeRun(s)), { reachable: ['run:toolu_b', STOPPED_FOLD], resting: 'run:toolu_b' })
+})
+
+const stopped = (s, id, at) => noteRunEnd(s, { toolUseId: null, taskId: `t-${id}`, status: STOPPED, at })
+
+test('the stopped fold comes after the finished runs, and its rows are reachable only while it is open', () => {
+  let s = run(createState(), 'toolu_a', 1000)
+  s = run(s, 'toolu_b', 2000)
+  s = run(s, 'toolu_c', 3000)
+  s = run(s, 'toolu_d', 4000)
+  s = ended(s, 'toolu_a', 5000)
+  s = stopped(s, 'toolu_c', 6000)
+  s = stopped(s, 'toolu_d', 7000)
+  assert.equal(STOPPED_FOLD, 'fold:stopped')
+  assert.deepEqual(paneNav(s), { reachable: ['run:toolu_b', 'run:toolu_a', STOPPED_FOLD], resting: 'run:toolu_b' })
+  assert.deepEqual(paneNav(setStoppedOpen(s, true)), { reachable: ['run:toolu_b', 'run:toolu_a', STOPPED_FOLD, 'run:toolu_d', 'run:toolu_c'], resting: 'run:toolu_b' })
+  assert.equal(stepFocus(paneNav(s), 'run:toolu_a', 1), STOPPED_FOLD)
+  assert.equal(stepFocus(paneNav(s), STOPPED_FOLD, 1), null)
+  assert.equal(stepFocus(paneNav(setStoppedOpen(s, true)), STOPPED_FOLD, 1), 'run:toolu_d')
+})
+
+test('a list of stopped runs only reaches the fold and rests on nothing', () => {
+  const s = stopped(run(createState(), 'toolu_a', 1000), 'toolu_a', 2000)
+  assert.deepEqual(paneNav(s), { reachable: [STOPPED_FOLD], resting: null })
+  assert.equal(stepFocus(paneNav(s), null, 1), STOPPED_FOLD)
+  assert.deepEqual(paneNav(setStoppedOpen(s, true)).reachable, [STOPPED_FOLD, 'run:toolu_a'])
+  assert.equal(boxKeyOf(STOPPED_FOLD), 'box:fold:stopped')
 })
 
 test('an empty list reaches nothing and rests on nothing', () => {

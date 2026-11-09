@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { fmtPct, fmtUsd, fmtTokens, modelLines, phaseHeadLength, phaseLayout, phaseStatus, phaseTitle, rangeText, savedBlock, savedBody, overallBlock, sectionHead, subHead, baselineLine, RULE, SUB_RULE, agentColumn, listHeader, listCell, toastText } from '../src/savedText.mjs'
+import { fmtPct, fmtUsd, fmtTokens, modelLines, phaseHeadLength, phaseLayout, phaseStatus, phaseTitle, rangeText, savedBlock, savedBody, overallBlock, sectionHead, subHead, baselineLine, RULE, SUB_RULE, agentColumn, listHeader, listCell, toastText, WORKFLOWS_HEAD, RUNNING_EXTRA, NO_RUNNING, FINISHED_TITLE, STOPPED_TITLE, MORE_ABOVE, MORE_BELOW, LIST_HINT, FOLD_HINT, FOCUS_HINT, PHASES_HEAD, AGENTS_HEAD, CHECKS_HEAD, foldLine, endedText } from '../src/savedText.mjs'
 import { modelColor, savedColor } from '../src/palette.mjs'
 import { createTally, noteTallyRun, overallInput, combine } from '../src/tally.mjs'
 import { estimateRun } from '../src/savings.mjs'
@@ -556,6 +556,40 @@ test('list cells show a dash when nothing is known or saved', () => {
   assert.equal(text(listCell(view({ saved: null }))), '—')
   assert.equal(text(listCell(view({ saved: saved({ status: 'unknown', dollars: null, limits: null }) }))), '—')
   assert.equal(text(listCell(view({ saved: saved({ status: 'none', limits: null }) }))), '—')
+})
+
+test('the list strings: section titles, more lines, hints, all without middle dots', () => {
+  assert.equal(WORKFLOWS_HEAD, 'workflows')
+  assert.equal(RUNNING_EXTRA(2), '2 running')
+  assert.equal(RUNNING_EXTRA(0), 'none running')
+  assert.equal(NO_RUNNING, 'No workflow is running.')
+  assert.equal(FINISHED_TITLE, 'finished this session')
+  assert.equal(STOPPED_TITLE, 'stopped this session')
+  assert.equal(MORE_ABOVE(3), '  ↑ 3 more')
+  assert.equal(MORE_BELOW(5), '  ↓ 5 more')
+  assert.equal(LIST_HINT, '↑↓ choose  enter details  esc close')
+  assert.equal(FOLD_HINT(false), '↑↓ choose  enter opens the stopped ones  esc close')
+  assert.equal(FOLD_HINT(true), '↑↓ choose  enter folds the stopped ones  esc close')
+  assert.equal(FOCUS_HINT, 'ctrl+x tab: focus this pane')
+  assert.deepEqual([PHASES_HEAD, AGENTS_HEAD, CHECKS_HEAD], ['phases', 'agents', 'checks'])
+  const all = [WORKFLOWS_HEAD, RUNNING_EXTRA(1), NO_RUNNING, FINISHED_TITLE, STOPPED_TITLE, MORE_ABOVE(1), MORE_BELOW(1), LIST_HINT, FOLD_HINT(true), FOLD_HINT(false), FOCUS_HINT]
+  assert.ok(all.every((s) => !s.includes('·')))
+})
+
+test('the stopped fold row reads its state, its title and how many workflows it holds', () => {
+  assert.equal(text(foldLine({ open: false, count: 2, picked: false })), '▸ stopped this session  2 workflows')
+  assert.equal(text(foldLine({ open: true, count: 1, picked: false })), '▾ stopped this session  1 workflow')
+  const line = foldLine({ open: false, count: 2, picked: true })
+  assert.deepEqual(line[0], { text: '▸', style: 'dim' })
+  assert.deepEqual(line.find((s) => s.text === STOPPED_TITLE), { text: STOPPED_TITLE, style: 'bold' })
+  assert.deepEqual(foldLine({ open: false, count: 2, picked: false }).find((s) => s.text === STOPPED_TITLE), { text: STOPPED_TITLE, style: 'plain' })
+  assert.deepEqual(line.at(-1), { text: '  2 workflows', style: 'dim' })
+})
+
+test('an ended row says when it finished or when it was stopped', () => {
+  assert.equal(endedText(view()), 'done 14:51')
+  assert.equal(endedText(view({ endedClock: null })), 'done')
+  assert.equal(endedText(view({ status: 'killed', endedClock: '15:02', stoppedClock: '15:02' })), 'stopped 15:02')
 })
 
 test('a red view leaves its reason to the caller', () => {

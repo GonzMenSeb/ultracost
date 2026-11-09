@@ -166,7 +166,7 @@ export type EvalState = {
   launches: Record<string, EvalLaunch>
   runs: Record<string, EvalRun>
   early: Record<string, { sent: EvalSent[]; done: boolean; usage: Record<string, EvalUsage> }>
-  ui: { run: string | null; folds?: Record<string, boolean>; focus?: string | null }
+  ui: { run: string | null; folds?: Record<string, boolean>; focus?: string | null; list?: { stoppedOpen?: boolean } }
   main: EvalBaseline
   meter: EvalMeter
 }
