@@ -1068,7 +1068,7 @@ async function metered($: any, on: any, options: { preload?: Record<string, unkn
     await $.turn.complete({ answer: '', durationMs: 1, isAborted: false, turnId: 't1', reason: 'answer', agentId: 'a1' })
     return JSON.parse(writes[`${CONFIG}/ultraguard/sessions/${SESSION}/${toolUseId}.eval.json`] ?? '{}').savings.saved
   }
-  return { step, measure, intervals, workflow, compact: (over: Record<string, unknown> = {}) => $.session.compact({ trigger: 'manual', messages: [KEPT], ...over }), answerWith: (next: unknown) => (answer = next) }
+  return { store, id: () => toolUseId, step, measure, intervals, workflow, compact: (over: Record<string, unknown> = {}) => $.session.compact({ trigger: 'manual', messages: [KEPT], ...over }), answerWith: (next: unknown) => (answer = next) }
 }
 
 const STEP_UNITS = (300 + 500) * 2e-6 + 100 * 10e-6
@@ -1124,6 +1124,11 @@ test('a run whose spend at the pooled rate is more than the account rose is with
   expect(saved.limits.implausible).toEqual(['five_hour'])
   expect(saved.agents[0].five_hour).toBeNull()
   expect(saved.dollars.mid).toBeGreaterThan(0)
+  const tally = w.store[`tally:${SESSION}`] as any
+  expect(tally.runs[w.id()].withheld).toEqual(['five_hour'])
+  expect(tally.overall.limits.five_hour).toBeNull()
+  expect(tally.overall.limits.implausible).toEqual(['five_hour'])
+  expect(tally.overall.dollars.mid).toBeGreaterThan(0)
 })
 
 test('a run whose spend fits the rise of the account keeps its figure', async ($, on) => {
@@ -1132,4 +1137,8 @@ test('a run whose spend fits the rise of the account keeps its figure', async ($
   expect(saved.limits.five_hour.mid).toBeGreaterThan(0)
   expect(saved.limits.implausible).toEqual([])
   expect(saved.agents[0].five_hour).not.toBeNull()
+  const tally = w.store[`tally:${SESSION}`] as any
+  expect(tally.runs[w.id()].withheld).toEqual([])
+  expect(tally.overall.limits.five_hour).not.toBeNull()
+  expect(tally.overall.limits.implausible).toEqual([])
 })
