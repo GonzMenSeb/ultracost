@@ -618,3 +618,38 @@ test('label check: synth is checked only inside a fan-out', () => {
   assert.equal(run(false).length, 0)
   assert.equal(run(true).length, 1)
 })
+
+const RELAUNCH = 'Relaunch on sonnet with effort "xhigh".'
+
+test('a rejected opus is relaunched on sonnet at xhigh, whatever effort it asked for', () => {
+  for (const effort of ALL) {
+    for (const cls of ['judge', 'investigate', 'code']) {
+      const messages = rules([stage(cls, 'opus', effort)], shipped, { sessionModel: 'sonnet' }).map((e) => e.message)
+      assert.ok(messages.some((m) => m.includes(RELAUNCH)), `${cls} ${effort}: ${messages.join(' | ')}`)
+    }
+  }
+})
+
+test('the relaunch sentence sits between the refusal and the allowed list', () => {
+  const [error] = rules([stage('judge', 'opus', 'high')], shipped, { sessionModel: 'sonnet' })
+  assert.match(error.message, /^Class "judge:" does not allow model "opus" with effort "high"\. Relaunch on sonnet with effort "xhigh"\. Allowed: /)
+})
+
+test('a model the class allows gets no relaunch sentence, nor does one with nothing lower to use', () => {
+  const none = (cls, model, effort, session) => rules([stage(cls, model, effort)], shipped, { sessionModel: session }).map((e) => e.message).filter((m) => m.includes('Relaunch'))
+  assert.deepEqual(none('build', 'opus', 'high', 'opus'), [])
+  assert.deepEqual(none('decide', 'sonnet', 'high', 'opus'), [])
+  assert.deepEqual(none('judge', 'haiku', 'medium', 'opus'), [])
+})
+
+test('the relaunch goes to haiku at xhigh when only haiku is allowed below the rejected model', () => {
+  const policy = { classes: { ...shipped.classes, code: { owns: 'x', pairs: { haiku: ALL } } } }
+  const [error] = rules([stage('code', 'sonnet', 'high')], policy, { sessionModel: 'opus' })
+  assert.ok(error.message.includes('Relaunch on haiku with effort "xhigh".'), error.message)
+})
+
+test('no relaunch is offered when the lower model is not allowed at xhigh', () => {
+  const policy = { classes: { ...shipped.classes, code: { owns: 'x', pairs: { haiku: ['medium'], sonnet: ['medium'] } } } }
+  const [error] = rules([stage('code', 'opus', 'high')], policy, { sessionModel: 'opus' })
+  assert.ok(!error.message.includes('Relaunch'), error.message)
+})

@@ -45,6 +45,11 @@ test('guidance.md carries the supersede sentence', () => {
   assert.ok(readFileSync(join(ROOT, 'policy', 'guidance.md'), 'utf8').includes(SUPERSEDE));
 });
 
+test('guidance.md tells to replace a rejected model with the next lower one at xhigh', () => {
+  const guidance = readFileSync(join(ROOT, 'policy', 'guidance.md'), 'utf8');
+  assert.match(guidance, /A rejected model gives way to the next lower one at xhigh/);
+});
+
 test('additionalContext is guidance plus the pairs table rendered from the policy', () => {
   const sb = sandbox();
   try {

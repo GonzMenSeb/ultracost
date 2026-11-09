@@ -149,6 +149,7 @@ test('blocked_on snippet is omitted for an opus stage that already has an inline
   const on = (script) => denied(run(fixture('clean', { transcript_path: transcript('sonnet'), tool_input: { script } })));
   const withIt = on(`await agent('x', { ${opts}${schema} })\n`);
   assert.match(withIt, /does not allow model "opus"/);
+  assert.ok(withIt.includes('Relaunch on sonnet with effort "xhigh".'), withIt);
   assert.ok(!withIt.includes('blocked_on'), withIt);
   assert.ok(on(`await agent('x', { ${opts} })\n`).includes(BLOCKED_ON));
 });

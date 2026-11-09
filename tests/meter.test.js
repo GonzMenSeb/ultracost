@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { createMeter, noteRequest, noteReading, intervalsOf, mergeStored, staleKeys, storedValue } from '../src/meter.mjs'
+import { createMeter, noteRequest, noteReading, intervalsOf, mergeStored, staleKeys, storedValue, usedOf } from '../src/meter.mjs'
 import { loadPrices } from '../src/prices.mjs'
 
 const prices = loadPrices(JSON.parse(readFileSync(new URL('../data/prices.json', import.meta.url), 'utf8')))
@@ -151,4 +151,35 @@ test('a stored key with nothing newer than 30 days is stale, this session never 
     'other:key': value(NOW - 40 * DAY),
   }
   assert.deepEqual(staleKeys(stored, 'meter:own', NOW).sort(), ['meter:empty', 'meter:junk', 'meter:old'])
+})
+
+test('usedOf is null without a usable reading', () => {
+  assert.equal(usedOf(null, NOW), null)
+  assert.equal(usedOf(undefined, NOW), null)
+  assert.equal(usedOf({ pct: NaN, resetsAt: null }, NOW), null)
+  assert.equal(usedOf({ pct: Infinity, resetsAt: null }, NOW), null)
+  assert.equal(usedOf({ pct: '5', resetsAt: null }, NOW), null)
+})
+
+test('usedOf keeps a reading whose window has not reset', () => {
+  assert.equal(usedOf({ pct: 42, resetsAt: new Date(NOW + 1).toISOString() }, NOW), 42)
+  assert.equal(usedOf({ pct: 0, resetsAt: new Date(NOW + DAY).toISOString() }, NOW), 0)
+})
+
+test('usedOf drops a reading whose window has reset, exactly now included', () => {
+  assert.equal(usedOf({ pct: 42, resetsAt: new Date(NOW).toISOString() }, NOW), null)
+  assert.equal(usedOf({ pct: 42, resetsAt: new Date(NOW - 1).toISOString() }, NOW), null)
+})
+
+test('usedOf keeps a reading with a null or unparsable reset time', () => {
+  assert.equal(usedOf({ pct: 42, resetsAt: null }, NOW), 42)
+  assert.equal(usedOf({ pct: 42, resetsAt: 'soon' }, NOW), 42)
+})
+
+test('usedOf of a recorded reading matches the reading', () => {
+  const resetsAt = new Date(NOW + DAY).toISOString()
+  const m = noteReading(createMeter(), limits(37.5, 2, resetsAt), 1, prices)
+  assert.equal(usedOf(m.last.five_hour, NOW), 37.5)
+  assert.equal(usedOf(m.last.five_hour, NOW + 2 * DAY), null)
+  assert.equal(usedOf(createMeter().last.five_hour, NOW), null)
 })

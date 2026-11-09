@@ -186,6 +186,11 @@ const pairAllowed = (pairs, model, effort) => {
   return has(pairs, model) && pairs[model].includes(effort)
 }
 
+function lowerAtXhigh(pairs, model) {
+  for (let i = rank(model) - 1; i >= 0; i--) if (has(pairs, MODELS[i]) && pairs[MODELS[i]].includes('xhigh')) return MODELS[i]
+  return null
+}
+
 function conditionHint(policy, stage, sessionModel, cond) {
   if (sessionModel !== 'opus') return ''
   const def = policy.classes[stage.class]
@@ -260,10 +265,12 @@ export function rules(stages, policy, ctx) {
           : `model "${stage.model}" with effort "${stage.effort}"`
       const movesOffOpus = !has(pairs, 'opus') && stage.model !== 'sonnet' && stage.model !== 'haiku' && stage.hasBlockedOn !== true
       const hint = conditionHint(policy, stage, sessionModel, cond)
+      const lower = noModel || has(pairs, stage.model) ? null : lowerAtXhigh(pairs, stage.model)
+      const relaunch = lower ? ` Relaunch on ${lower} with effort "xhigh".` : ''
       errors.push({
         code: 'PAIR',
         ...base,
-        message: `Class "${stage.class}:" does not allow ${given}.${hint ? ` ${hint}` : ''} Allowed: ${formatPairs(pairs)}.`,
+        message: `Class "${stage.class}:" does not allow ${given}.${hint ? ` ${hint}` : ''}${relaunch} Allowed: ${formatPairs(pairs)}.`,
         ...(movesOffOpus ? { needsBlockedOn: true } : {})
       })
     }

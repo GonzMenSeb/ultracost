@@ -1,7 +1,7 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 674 1032" width="674" height="1032" role="img" aria-label="ultraguard-eval pane">
-<rect width="674" height="1032" rx="12" fill="#16161a"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 674 1054" width="674" height="1054" role="img" aria-label="ultraguard-eval pane">
+<rect width="674" height="1054" rx="12" fill="#16161a"/>
 <path d="M0 12a12 12 0 0 1 12-12h650a12 12 0 0 1 12 12v24H0z" fill="#1c1c21"/>
-<rect x="0.5" y="0.5" width="673" height="1031" rx="11.5" fill="none" stroke="#2a2a31"/>
+<rect x="0.5" y="0.5" width="673" height="1053" rx="11.5" fill="none" stroke="#2a2a31"/>
 <path d="M0 36h674" stroke="#2a2a31"/>
 <circle cx="20" cy="18" r="5" fill="#3f3f46"/><circle cx="38" cy="18" r="5" fill="#3f3f46"/><circle cx="56" cy="18" r="5" fill="#3f3f46"/>
 <text x="337" y="23" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" fill="#a1a1aa">ultraguard-eval pane</text>
@@ -29,7 +29,7 @@
 <text xml:space="preserve" x="110.40" y="287.04" fill="#949494" textLength="109.20">enter details</text>
 <text xml:space="preserve" x="236.40" y="287.04" fill="#949494" textLength="75.60">esc close</text>
 <text x="18" y="348" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" fill="#a1a1aa">Detail (press enter on a run)</text>
-<rect x="18" y="356" width="638.40" height="660" fill="#262626"/>
+<rect x="18" y="356" width="638.40" height="682" fill="#262626"/>
 <text xml:space="preserve" x="18.00" y="371.04" fill="#e4e4e7" font-weight="700" textLength="126.00">ultraguard-eval</text>
 <text xml:space="preserve" x="152.40" y="371.04" fill="#949494">›</text>
 <text xml:space="preserve" x="169.20" y="371.04" fill="#e4e4e7" font-weight="700" textLength="109.20">release-notes</text>
@@ -96,22 +96,43 @@
 <text xml:space="preserve" x="270.00" y="811.04" fill="#949494">✗</text>
 <text xml:space="preserve" x="286.80" y="811.04" fill="#949494" textLength="58.80">did not</text>
 <text xml:space="preserve" x="18.00" y="855.04" fill="#e4e4e7" font-weight="700" textLength="134.40">ultraguard saved</text>
-<text xml:space="preserve" x="18.00" y="877.04" fill="#949494" textLength="302.40">compared with running every agent on</text>
-<text xml:space="preserve" x="328.80" y="877.04" fill="#e2484f" font-weight="700" textLength="42.00">Fable</text>
-<text xml:space="preserve" x="379.20" y="877.04" fill="#949494" textLength="260.40">at xhigh effort, your session's</text>
-<text xml:space="preserve" x="18.00" y="899.04" fill="#949494" textLength="58.80">setting</text>
-<text xml:space="preserve" x="34.80" y="921.04" fill="#836ae4" font-weight="700" textLength="42.00">19.3%</text>
-<text xml:space="preserve" x="85.20" y="921.04" fill="#e4e4e7" textLength="168.00">of your 5-hour limit</text>
-<text xml:space="preserve" x="320.40" y="921.04" fill="#949494">±</text>
-<text xml:space="preserve" x="337.20" y="921.04" fill="#949494" textLength="25.20">2.4</text>
-<text xml:space="preserve" x="34.80" y="943.04" fill="#949494" textLength="604.80">weekly limit: learning how fast your limit fills, 1 of 5 readings so far</text>
-<text xml:space="preserve" x="34.80" y="965.04" fill="#e4e4e7" font-weight="700" textLength="42.00">$1.37</text>
-<text xml:space="preserve" x="85.20" y="965.04" fill="#e4e4e7" textLength="109.20">at API prices</text>
-<text xml:space="preserve" x="320.40" y="965.04" fill="#949494">±</text>
-<text xml:space="preserve" x="337.20" y="965.04" fill="#949494" textLength="42.00">$0.31</text>
-<text xml:space="preserve" x="404.40" y="965.04" fill="#949494" textLength="235.20">83% of the $1.66 Fable would</text>
-<text xml:space="preserve" x="18.00" y="987.04" fill="#949494" textLength="33.60">cost</text>
+<text xml:space="preserve" x="169.20" y="855.04" fill="#949494" textLength="142.80">vs every agent on</text>
+<text xml:space="preserve" x="320.40" y="855.04" fill="#d63150" font-weight="700" textLength="42.00">Fable</text>
+<text xml:space="preserve" x="370.80" y="855.04" fill="#949494" textLength="42.00">xhigh</text>
+<text xml:space="preserve" x="34.80" y="877.04" fill="#e4e4e7" textLength="58.80">context</text>
+<rect x="102.00" y="872.24" width="84.00" height="3.52" fill="#e4e4e7"/>
+<rect x="186.00" y="872.24" width="4.20" height="3.52" fill="#e4e4e7"/>
+<rect x="194.40" y="873.34" width="117.60" height="1.32" fill="#505050"/>
+<rect x="315.70" y="863.00" width="1.01" height="22.00" fill="#949494"/>
+<text xml:space="preserve" x="345.60" y="877.04" fill="#e4e4e7" textLength="25.20">42%</text>
+<text xml:space="preserve" x="387.60" y="877.04" fill="#949494" textLength="92.40">84k of 200k</text>
+<text xml:space="preserve" x="34.80" y="899.04" fill="#e4e4e7" textLength="50.40">5-hour</text>
+<rect x="102.00" y="894.24" width="92.40" height="3.52" fill="#e4e4e7"/>
+<rect x="194.40" y="894.24" width="8.40" height="3.52" fill="#5bc5f9"/>
+<rect x="202.80" y="894.24" width="8.40" height="3.52" fill="#65a7fa"/>
+<rect x="211.20" y="894.24" width="8.40" height="3.52" fill="#718ef5"/>
+<rect x="219.60" y="894.24" width="8.40" height="3.52" fill="#836ae4"/>
+<rect x="228.00" y="895.34" width="84.00" height="1.32" fill="#505050"/>
+<rect x="315.70" y="885.00" width="1.01" height="22.00" fill="#949494"/>
+<text xml:space="preserve" x="345.60" y="899.04" fill="#e4e4e7" textLength="25.20">41%</text>
+<text xml:space="preserve" x="387.60" y="899.04" fill="#836ae4" font-weight="700" textLength="42.00">+19.3</text>
+<text xml:space="preserve" x="438.00" y="899.04" fill="#949494">±</text>
+<text xml:space="preserve" x="446.40" y="899.04" fill="#949494" textLength="25.20">2.4</text>
+<text xml:space="preserve" x="34.80" y="921.04" fill="#e4e4e7" textLength="50.40">weekly</text>
+<rect x="102.00" y="916.24" width="25.20" height="3.52" fill="#e4e4e7"/>
+<rect x="127.20" y="917.34" width="184.80" height="1.32" fill="#505050"/>
+<rect x="315.70" y="907.00" width="1.01" height="22.00" fill="#949494"/>
+<text xml:space="preserve" x="345.60" y="921.04" fill="#e4e4e7" textLength="25.20">12%</text>
+<text xml:space="preserve" x="387.60" y="921.04" fill="#949494" textLength="100.80">learning 1/5</text>
+<text xml:space="preserve" x="34.80" y="943.04" fill="#e4e4e7" textLength="428.40">without ultraguard you would have been past half of</text>
+<text xml:space="preserve" x="34.80" y="965.04" fill="#e4e4e7" textLength="210.00">your 5-hour limit already</text>
+<text xml:space="preserve" x="34.80" y="987.04" fill="#e4e4e7" font-weight="700" textLength="42.00">$1.37</text>
+<text xml:space="preserve" x="85.20" y="987.04" fill="#949494">±</text>
+<text xml:space="preserve" x="93.60" y="987.04" fill="#949494" textLength="42.00">$0.31</text>
+<text xml:space="preserve" x="144.00" y="987.04" fill="#e4e4e7" textLength="109.20">at API prices</text>
 <text xml:space="preserve" x="34.80" y="1009.04" fill="#e4e4e7" font-weight="700" textLength="25.20">41k</text>
 <text xml:space="preserve" x="68.40" y="1009.04" fill="#e4e4e7" textLength="100.80">fewer tokens</text>
+<text xml:space="preserve" x="34.80" y="1031.04" fill="#949494">±</text>
+<text xml:space="preserve" x="51.60" y="1031.04" fill="#949494" textLength="235.20">= how far off, 9 times in 10</text>
 </g>
 </svg>

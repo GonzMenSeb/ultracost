@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { EvalAgentView, EvalPhaseView, EvalState } from '../types'
+import type { ContextState, EvalAgentView, EvalPhaseView, EvalState } from '../types'
 import { sha256Hex } from '../src/fingerprint.mjs'
 import { recordPath } from '../src/record.mjs'
 import {
@@ -37,7 +37,9 @@ import {
   runView,
   setFolds
 } from '../src/eval.mjs'
-import { intervalsOf, staleKeys, storedValue } from '../src/meter.mjs'
+import { contextFill, createContext, forgetCompactRead, noteBreakdown, noteContext } from '../src/context.mjs'
+import { intervalsOf, staleKeys, storedValue, usedOf } from '../src/meter.mjs'
+import { arrowOf, boxKeyOf, paneNav, stepFocus } from '../src/nav.mjs'
 import { familyColor, modelColor, savedColor } from '../src/palette.mjs'
 import { loadPrices, priceFamily } from '../src/prices.mjs'
 import { agentColumn, listCell, listHeader, modelLines, phaseHeadLength, phaseLayout, phaseStatus, phaseTitle, savedBlock, toastText } from '../src/savedText.mjs'
@@ -51,10 +53,11 @@ const TOAST_MS = 8000
 const DRAWS_RUNNING = 1000
 
 const ev = atom({ plugin: 'ultraguard', key: 'eval' } as const, createState() as EvalState, { shape: 'eval-2' })
+const ctx = atom({ plugin: 'ultraguard', key: 'context' } as const, createContext() as ContextState, { shape: 'context-1' })
 
 type Ids = { toolUseId: string; runId: string }
 type Notice = { toolUseId: string | null | undefined; taskId: string | null | undefined; status: string }
-type Segment = { text: string; style: string; pct?: number }
+type Segment = { text: string; style: string; pct?: number; color?: string }
 type Data = { prices: any; ratios: any }
 type WorkflowOutput = { taskId?: string; runId?: string; workflowName?: string; summary?: string; error?: string }
 
@@ -66,6 +69,7 @@ const countsWidth = (c: { opus: number; sonnet: number; haiku: number }) => {
 }
 
 const segmentLook = (g: Segment) => {
+  if (g.color) return { weight: g.style === 'bold' ? ('bold' as const) : undefined, color: g.color }
   if (g.style === 'saved') return { weight: 'bold' as const, color: savedColor(g.pct ?? 0) }
   const family = familyColor(g.style)
   if (family) return { weight: 'bold' as const, color: family }
@@ -194,7 +198,23 @@ async function estimate($: EngineInterface, key: string) {
     ...(running ? { draws: DRAWS_RUNNING } : {}),
     running
   })
-  await update($, ev, st => noteSaved(st, key, saved))
+  const used = s.meter.subscription === true ? { five_hour: usedOf(s.meter.last.five_hour, at), seven_day: usedOf(s.meter.last.seven_day, at) } : { five_hour: null, seven_day: null }
+  await update($, ev, st => noteSaved(st, key, { ...saved, used }))
+}
+
+async function readWindow($: EngineInterface, window: number) {
+  const r = await $.session.usage({ breakdown: 'summary' }).catch(() => null)
+  await update($, ctx, x => noteBreakdown(x, window, r?.context.breakdown))
+}
+
+async function noteWindow($: EngineInterface, context: { tokens?: number; window: number; percent?: number }) {
+  let ask = false
+  await update($, ctx, x => {
+    const next = noteContext(x, context)
+    ask = next.ask
+    return next.state
+  })
+  return ask
 }
 
 let inflight = 0
@@ -290,12 +310,22 @@ export const register: Register = on => {
     })
     dataLoad = null
     await guard($, 'meter', () => loadMeter($))
+    await guard($, 'context', async () => {
+      const { context } = await $.session.usage()
+      if (await noteWindow($, context)) await readWindow($, context.window)
+    })
     return next(e)
   })
 
   on('session.measure', async ($, e, next) => {
     if (e.changed.includes('rateLimits')) await guard($, 'measure', () => recordReading($, e.rateLimits))
-    return next(e)
+    let ask = false
+    await guard($, 'context', async () => {
+      ask = await noteWindow($, e.context)
+    })
+    const done = await next(e)
+    if (ask) await guard($, 'context window', () => readWindow($, e.context.window))
+    return done
   })
 
   on('command.run', { command: 'ultraguard' }, async $ => {
@@ -377,6 +407,7 @@ export const register: Register = on => {
         const before = await read($, ev)
         const args = { model: e.model, effort: e.effort }
         if (noteMainStep(before, args) !== before) await update($, ev, s => noteMainStep(s, args))
+        if (before.main.model !== null && typeof e.model === 'string' && before.main.model !== e.model) await update($, ctx, forgetCompactRead)
       })
     }
     const result = yield* next(e)
@@ -427,7 +458,27 @@ export const register: Register = on => {
 
   on('ui.focus', { component: 'Pane', requestId: PANE }, async ($, e, next) => {
     await guard($, 'focus', () => update($, ev, s => noteFocus(s, e.element ?? null)))
-    return next(e)
+    const done = await next(e)
+    const element = e.element
+    if (element) {
+      await guard($, 'focus scroll', async () => {
+        await $.ui.scroll({ to: { key: boxKeyOf(element) }, in: PANE })
+      })
+    }
+    return done
+  })
+
+  on('ui.scroll', { component: 'Pane', requestId: PANE }, async ($, e, next) => {
+    const dir = arrowOf(e)
+    if (dir === 0) return next(e)
+    let moved = false
+    await guard($, 'arrow', async () => {
+      const state = await read($, ev)
+      const target = stepFocus(paneNav(state), state.ui.focus ?? null, dir)
+      if (target === null) return
+      moved = (await $.ui.focus({ requestId: PANE, key: target })).deny === undefined
+    })
+    return moved ? {} : next(e)
   })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
@@ -447,13 +498,11 @@ export const register: Register = on => {
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const { Box, Button, Text } = $.ui.resolve(e)
     const line = lineOf(Text)
-    const wrapped = lineOf(Text, 'wrap')
     const state = await read($, ev)
     const runs = activeRuns(state).map(r => runView(r))
     const finished = finishedRuns(state).map(r => runView(r))
     const open = [...runs, ...finished].find(v => v.key === state.ui.run)
-    let reachable: string[] = []
-    let resting: string | null = null
+    const { reachable, resting } = paneNav(state)
     const picked = (key: string) => e.props.isFocused && (reachable.includes(state.ui.focus ?? '') ? state.ui.focus : resting) === key
 
     const counts = (c: { opus: number; sonnet: number; haiku: number }) => {
@@ -490,15 +539,18 @@ export const register: Register = on => {
           {c.ok ? c.detail && <Text dimColor>{`  ${c.detail}`}</Text> : <Text color="error">{`  ${c.reason}`}</Text>}
         </Text>
       ))
+      const width = e.props.bodyColumns - 4
+      const stored = await read($, ctx)
+      const live = open.saved ? await $.session.usage().then(u => u.context, () => null) : null
+      const context = contextFill(live ? { ...stored, window: live.window > 0 ? live.window : stored.window, tokens: typeof live.tokens === 'number' ? live.tokens : null } : stored)
       const saved = open.saved && (
         <Box flexDirection="column">
-          {savedBlock(open.saved).map(wrapped)}
+          {savedBlock(open.saved, { width, context }).map(line)}
           <Text> </Text>
         </Box>
       )
 
       const filled = (phases ?? []).filter(p => p.total > 0)
-      const width = e.props.bodyColumns - 4
       const { field, savedAt, savedWidth, modelsAt } = phaseLayout({
         labels: open.agents.map((a: EvalAgentView) => a.label),
         heads: filled.map(phaseHeadLength),
@@ -545,8 +597,6 @@ export const register: Register = on => {
         const openOf = (p: EvalPhaseView) => phaseOpen(p, state.ui.folds)
         const anyFolded = filled.some(p => !openOf(p))
         const focusKey = (filled.find(p => p.state === 'running' || p.red > 0) ?? filled[0])?.key
-        resting = focusKey ? `phase:${focusKey}` : 'back'
-        reachable = [...filled.map(p => `phase:${p.key}`), 'all', 'back']
         let follows = false
         const phaseBlock = (p: EvalPhaseView, first: boolean) => {
           const key = `phase:${p.key}`
@@ -608,8 +658,6 @@ export const register: Register = on => {
         )
       }
 
-      resting = 'back'
-      reachable = ['back']
       return (
         <Box flexDirection="column">
           {crumbAndChecks}
@@ -624,8 +672,6 @@ export const register: Register = on => {
 
     const view = bandView(state)
     const all = [...runs, ...finished]
-    reachable = all.map(v => `run:${v.key}`)
-    resting = runs[0] ? `run:${runs[0].key}` : null
     const nameWidth = Math.min(30, Math.max(12, 12, ...all.map(v => v.title.length + 4)))
     const agentsWidth = Math.max(12, ...runs.map(v => countsWidth(v.counts) + 2))
     const row = (v: (typeof all)[number], i: number, ended: boolean) => {
