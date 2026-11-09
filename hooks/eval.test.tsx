@@ -41,7 +41,7 @@ const gateRecord = (toolUseId: string, over: Record<string, unknown> = {}) =>
 const PRICES = { v: 1, families: { opus: { input: 4, output: 20, cacheRead: 0.2, cacheWrite: 5 }, sonnet: { input: 2, output: 10, cacheRead: 0.1, cacheWrite: 2.5 } } }
 const RATIOS = { v: 1, tau: 0.3, pooledAgentSd: { output: 0.4, fresh: 0.2, read: 0.6 }, measured: {}, steps: {}, priors: {} }
 
-async function world($: any, on: any, options: { gate: boolean; launch?: Record<string, unknown>; record?: Record<string, unknown>; stop?: (e: any) => unknown; data?: boolean; focus?: (e: any) => unknown; scroll?: (e: any) => unknown }) {
+async function world($: any, on: any, options: { gate: boolean; launch?: Record<string, unknown>; record?: Record<string, unknown>; stop?: (e: any) => unknown; focus?: (e: any) => unknown; scroll?: (e: any) => unknown }) {
   const writes: Record<string, string> = {}
   const logs: string[] = []
   const toasts: string[] = []
@@ -50,6 +50,7 @@ async function world($: any, on: any, options: { gate: boolean; launch?: Record<
   let launches = 0
   mock.env(on, { CLAUDE_CONFIG_DIR: CONFIG })
   mock.clock(on, { now: 5000 })
+  mock.store(on)
   on('session.id', () => ({ value: SESSION }))
   on('session.end', () => ({ sessionId: SESSION }))
   on('turn.complete', () => ({ text: '' }))
@@ -62,9 +63,9 @@ async function world($: any, on: any, options: { gate: boolean; launch?: Record<
       ? { value: gateRecord(toolUseId, options.record) }
       : String(e.path).endsWith('/saved/map.js')
         ? { value: SCRIPT }
-        : options.data && String(e.path).endsWith('/data/prices.json')
+        : String(e.path).endsWith('/data/prices.json')
           ? { value: JSON.stringify(PRICES) }
-          : options.data && String(e.path).endsWith('/data/ratios.json')
+          : String(e.path).endsWith('/data/ratios.json')
             ? { value: JSON.stringify(RATIOS) }
             : { deny: `ENOENT ${e.path}` },
   )
@@ -326,7 +327,7 @@ const bandRunning = async ($: any) => {
 
 test('a workflow stopped with TaskStop ends as stopped, gets its estimate, record and toast', async ($, on) => {
   on('session.start', (_: any, e: any) => ({ cwd: e.cwd }))
-  const w = await world($, on, { gate: true, data: true })
+  const w = await world($, on, { gate: true })
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
   expect(evalRecordOf(w).savings.saved).toBe(null)
 
@@ -691,14 +692,21 @@ const closePane = async ($: any) => {
 const shortPane = (bodyRows: number) => ({ ...PANE, props: { ...PANE.props, scroll: { offset: 0, bodyRows } } })
 const moreOf = (texts: string[], arrowGlyph: string) => Number(texts.find(t => t.startsWith(`  ${arrowGlyph} `))?.match(/(\d+) more$/)?.[1] ?? 0)
 
-test('the list draws its title, the workflows head, the column header, the rows and the hint in that order', async ($, on) => {
+test('the list draws its title, the overall head, the workflows head, the column header, the rows and the hint in that order', async ($, on) => {
   await world($, on, { gate: true })
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
   const texts = await shown(ui)
-  const steps = [/^ultraguard-eval$/, /^══ workflows {2}1 running ═+$/, /workflow\s+id\s+agents/, /^■ map/, /^↑↓ choose {2}enter details {2}esc close$/].map(p => texts.findIndex(t => p.test(t)))
+  const steps = [
+    /^ultraguard-eval$/,
+    /^══ overall savings for this session so far ═+$/,
+    /^══ workflows {2}1 running ═+$/,
+    /workflow\s+id\s+agents/,
+    /^■ map/,
+    /^↑↓ choose {2}enter details {2}esc close$/,
+  ].map(p => texts.findIndex(t => p.test(t)))
   expect(steps.every(i => i > -1)).toBe(true)
   expect(steps).toEqual([...steps].sort((a, b) => a - b))
-  expect(texts.filter(t => /^══ /.test(t)).map(t => t.length)).toEqual([PANE.props.bodyColumns - 4])
+  expect(texts.filter(t => /^══ /.test(t)).map(t => t.length)).toEqual([PANE.props.bodyColumns - 4, PANE.props.bodyColumns - 4])
   expect(texts.some(t => /more$/.test(t))).toBe(false)
   expect(await ui.find({ type: 'Text', text: /No workflow is running/ })).toBeUndefined()
   await ui.unmount()

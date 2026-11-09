@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { ContextState, EvalAgentView, EvalMeter, EvalPhaseView, EvalState, TallyRun, TallyState } from '../types'
+import type { ContextState, EvalAgentView, EvalMeter, EvalPhaseView, EvalRun, EvalState, TallyOverall, TallyRun, TallyState } from '../types'
 import { sha256Hex } from '../src/fingerprint.mjs'
 import { recordPath } from '../src/record.mjs'
 import {
@@ -39,12 +39,11 @@ import {
   setStoppedOpen,
   staleTallies,
   STOPPED,
-  settledTally,
-  storedTally,
   stoppedOpen,
   stoppedRuns,
   TALLY_PREFIX,
-  TALLY_STORE_MAX
+  TALLY_STORE_MAX,
+  tallyFor
 } from '../src/eval.mjs'
 import { contextFill, createContext, forgetCompactRead, noteBreakdown, noteContext } from '../src/context.mjs'
 import { listLayout } from '../src/listWindow.mjs'
@@ -90,6 +89,7 @@ const TITLE = 'ultraguard-eval'
 const KEPT = 20
 const TOAST_MS = 8000
 const DRAWS_RUNNING = 1000
+const OVERALL_EVERY_MS = 30 * 1000
 const TALLY_TOO_BIG = `ultraguard: the session tally is over ${TALLY_STORE_MAX / 1024} KiB, so it is no longer kept in the plugin store`
 const agentsText = (n: number) => `${n} agent${n === 1 ? '' : 's'}`
 
@@ -200,8 +200,13 @@ async function recordReading($: EngineInterface, rateLimits: unknown) {
   const at = await $.clock.now()
   const before = await read($, ev)
   const after = await update($, ev, s => noteMeterReading(s, rateLimits, at, data.prices))
+  const sid = await $.session.id()
   const grew = (['five_hour', 'seven_day'] as const).some(k => after.meter.mine[k] !== before.meter.mine[k])
-  if (grew) await $.store.set(`meter:${await $.session.id()}`, storedValue(after.meter))
+  if (grew) await $.store.set(`meter:${sid}`, storedValue(after.meter))
+  const t = await read($, tally)
+  const built = t.sid === sid ? t.overall?.windows : undefined
+  const stamps = stampsOf(after.meter)
+  if (built && (built.five_hour !== stamps.five_hour || built.seven_day !== stamps.seven_day)) await noteTally($, sid, null, 'always')
 }
 
 async function loadMeter($: EngineInterface) {
@@ -219,6 +224,7 @@ async function loadMeter($: EngineInterface) {
 }
 
 async function estimate($: EngineInterface, key: string) {
+  const sid = await $.session.id()
   const data = await getData($)
   if (!data) return
   try {
@@ -230,10 +236,9 @@ async function estimate($: EngineInterface, key: string) {
   const s = await read($, ev)
   const run = s.runs[key]
   if (!run) return
-  const family = priceFamily(run.baseline.model)
   const running = run.status === 'running'
-  const baseline = family && run.baseline.effort ? { family, effort: run.baseline.effort } : null
-  const meter = { subscription: s.meter.subscription, five_hour: intervalsOf(s.meter, 'five_hour', at), seven_day: intervalsOf(s.meter, 'seven_day', at) }
+  const baseline = baselineOf(run)
+  const meter = meterOf(s.meter, at)
   const agents = agentPieces(run)
   const saved = estimateRun({
     agents,
@@ -247,18 +252,27 @@ async function estimate($: EngineInterface, key: string) {
     running
   })
   const used = s.meter.subscription === true ? { five_hour: usedOf(s.meter.last.five_hour, at), seven_day: usedOf(s.meter.last.seven_day, at) } : { five_hour: null, seven_day: null }
-  await update($, ev, st => noteSaved(st, key, { ...saved, used }))
-  if (run.hidden) return
-  await guard($, 'tally', () => noteTally($, { key, status: run.status, baseline, agents, windows: stampsOf(s.meter), at }, { data, meter, last: s.meter }))
+  const after = await update($, ev, st => noteSaved(st, key, { ...saved, used }))
+  const current = after.runs[key]
+  if (!current || current.hidden || (running && current.status !== 'running')) return
+  await guard($, 'tally', () => noteTally($, sid, { key, status: run.status, baseline, agents, windows: stampsOf(s.meter), at }, running ? 'due' : 'always'))
 }
 
-type EstimateMeter = { subscription: boolean | null; five_hour: unknown[]; seven_day: unknown[] }
 type Pooled = { baseline: TallyRun['baseline'] } & Record<'all' | 'five_hour' | 'seven_day', TallyRun['agents']>
+type Build = 'missing' | 'due' | 'always'
 
 const stampsOf = (m: EvalMeter) => ({ five_hour: m.last.five_hour?.resetsAt ?? null, seven_day: m.last.seven_day?.resetsAt ?? null })
+const meterOf = (m: EvalMeter, at: number) => ({ subscription: m.subscription, five_hour: intervalsOf(m, 'five_hour', at), seven_day: intervalsOf(m, 'seven_day', at) })
+const tallyKey = (sid: string) => `${TALLY_PREFIX}${sid}`
 
-function overallOf(t: TallyState, { data, meter, last }: { data: Data; meter: EstimateMeter; last: EvalMeter }, now: number) {
+function baselineOf(run: EvalRun) {
+  const family = priceFamily(run.baseline.model)
+  return family && run.baseline.effort ? { family, effort: run.baseline.effort } : null
+}
+
+function overallOf(t: TallyState, data: Data, last: EvalMeter, now: number): TallyOverall {
   const running = Object.values(t.runs).some(r => r.status === 'running')
+  const meter = meterOf(last, now)
   const one = (baseline: TallyRun['baseline'], agents: TallyRun['agents']) =>
     estimateRun({ agents, baseline, ratios: data.ratios, prices: data.prices, meter, seed: seedOf('overall'), draws: DRAWS_RUNNING, running })
   const estimates = overallInput(t, stampsOf(last), now).groups.map((g: Pooled) => ({
@@ -266,32 +280,64 @@ function overallOf(t: TallyState, { data, meter, last }: { data: Data; meter: Es
     five_hour: one(g.baseline, g.five_hour),
     seven_day: one(g.baseline, g.seven_day)
   }))
-  return combine(estimates, { tally: t, meter: last, now })
+  return { ...combine(estimates, { tally: t, meter: last, now }), windows: stampsOf(last), at: now }
 }
 
-async function noteTally($: EngineInterface, run: TallyRun, inputs: { data: Data; meter: EstimateMeter; last: EvalMeter }) {
+let tallyQueue: Promise<void> = Promise.resolve()
+
+function noteTally($: EngineInterface, sid: string, run: TallyRun | null, build: Build, ifAbsent = false) {
+  const done = tallyQueue.then(() => tallyTurn($, sid, run, build, ifAbsent)).catch(err => note($, 'tally', err))
+  tallyQueue = done
+  return done
+}
+
+async function tallyTurn($: EngineInterface, sid: string, run: TallyRun | null, build: Build, ifAbsent: boolean) {
+  if ((await $.session.id()) !== sid) return
+  const data = await getData($)
+  if (!data) return
+  let t = await read($, tally)
+  if (t.sid !== sid) {
+    const stored = await $.store.get(tallyKey(sid))
+    t = await update($, tally, cur => tallyFor(cur, sid, stored) as TallyState)
+  }
   const dropped: string[] = []
-  const next = await update($, tally, t => {
-    dropped.length = 0
-    const noted = noteTallyRun(t, run, { log: (line: string) => dropped.push(line) }) as TallyState
-    return { ...noted, overall: overallOf(noted, inputs, run.at) }
-  })
-  await guard($, 'tally store', async () => {
-    const key = `${TALLY_PREFIX}${await $.session.id()}`
-    if (JSON.stringify(next).length <= TALLY_STORE_MAX) return $.store.set(key, next)
-    await $.store.delete(key)
-    dropped.push(TALLY_TOO_BIG)
-  })
+  if (run) {
+    t = await update($, tally, cur => {
+      dropped.length = 0
+      return cur.sid === sid ? (noteTallyRun(cur, run, { log: (line: string) => dropped.push(line), ifAbsent }) as TallyState) : cur
+    })
+  }
+  if (t.sid !== sid) return
+  const now = await $.clock.now()
+  const due = build === 'always' || !t.overall || (build === 'due' && !(now - t.overall.at < OVERALL_EVERY_MS))
+  if (due) {
+    const overall = overallOf(t, data, (await read($, ev)).meter, now)
+    t = await update($, tally, cur => (cur.sid === sid ? { ...cur, overall } : cur))
+    if (t.sid !== sid) return
+  }
+  if ((run || due) && Object.keys(t.runs).length > 0) {
+    await guard($, 'tally store', async () => {
+      if (JSON.stringify(t).length <= TALLY_STORE_MAX) return $.store.set(tallyKey(sid), t)
+      await $.store.delete(tallyKey(sid))
+      dropped.push(TALLY_TOO_BIG)
+    })
+  }
   for (const line of dropped) $.ui.log(line, { to: 'debug' })
 }
 
 async function loadTally($: EngineInterface) {
-  const own = `${TALLY_PREFIX}${await $.session.id()}`
+  const sid = await $.session.id()
   const stored: Record<string, unknown> = {}
   for (const key of await $.store.keys()) if (key.startsWith(TALLY_PREFIX)) stored[key] = await $.store.get(key)
-  for (const key of staleTallies(stored, own, await $.clock.now())) await $.store.delete(key)
-  const kept = settledTally(storedTally(stored[own])) as TallyState | null
-  if (kept) await update($, tally, t => (Object.keys(t.runs).length === 0 ? kept : t))
+  for (const key of staleTallies(stored, tallyKey(sid), await $.clock.now())) await $.store.delete(key)
+  await noteTally($, sid, null, 'always')
+}
+
+async function swapTally($: EngineInterface, ended: string) {
+  const sid = await $.session.id()
+  const next = sid === ended ? null : sid
+  const stored = next === null ? undefined : await $.store.get(tallyKey(next))
+  await update($, tally, cur => tallyFor(cur, next, stored) as TallyState)
 }
 
 async function readWindow($: EngineInterface, window: number) {
@@ -412,6 +458,7 @@ export const register: Register = on => {
 
   on('session.measure', async ($, e, next) => {
     if (e.changed.includes('rateLimits')) await guard($, 'measure', () => recordReading($, e.rateLimits))
+    await guard($, 'tally', async () => noteTally($, await $.session.id(), null, 'missing'))
     let ask = false
     await guard($, 'context', async () => {
       ask = await noteWindow($, e.context)
@@ -434,14 +481,17 @@ export const register: Register = on => {
         await update($, ev, s => hideFinished(endAllRuns(s, 'cleared', at)))
         for (const run of live) await persist($, run.key)
       })
-      await guard($, 'clear tally', () => update($, tally, () => createTally() as TallyState))
     }
-    return next(e)
+    const done = await next(e)
+    if (e.reason === 'clear' || e.reason === 'resume') await guard($, 'swap tally', () => swapTally($, e.sessionId))
+    return done
   })
 
   on('tool.call', { tool: 'Workflow' }, async ($, e, next) => {
     const toolUseId = e.tool_use_id
+    let sid = null as string | null
     await guard($, 'launch', async () => {
+      sid = await $.session.id()
       const fingerprint = await fingerprintOf($, e).catch(() => null)
       const at = await $.clock.now()
       await update($, ev, s => noteLaunch(s, { toolUseId, fingerprint, at }))
@@ -454,7 +504,11 @@ export const register: Register = on => {
       const at = await $.clock.now()
       const name = out.workflowName || (out.summary ? out.summary.slice(0, 48) : null)
       const s = await update($, ev, st => noteLaunchResult(st, { toolUseId, isError, taskId: out.taskId ?? null, runId: out.runId ?? null, name, at }))
-      if (s.runs[toolUseId]) await persist($, toolUseId)
+      const run = s.runs[toolUseId]
+      if (!run) return
+      await persist($, toolUseId)
+      const entry = { key: toolUseId, status: run.status, baseline: baselineOf(run), agents: agentPieces(run), windows: stampsOf(s.meter), at }
+      if (sid !== null) await noteTally($, sid, entry, 'always', true)
     })
     return ran
   })
@@ -624,7 +678,8 @@ export const register: Register = on => {
     const focusKey = reachable.includes(state.ui.focus ?? '') ? (state.ui.focus ?? null) : resting
     const picked = (key: string) => e.props.isFocused && ringHeld && focusKey === key
     const width = e.props.bodyColumns - 4
-    const overall = open ? null : ((await read($, tally)).overall ?? null)
+    const held = open ? null : await read($, tally)
+    const overall = held?.overall && held.sid === (await $.session.id()) ? held.overall : null
     const stored = await read($, ctx)
     const wanted = open ? Boolean(open.saved) : overall?.status === 'estimated'
     const live = wanted ? await $.session.usage().then(u => u?.context ?? null, () => null) : null

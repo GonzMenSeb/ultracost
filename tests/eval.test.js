@@ -5,7 +5,7 @@ import { recordPath } from '../src/record.mjs'
 import { readFileSync } from 'node:fs'
 import { loadPrices } from '../src/prices.mjs'
 import { toastText } from '../src/savedText.mjs'
-import { STOPPED, TALLY_PREFIX, UNKNOWN_PHASE, noteFocus, phaseOpen, setFolds, agentPieces, finishedRuns, hideFinished, noteMainStep, noteMeterReading, noteSaved, noteStored, noteUsage, staleTallies, storedTally, settledTally, stoppedRuns, setStoppedOpen, stoppedOpen } from '../src/eval.mjs'
+import { STOPPED, TALLY_PREFIX, UNKNOWN_PHASE, noteFocus, phaseOpen, setFolds, agentPieces, finishedRuns, hideFinished, noteMainStep, noteMeterReading, noteSaved, noteStored, noteUsage, staleTallies, storedTally, settledTally, stoppedRuns, setStoppedOpen, stoppedOpen, tallyFor } from '../src/eval.mjs'
 import {
   activeRuns,
   bandText,
@@ -1038,13 +1038,40 @@ test('the store keeps the tallies of the 3 newest other sessions, never the own 
   assert.deepEqual(staleTallies(stored, own, now).sort(), [`${TALLY_PREFIX}s4`, `${TALLY_PREFIX}s5`])
 })
 
-test('a tally loaded from the store has no running runs left, and its overall is not so far', () => {
+test('a tally loaded from the store has no running runs left and drops its overall to be built again', () => {
   const t = tallyAt(5, 6)
   t.runs.r1.status = 'running'
   t.overall = { status: 'unknown', count: 2, running: true }
   const settled = settledTally(t)
   assert.deepEqual(Object.values(settled.runs).map((r) => r.status), ['completed', 'cleared'])
-  assert.equal(settled.overall.running, false)
+  assert.equal('overall' in settled, false)
   assert.equal(t.runs.r1.status, 'running')
+  assert.equal(t.overall.running, true)
   assert.equal(settledTally(null), null)
+})
+
+test('tallyFor keeps the tally of the session it belongs to and swaps in the stored or a fresh one for another', () => {
+  const mine = { ...tallyAt(5), sid: 's1', overall: { status: 'unknown', count: 1, running: false } }
+  assert.equal(tallyFor(mine, 's1', tallyAt(9, 10)), mine)
+  const stored = { ...tallyAt(7), sid: 's2', overall: { status: 'unknown', count: 1, running: true } }
+  stored.runs.r0.status = 'running'
+  const resumed = tallyFor(mine, 's2', stored)
+  assert.equal(resumed.sid, 's2')
+  assert.deepEqual(Object.values(resumed.runs).map((r) => [r.key, r.status, r.at]), [['r0', 'cleared', 7]])
+  assert.equal('overall' in resumed, false)
+  for (const none of [undefined, null, { v: 2, runs: {} }]) assert.deepEqual(tallyFor(mine, 's3', none), { v: 1, runs: {}, sid: 's3' })
+  assert.deepEqual(tallyFor({ v: 1, runs: {} }, 's1', undefined), { v: 1, runs: {}, sid: 's1' })
+})
+
+test('a running estimate never replaces the saved of a run that has ended', () => {
+  let s = launched()
+  s = noteSaved(s, TU, { status: 'estimated', running: true, n: 1 })
+  assert.deepEqual(s.runs[TU].saved, { status: 'estimated', running: true, n: 1 })
+  s = noteSaved(s, TU, { status: 'estimated', running: true, n: 2 })
+  assert.equal(s.runs[TU].saved.n, 2)
+  s = noteRunEnd(s, { toolUseId: TU, status: 'completed', at: 5 })
+  const ended = noteSaved(s, TU, { status: 'estimated', running: false, n: 3 })
+  assert.equal(ended.runs[TU].saved.n, 3)
+  assert.equal(noteSaved(ended, TU, { status: 'estimated', running: true, n: 4 }), ended)
+  assert.equal(noteSaved(s, TU, { status: 'estimated', running: true, n: 4 }), s)
 })
