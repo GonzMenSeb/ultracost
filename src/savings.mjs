@@ -21,12 +21,12 @@ const scaleAll = (list, f) => {
 }
 
 const hasBuckets = (m) => m && NAMES.every((name) => m[name])
-const stepBucket = (step, name) => (hasBuckets(step) ? step[name] : step)
 
 export function ratioFor(ratios, from, to) {
   if (from === to) {
     return { source: 'identical', output: ZERO, fresh: ZERO, read: ZERO, agentSd: { output: 0, fresh: 0, read: 0 }, tau: 0, pairs: 0 }
   }
+  const stepBucket = (step, name) => (hasBuckets(step) ? step[name] : step)
   const shape = (m, source, extra = {}) => ({
     source,
     ...Object.fromEntries(NAMES.map((name) => [name, { mu: m[name].mu, sigma: m[name].sigma }])),
