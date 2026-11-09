@@ -7,6 +7,10 @@ const AGENT_FAMILIES = ['opus', 'sonnet', 'haiku']
 const AGENT_EFFORTS = ['medium', 'high', 'xhigh']
 const Z90 = 1.645
 const SINGLE_SOURCE_STEP_SD = 0.4
+const MIN_STEP_SD = 0.25
+const BORROWED_FRESH_EXPONENT = 0.77
+const BORROWED_FRESH_SD = 0.2
+const SPREAD_PROXY = 'sonnet'
 const MIN_PRIOR_SD = 0.6
 const MIN_TAU = 0.22
 
@@ -87,9 +91,39 @@ function tauOf(pairs, prices) {
   return Math.max(MIN_TAU, Math.sqrt(sum / Math.max(1, cells - transitions.size)))
 }
 
+const tableOf = (sources, key, family) => sources.find((s) => s[key]?.[family])?.[key][family]
+
+function spreadOf(evaluations, e1, e2) {
+  const a = evaluations?.efforts?.[e1]
+  const b = evaluations?.efforts?.[e2]
+  if (!a || !b) return 0
+  return logSd(Object.keys(a).filter((k) => a[k] > 0 && b[k] > 0).map((k) => Math.log(b[k] / a[k])))
+}
+
+function shapeOf(run, e1, e2) {
+  const a = run?.efforts?.[e1]
+  const b = run?.efforts?.[e2]
+  if (!a || !b) return null
+  const ln = (of) => Math.log(of(b) / of(a))
+  const total = ln((r) => r.costToRun)
+  const output = ln((r) => r.outputTokens)
+  const p = run.prices
+  const shape = p
+    ? {
+        output: output - total,
+        fresh: ln((r) => r.nonCacheInputCost / p.input + r.cacheWriteCost / p.cacheWrite) - total,
+        read: ln((r) => r.cacheReadCost / p.cacheRead) - total,
+        borrowed: false,
+      }
+    : { output: output - total, fresh: BORROWED_FRESH_EXPONENT * output - total, read: ln((r) => r.inputTokens) - total, borrowed: true }
+  return Object.keys(BUCKETS).every((name) => Number.isFinite(shape[name])) ? shape : null
+}
+
 function stepsOf(sources) {
   const steps = {}
   for (const family of FAMILIES) {
+    const run = tableOf(sources, 'wholeIndex', family)
+    const evaluations = tableOf(sources, 'evaluations', family) ?? tableOf(sources, 'evaluations', SPREAD_PROXY)
     for (const e1 of EFFORTS) {
       for (const e2 of EFFORTS) {
         if (e1 === e2) continue
@@ -98,8 +132,17 @@ function stepsOf(sources) {
           .filter((c) => c && c[e1] > 0 && c[e2] > 0)
           .map((c) => Math.log(c[e2] / c[e1]))
         if (!logs.length) continue
+        const mu = mean(logs)
+        const sd = Math.max(logs.length >= 2 ? logSd(logs) : SINGLE_SOURCE_STEP_SD, spreadOf(evaluations, e1, e2), MIN_STEP_SD)
+        const step = { mu, sd, sources: logs.length }
+        const shape = shapeOf(run, e1, e2)
+        if (shape) {
+          step.output = { mu: mu + shape.output, sd }
+          step.fresh = { mu: mu + shape.fresh, sd: shape.borrowed ? Math.hypot(sd, BORROWED_FRESH_SD) : sd }
+          step.read = { mu: mu + shape.read, sd }
+        }
         steps[family] ??= {}
-        steps[family][`${e1}>${e2}`] = { mu: mean(logs), sd: logs.length >= 2 ? logSd(logs) : SINGLE_SOURCE_STEP_SD, sources: logs.length }
+        steps[family][`${e1}>${e2}`] = step
       }
     }
   }
