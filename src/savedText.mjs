@@ -39,6 +39,13 @@ const signed = (x, fixed) => (Math.abs(x) < 0.05 ? 0 : x).toFixed(fixed)
 const tenths = (x) => (Math.round(x * 10) / 10).toFixed(1)
 const RANGE_NOTE = 'range = 9 times in 10'
 const RANGE_WIDE = 'so the range is wide'
+const MIXED_BASELINE = "vs your session's model at each launch"
+const RUN_NOTHING = 'this run may have saved nothing'
+
+export const RULE = '═'
+export const SUB_RULE = '─'
+const rule = (text) => ({ text, style: 'plain', color: 'subtle' })
+const cut = (s, n) => (s.length > n ? `${s.slice(0, Math.max(0, n - 1))}…` : s)
 const LIMIT_KEYS = [
   ['five_hour', '5-hour'],
   ['seven_day', 'weekly']
@@ -79,12 +86,22 @@ function modelSeg(baseline) {
   return color ? { text: capitalize(baseline.family), style: 'bold', color } : familySeg(baseline.family)
 }
 
-function headLines(saved, width) {
-  const head = bold(saved.running ? 'ultraguard saved so far' : 'ultraguard saved')
-  if (!saved.baseline) return [[head]]
-  const vs = [dim('vs every agent on '), modelSeg(saved.baseline), dim(` ${saved.baseline.effort}`)]
-  const oneLine = [head, dim('  '), ...vs]
-  return textOf(oneLine) <= width ? [oneLine] : [[head], vs]
+export function sectionHead(title, { extra = '', width }) {
+  const room = Math.max(1, width - 6)
+  const tail = extra && title.length + 2 + extra.length <= room ? `  ${extra}` : ''
+  const name = cut(title, room)
+  const fill = Math.max(2, width - 4 - name.length - tail.length)
+  return [rule(RULE.repeat(2)), seg(' '), bold(name), ...(tail ? [dim(tail)] : []), seg(' '), rule(RULE.repeat(fill))]
+}
+
+export function subHead(label, { width }) {
+  const name = cut(label, Math.max(1, width - 5))
+  return [rule(SUB_RULE), seg(' '), dim(name), seg(' '), rule(SUB_RULE.repeat(Math.max(2, width - 3 - name.length)))]
+}
+
+export function baselineLine(baseline) {
+  if (!baseline) return [dim(`  ${MIXED_BASELINE}`)]
+  return [dim('  vs every agent on '), modelSeg(baseline), dim(` ${baseline.effort}`)]
 }
 
 function contextRow(context) {
@@ -180,9 +197,35 @@ function coverageLines(saved) {
   return [reasons.length ? `${base}: ${reasons.join('; ')}` : base, ...(measured ? [measured] : []), ...others]
 }
 
-export function savedBlock(saved, { width = MAX_WIDTH, context = null } = {}) {
+export function savedBody(saved, { width = MAX_WIDTH, context = null, nothing } = {}) {
+  const limits = limitRows(saved)
+  const cost = costRow(saved)
+  const rows = [contextRow(context), ...limits, cost].filter(Boolean)
+  const out = []
+  if (rows.length > 0) {
+    const layout = layoutOf(rows, width)
+    out.push(...rows.map((r) => rowLine(r, layout)))
+  }
+  for (const message of limitMessages(limits)) out.push(...proseLines(message, width))
+
+  if (!cost) {
+    const money = moneyLine(saved)
+    if (money) out.push(money)
+  }
+  out.push(...tokenLines(saved, width))
+
+  const firstRange = rows.find((r) => r.range)?.range ?? saved.dollars
+  if (firstRange) {
+    out.push(...proseLines(RANGE_NOTE, width, 'dim'))
+    if (firstRange.lo < 0 && nothing) out.push(...proseLines(nothing, width, 'dim'))
+  }
+  return out
+}
+
+export function savedBlock(saved, { width = MAX_WIDTH, headWidth = width, context = null } = {}) {
   const room = Math.min(width, MAX_WIDTH)
-  const head = headLines(saved, room)
+  const head = [sectionHead(saved.running ? 'ultraguard saved so far' : 'ultraguard saved', { width: headWidth })]
+  if (saved.baseline) head.push(baselineLine(saved.baseline))
   if (saved.status === 'none') return [...head, ...proseLines("every agent ran on your session's model and effort, so nothing was saved", room)]
   if (!saved.baseline) return [...head, ...proseLines("ultraguard could not read your session's model or effort, so it has no estimate", room)]
 
@@ -191,27 +234,7 @@ export function savedBlock(saved, { width = MAX_WIDTH, context = null } = {}) {
     return [...head, ...proseLines(`${base}${reasons.length ? `: ${reasons.join('; ')}` : ''}`, room, 'dim')]
   }
 
-  const limits = limitRows(saved)
-  const cost = costRow(saved)
-  const rows = [contextRow(context), ...limits, cost].filter(Boolean)
-  const out = [...head]
-  if (rows.length > 0) {
-    const layout = layoutOf(rows, room)
-    out.push(...rows.map((r) => rowLine(r, layout)))
-  }
-  for (const message of limitMessages(limits)) out.push(...proseLines(message, room))
-
-  if (!cost) {
-    const money = moneyLine(saved)
-    if (money) out.push(money)
-  }
-  out.push(...tokenLines(saved, room))
-
-  const firstRange = rows.find((r) => r.range)?.range ?? saved.dollars
-  if (firstRange) {
-    out.push(...proseLines(RANGE_NOTE, room, 'dim'))
-    if (firstRange.lo < 0) out.push(...proseLines('this run may have saved nothing', room, 'dim'))
-  }
+  const out = [...head, ...savedBody(saved, { width: room, context, nothing: RUN_NOTHING })]
   for (const line of coverageLines(saved)) out.push(...proseLines(line, room, 'dim'))
   return out
 }
