@@ -38,6 +38,7 @@ import {
   setFolds,
   staleTallies,
   STOPPED,
+  settledTally,
   storedTally,
   stoppedRuns,
   TALLY_PREFIX,
@@ -258,7 +259,7 @@ async function loadTally($: EngineInterface) {
   const stored: Record<string, unknown> = {}
   for (const key of await $.store.keys()) if (key.startsWith(TALLY_PREFIX)) stored[key] = await $.store.get(key)
   for (const key of staleTallies(stored, own, await $.clock.now())) await $.store.delete(key)
-  const kept = storedTally(stored[own]) as TallyState | null
+  const kept = settledTally(storedTally(stored[own])) as TallyState | null
   if (kept) await update($, tally, t => (Object.keys(t.runs).length === 0 ? kept : t))
 }
 

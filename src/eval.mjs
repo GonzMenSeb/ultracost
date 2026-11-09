@@ -507,6 +507,12 @@ export function storedTally(value) {
   return ok ? value : null
 }
 
+export function settledTally(tally) {
+  if (!tally) return tally
+  const runs = Object.fromEntries(Object.entries(tally.runs).map(([key, r]) => [key, r.status === 'running' ? { ...r, status: 'cleared' } : r]))
+  return { ...tally, runs, ...(tally.overall ? { overall: { ...tally.overall, running: false } } : {}) }
+}
+
 export function staleTallies(stored, sessionKey, now) {
   const newest = (value) => Math.max(-Infinity, ...Object.values(storedTally(value)?.runs ?? {}).map((r) => (Number.isFinite(r?.at) ? r.at : -Infinity)))
   const others = Object.entries(stored ?? {})

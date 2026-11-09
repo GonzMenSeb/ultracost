@@ -5,7 +5,7 @@ import { recordPath } from '../src/record.mjs'
 import { readFileSync } from 'node:fs'
 import { loadPrices } from '../src/prices.mjs'
 import { toastText } from '../src/savedText.mjs'
-import { STOPPED, TALLY_PREFIX, UNKNOWN_PHASE, noteFocus, phaseOpen, setFolds, agentPieces, finishedRuns, hideFinished, noteMainStep, noteMeterReading, noteSaved, noteStored, noteUsage, staleTallies, storedTally, stoppedRuns } from '../src/eval.mjs'
+import { STOPPED, TALLY_PREFIX, UNKNOWN_PHASE, noteFocus, phaseOpen, setFolds, agentPieces, finishedRuns, hideFinished, noteMainStep, noteMeterReading, noteSaved, noteStored, noteUsage, staleTallies, storedTally, settledTally, stoppedRuns } from '../src/eval.mjs'
 import {
   activeRuns,
   bandText,
@@ -1015,4 +1015,15 @@ test('the store keeps the tallies of the 3 newest other sessions, never the own 
   const stored = { [own]: tallyAt(1000, now - 9 * DAY_MS) }
   for (let i = 1; i <= 5; i++) stored[`${TALLY_PREFIX}s${i}`] = tallyAt(1000, now - i * DAY_MS)
   assert.deepEqual(staleTallies(stored, own, now).sort(), [`${TALLY_PREFIX}s4`, `${TALLY_PREFIX}s5`])
+})
+
+test('a tally loaded from the store has no running runs left, and its overall is not so far', () => {
+  const t = tallyAt(5, 6)
+  t.runs.r1.status = 'running'
+  t.overall = { status: 'unknown', count: 2, running: true }
+  const settled = settledTally(t)
+  assert.deepEqual(Object.values(settled.runs).map((r) => r.status), ['completed', 'cleared'])
+  assert.equal(settled.overall.running, false)
+  assert.equal(t.runs.r1.status, 'running')
+  assert.equal(settledTally(null), null)
 })
