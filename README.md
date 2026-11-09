@@ -136,7 +136,7 @@ A passing gate prints nothing. ultraguard-eval is how you see that the rules hel
 A run is green while all four hold. Otherwise it turns red and names the first failure.
 
 <p align="center">
-  <img src="assets/eval-red.svg" alt="The same row when a run breaks the plan: a red square, the title ultraguard-eval and the summary 1 running, 1 red.">
+  <img src="assets/eval-red.svg" alt="The same row when a run breaks the plan: a red hollow square, the title ultraguard-eval and the summary 1 running, 1 red.">
 </p>
 
 Select the row, or run `/ultraguard`, to open the pane: one row per workflow, running ones first and ended ones under "finished this session". Enter opens a workflow: the four checks with ✓ or ✗, then its phases. Each phase is a block you can fold (Enter, or `a` for all) with the saved figure next to its title, and, while folded, the models that ran in it; open, it lists its agents with a ✓ or ✗, what each saved and the model and effort it ran on. A workflow without phases shows the agents in one flat table. The focused row is drawn inside a rounded outline.
