@@ -501,8 +501,56 @@ test('the session tally counts every ended workflow, past the 20 the list keeps'
   expect(Object.keys(tallyOf(w).runs)).toHaveLength(22)
   expect(tallyOf(w).overall.count).toBe(22)
   expect(tallyOf(w).overall.status).toBe('estimated')
-  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  const ui = await $.ui.mount({ ...PANE, props: { ...PANE.props, scroll: { offset: 0, bodyRows: 100 } }, surface: 'terminal' })
   expect((await ui.findAll({ type: 'Button' })).filter((b: any) => String(b.key).startsWith('run:'))).toHaveLength(20)
+  await ui.unmount()
+})
+
+test('with only stopped workflows the list shows the overall section, says none is running and keeps the folded row', async ($, on) => {
+  await flow($, on, { subscription: true, finish: false })
+  await $.tool.call({ tool: 'TaskStop', task_id: 'w1' })
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  const { at, heads } = await order(ui, [
+    /^ultraguard-eval$/,
+    /^══ overall savings for this session {2}1 workflow ═+$/,
+    /^ +vs every agent on Opus high$/,
+    /^══ workflows {2}none running ═+$/,
+    /^ {2}No workflow is running\.$/,
+    /workflow\s+id\s+agents\s+5h saves/,
+    /^▸ stopped this session {2}1 workflow$/,
+    /^↑↓ choose {2}enter details {2}esc close$/,
+  ])
+  expect(inOrder(at)).toBe(true)
+  expect(heads).toEqual([96, 96])
+  expect(await ui.find({ type: 'Text', text: /finished this session/ })).toBeUndefined()
+  expect((await ui.findAll({ type: 'Button' })).map((b: any) => b.key)).toEqual(['fold:stopped'])
+  expect((await ui.find({ type: 'Box', key: 'box:fold:stopped' }))?.props.marginTop).toBe(0)
+  await ui.unmount()
+})
+
+test('a long list draws its rows in a window, and the overall section stays the first one', async ($, on) => {
+  const w = await flow($, on, { subscription: true })
+  for (let i = 0; i < 14; i++) await w.launch()
+  const ui = await $.ui.mount({ ...PANE, props: { ...PANE.props, scroll: { offset: 0, bodyRows: 20 } }, surface: 'terminal' })
+  const texts: string[] = (await ui.findAll({ type: 'Text' })).map((t: any) => String(t.text ?? ''))
+  expect(texts.find(t => /^══ /.test(t))).toMatch(/^══ overall savings for this session {2}1 workflow ═+$/)
+  const below = texts.find(t => /^ {2}↓ \d+ more$/.test(t))
+  expect(below).toBeDefined()
+  const drawn = (await ui.findAll({ type: 'Button' })).filter((b: any) => String(b.key).startsWith('run:')).length
+  expect(drawn).toBeGreaterThan(0)
+  expect(drawn + Number(below?.match(/\d+/)?.[0])).toBe(15)
+  await ui.unmount()
+})
+
+test('the overall section of the list draws the context row from the live usage, like the run view', async ($, on) => {
+  await flow($, on, { subscription: true, context: { tokens: 50000 } })
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  const texts: string[] = (await ui.findAll({ type: 'Text' })).map((t: any) => String(t.text ?? ''))
+  const head = texts.findIndex(t => /^══ overall savings for this session/.test(t))
+  const context = texts.findIndex(t => /^ +context +[━╸─│ ]+ +25% +50k of 200k$/.test(t))
+  expect(head).toBeGreaterThan(-1)
+  expect(context).toBeGreaterThan(head)
+  expect(context).toBeLessThan(texts.findIndex(t => /^══ workflows/.test(t)))
   await ui.unmount()
 })
 

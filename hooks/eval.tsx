@@ -36,19 +36,50 @@ import {
   runOfAgent,
   runView,
   setFolds,
+  setStoppedOpen,
   staleTallies,
   STOPPED,
   storedTally,
+  stoppedOpen,
   stoppedRuns,
   TALLY_PREFIX,
   TALLY_STORE_MAX
 } from '../src/eval.mjs'
 import { contextFill, createContext, forgetCompactRead, noteBreakdown, noteContext } from '../src/context.mjs'
+import { listWindow } from '../src/listWindow.mjs'
 import { intervalsOf, staleKeys, storedValue, usedOf } from '../src/meter.mjs'
-import { arrowOf, boxKeyOf, paneNav, stepFocus } from '../src/nav.mjs'
+import { STOPPED_FOLD, arrowOf, boxKeyOf, paneNav, stepFocus } from '../src/nav.mjs'
 import { familyColor, modelColor, savedColor } from '../src/palette.mjs'
 import { loadPrices, priceFamily } from '../src/prices.mjs'
-import { agentColumn, listCell, listHeader, modelLines, phaseHeadLength, phaseLayout, phaseStatus, phaseTitle, savedBlock, sectionHead, toastText } from '../src/savedText.mjs'
+import {
+  AGENTS_HEAD,
+  agentColumn,
+  CHECKS_HEAD,
+  endedText,
+  FINISHED_TITLE,
+  FOCUS_HINT,
+  FOLD_HINT,
+  foldLine,
+  LIST_HINT,
+  listCell,
+  listHeader,
+  modelLines,
+  MORE_ABOVE,
+  MORE_BELOW,
+  NO_RUNNING,
+  overallBlock,
+  PHASES_HEAD,
+  phaseHeadLength,
+  phaseLayout,
+  phaseStatus,
+  phaseTitle,
+  RUNNING_EXTRA,
+  savedBlock,
+  sectionHead,
+  subHead,
+  toastText,
+  WORKFLOWS_HEAD
+} from '../src/savedText.mjs'
 import { estimateRun } from '../src/savings.mjs'
 import { seedOf } from '../src/stats.mjs'
 import { combine, createTally, noteTallyRun, overallInput } from '../src/tally.mjs'
@@ -59,14 +90,14 @@ const KEPT = 20
 const TOAST_MS = 8000
 const DRAWS_RUNNING = 1000
 const TALLY_TOO_BIG = `ultraguard: the session tally is over ${TALLY_STORE_MAX / 1024} KiB, so it is no longer kept in the plugin store`
-const PHASES_HEAD = 'phases'
-const AGENTS_HEAD = 'agents'
-const CHECKS_HEAD = 'checks'
+const MIN_ROOM = 3
 const agentsText = (n: number) => `${n} agent${n === 1 ? '' : 's'}`
 
 const ev = atom({ plugin: 'ultraguard', key: 'eval' } as const, createState() as EvalState, { shape: 'eval-2' })
 const ctx = atom({ plugin: 'ultraguard', key: 'context' } as const, createContext() as ContextState, { shape: 'context-1' })
 const tally = atom({ plugin: 'ultraguard', key: 'tally' } as const, createTally() as TallyState, { shape: 'tally-1' })
+
+const windowFrom = new Map<string, number>()
 
 type Ids = { toolUseId: string; runId: string }
 type Notice = { toolUseId: string | null | undefined; taskId: string | null | undefined; status: string }
@@ -525,6 +556,7 @@ export const register: Register = on => {
       await update($, ev, closeRun)
       if (e.origin.kind === 'person' && [...activeRuns(state), ...finishedRuns(state), ...stoppedRuns(state)].some(r => r.key === state.ui.run)) return { value: undefined }
     }
+    await update($, ev, s => setStoppedOpen(s, false))
     return next(e)
   })
 
@@ -546,9 +578,15 @@ export const register: Register = on => {
     let moved = false
     await guard($, 'arrow', async () => {
       const state = await read($, ev)
-      const target = stepFocus(paneNav(state), state.ui.focus ?? null, dir)
+      const before = state.ui.focus ?? null
+      const target = stepFocus(paneNav(state), before, dir)
       if (target === null) return
-      moved = (await $.ui.focus({ requestId: PANE, key: target })).deny === undefined
+      await update($, ev, s => noteFocus(s, target))
+      try {
+        moved = (await $.ui.focus({ requestId: PANE, key: target })).deny === undefined
+      } finally {
+        if (!moved) await update($, ev, s => noteFocus(s, before))
+      }
     })
     return moved ? {} : next(e)
   })
@@ -573,9 +611,17 @@ export const register: Register = on => {
     const state = await read($, ev)
     const runs = activeRuns(state).map(r => runView(r))
     const finished = finishedRuns(state).map(r => runView(r))
-    const open = [...runs, ...finished, ...stoppedRuns(state).map(r => runView(r))].find(v => v.key === state.ui.run)
+    const stopped = stoppedRuns(state).map(r => runView(r))
+    const open = [...runs, ...finished, ...stopped].find(v => v.key === state.ui.run)
     const { reachable, resting } = paneNav(state)
-    const picked = (key: string) => e.props.isFocused && (reachable.includes(state.ui.focus ?? '') ? state.ui.focus : resting) === key
+    const focusKey = reachable.includes(state.ui.focus ?? '') ? (state.ui.focus ?? null) : resting
+    const picked = (key: string) => e.props.isFocused && focusKey === key
+    const width = e.props.bodyColumns - 4
+    const overall = open ? null : ((await read($, tally)).overall ?? null)
+    const stored = await read($, ctx)
+    const wanted = open ? Boolean(open.saved) : overall?.status === 'estimated'
+    const live = wanted ? await $.session.usage().then(u => u?.context ?? null, () => null) : null
+    const context = contextFill(live ? { ...stored, window: live.window > 0 ? live.window : stored.window, tokens: typeof live.tokens === 'number' ? live.tokens : null } : stored)
 
     const counts = (c: { opus: number; sonnet: number; haiku: number }) => {
       const parts = (['opus', 'sonnet', 'haiku'] as const).filter(m => c[m] > 0)
@@ -596,7 +642,6 @@ export const register: Register = on => {
     if (open) {
       const phases: EvalPhaseView[] | null = open.phases
       const column = open.saved ? agentColumn(open.saved) : null
-      const width = e.props.bodyColumns - 4
       const section = (title: string, extra = '') => line(sectionHead(title, { extra, width }))
       const crumb = (
         <Text wrap="truncate-end">
@@ -613,9 +658,6 @@ export const register: Register = on => {
           {c.ok ? c.detail && <Text dimColor>{`  ${c.detail}`}</Text> : <Text color="error">{`  ${c.reason}`}</Text>}
         </Text>
       ))
-      const stored = await read($, ctx)
-      const live = open.saved ? await $.session.usage().then(u => u.context, () => null) : null
-      const context = contextFill(live ? { ...stored, window: live.window > 0 ? live.window : stored.window, tokens: typeof live.tokens === 'number' ? live.tokens : null } : stored)
       const top = (
         <Box flexDirection="column">
           {crumb}
@@ -747,47 +789,82 @@ export const register: Register = on => {
       )
     }
 
-    const view = bandView(state)
-    const all = [...runs, ...finished]
-    const nameWidth = Math.min(30, Math.max(12, 12, ...all.map(v => v.title.length + 4)))
-    const agentsWidth = Math.max(12, ...runs.map(v => countsWidth(v.counts) + 2))
-    const row = (v: (typeof all)[number], i: number, ended: boolean) => {
+    const all = [...runs, ...finished, ...stopped]
+    const foldOpen = stoppedOpen(state)
+    const nameWidth = Math.min(30, Math.max(12, ...all.map(v => v.title.length + 4)))
+    const agentsWidth = Math.max(12, ...runs.map(v => countsWidth(v.counts) + 2), ...[...finished, ...stopped].map(v => endedText(v).length + 2))
+    type Draw = (first: boolean) => any
+    const runRow = (v: (typeof all)[number], live: boolean, autoFocus: boolean): Draw => first => {
       const rowKey = `run:${v.key}`
       const here = picked(rowKey)
       return (
-        <Box key={`box:${v.key}`} {...ring(here)}>
-          <Button key={rowKey} plain autoFocus={i === 0 && !ended ? true : undefined} onPress={() => update($, ev, s => openRun(s, v.key))}>{ZERO_WIDTH}</Button>
+        <Box key={boxKeyOf(rowKey)} marginTop={first ? 0 : -1} {...ring(here)}>
+          <Button key={rowKey} plain autoFocus={autoFocus ? true : undefined} onPress={() => update($, ev, s => openRun(s, v.key))}>{ZERO_WIDTH}</Button>
           <Text wrap="truncate-end">
             <Text color={tone(v.ok)}>{mark(here, '□', '■')}</Text>
             {' '}
             <Text weight={here ? 'bold' : undefined}>{fit(v.title, nameWidth - 2)}</Text>
             <Text dimColor>{fit(v.shortId, 9)}</Text>
-            {ended ? <Text dimColor>{fit(`done ${v.endedClock ?? ''}`.trim(), agentsWidth)}</Text> : <Text>{counts(v.counts)}{' '.repeat(Math.max(1, agentsWidth - countsWidth(v.counts)))}</Text>}
+            {live ? <Text>{counts(v.counts)}{' '.repeat(Math.max(1, agentsWidth - countsWidth(v.counts)))}</Text> : <Text dimColor>{fit(endedText(v), agentsWidth)}</Text>}
             {v.ok ? line(listCell(v)) : <Text color="error">{v.reason}</Text>}
           </Text>
         </Box>
       )
     }
+    const foldRow: Draw = first => {
+      const here = picked(STOPPED_FOLD)
+      return (
+        <Box key={boxKeyOf(STOPPED_FOLD)} marginTop={first ? 0 : -1} {...ring(here)}>
+          <Button key={STOPPED_FOLD} plain onPress={() => update($, ev, s => setStoppedOpen(s, !stoppedOpen(s)))}>{ZERO_WIDTH}</Button>
+          {line(foldLine({ open: foldOpen, count: stopped.length, picked: here }))}
+        </Box>
+      )
+    }
+
+    const items: { key: string; lines: number; row: boolean; first: boolean; draw: Draw }[] = []
+    const group = (rows: { key: string; draw: Draw }[], head?: string) => {
+      if (rows.length === 0) return
+      if (head) items.push({ key: `head:${head}`, lines: 2, row: false, first: false, draw: () => <Box flexDirection="column"><Text> </Text>{line(subHead(head, { width }))}</Box> })
+      rows.forEach((r, i) => items.push({ ...r, lines: i === 0 ? 3 : 2, row: true, first: i === 0 }))
+    }
+    const ended = (list: typeof all) => list.map(v => ({ key: `run:${v.key}`, draw: runRow(v, false, false) }))
+    group(runs.map((v, i) => ({ key: `run:${v.key}`, draw: runRow(v, true, i === 0) })))
+    group(ended(finished), FINISHED_TITLE)
+    if (stopped.length > 0) group([{ key: STOPPED_FOLD, draw: foldRow }, ...(foldOpen ? ended(stopped) : [])])
+
+    const overallLines = overall ? overallBlock(overall, { width, context }) : []
+    const top = [
+      <Text weight="bold">{TITLE}</Text>,
+      <Text> </Text>,
+      ...overallLines.map(line),
+      ...(overallLines.length > 0 ? [<Text> </Text>] : []),
+      line(sectionHead(WORKFLOWS_HEAD, { extra: RUNNING_EXTRA(runs.length), width })),
+      ...(runs.length === 0 ? [<Text dimColor>{`  ${NO_RUNNING}`}</Text>] : []),
+      ...(all.length > 0
+        ? [
+            <Text wrap="truncate-end">
+              <Text dimColor>{`  ${fit('  workflow', nameWidth)}${fit('id', 9)}${fit('agents', agentsWidth)}`}</Text>
+              {line(listHeader(all))}
+            </Text>
+          ]
+        : [])
+    ]
+    const hint = !e.props.isFocused ? FOCUS_HINT : focusKey === STOPPED_FOLD ? FOLD_HINT(foldOpen) : LIST_HINT
+    const bottom = all.length > 0 ? [<Text> </Text>, <Text dimColor>{hint}</Text>] : []
+    const full = e.props.scroll.bodyRows - top.length - bottom.length
+    const windowed = items.reduce((n, it) => n + it.lines, 0) > full
+    const shown = windowed
+      ? listWindow({ items, room: Math.max(MIN_ROOM, full - 2), focusKey, prevFrom: windowFrom.get(e.surface) })
+      : { from: 0, to: items.length, above: 0, below: 0 }
+    windowFrom.set(e.surface, shown.from)
+    const more = (n: number, text: (n: number) => string) => (n > 0 ? <Text dimColor>{text(n)}</Text> : <Text> </Text>)
     return (
       <Box flexDirection="column">
-        <Text wrap="truncate-end">
-          <Text weight="bold">{TITLE}</Text>
-          <Text dimColor>{view ? `  ${bandText(view)}` : ''}</Text>
-        </Text>
-        <Text> </Text>
-        {runs.length === 0 && <Text dimColor>No workflow is running.</Text>}
-        {all.length > 0 && (
-          <Text wrap="truncate-end">
-            <Text dimColor>{`  ${fit('  workflow', nameWidth)}${fit('id', 9)}${fit('agents', agentsWidth)}`}</Text>
-            {line(listHeader(all))}
-          </Text>
-        )}
-        {runs.map((v, i) => row(v, i, false))}
-        {finished.length > 0 && <Text> </Text>}
-        {finished.length > 0 && <Text dimColor>finished this session</Text>}
-        {finished.map((v, i) => row(v, runs.length + i, true))}
-        {all.length > 0 && <Text> </Text>}
-        {all.length > 0 && <Text dimColor>{e.props.isFocused ? '↑↓ choose  enter details  esc close' : 'ctrl+x tab: focus this pane'}</Text>}
+        {top}
+        {windowed && more(shown.above, MORE_ABOVE)}
+        {items.slice(shown.from, shown.to).map((it, i) => it.draw(it.first || i === 0))}
+        {windowed && more(shown.below, MORE_BELOW)}
+        {bottom}
       </Box>
     )
   }).catch(($, e, next) => {
