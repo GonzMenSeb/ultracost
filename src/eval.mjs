@@ -9,6 +9,7 @@ export const STOPPED = 'killed'
 
 const FAMILIES = ['opus', 'sonnet', 'haiku']
 const ENDING = new Set(['completed', 'failed', STOPPED])
+const NOTICE_STATUS = { stopped: STOPPED }
 const MAX_ENDED = 20
 const MAX_LAUNCHES = 100
 const MAX_EARLY = 32
@@ -418,7 +419,8 @@ export function parseTaskNotifications(source) {
     const status = pick('status')
     const toolUseId = pick('tool-use-id')
     const taskId = pick('task-id')
-    if (status && (toolUseId || taskId)) out.push({ toolUseId, taskId, status: status.toLowerCase() })
+    const said = status?.toLowerCase()
+    if (said && (toolUseId || taskId)) out.push({ toolUseId, taskId, status: NOTICE_STATUS[said] ?? said })
   }
   return out
 }
