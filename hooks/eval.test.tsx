@@ -381,41 +381,73 @@ const PHASED = {
   ],
 }
 
-test('the detail groups agents under phases that fold with enter', async ($, on) => {
+test('the detail groups agents under phases that start collapsed and open with enter', async ($, on) => {
   const w = await world($, on, { gate: true, record: PHASED })
 
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ ...PANE, surface })
     await ui.press({ key: `run:${w.id()}` })
 
-    const header = await ui.find({ type: 'Text', text: /^▾ ● Collect/ })
+    const header = await ui.find({ type: 'Text', text: /^▸ ● Collect/ })
     expect(header?.text).toContain('Collect  running  0 of 1 done')
-    expect(header?.text).not.toContain('sonnet')
+    expect(header?.text).toContain('sonnet 1')
     expect((await ui.find({ type: 'Button', key: 'phase:Collect' }))?.text).toBe(ZERO_WIDTH)
     expect((await ui.find({ type: 'Text', text: /^●$/ }))?.props.color).toBe('success')
-    expect(await ui.find({ type: 'Text', text: /^ {4}✓ investigate: map/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /^ {4}✓ investigate: map/ })).toBeUndefined()
     const decide = await ui.find({ type: 'Text', text: /Decide/ })
     expect(decide?.text).toMatch(/^ {6}Decide {2}not started$/)
     expect(decide?.props.dimColor).toBe(true)
     expect(await ui.find({ type: 'Button', key: 'phase:Decide' })).toBeUndefined()
     expect((await ui.find({ type: 'Text', text: /ran as the gate approved/ }))?.text).toBe('  ✓ ran as the gate approved  ✗ did not')
-
-    await ui.press({ key: 'phase:Collect' })
-    expect((await ui.find({ type: 'Text', text: /^▸ ● Collect/ }))?.text).toContain('sonnet 1')
-    expect(await ui.find({ type: 'Text', text: /^ {4}✓ investigate: map/ })).toBeUndefined()
     expect(await ui.find({ type: 'Text', text: 'expand all' })).toBeDefined()
 
-    await ui.press({ key: 'all' })
-    expect(await ui.find({ type: 'Text', text: /^▾ ● Collect/ })).toBeDefined()
+    await ui.press({ key: 'phase:Collect' })
+    expect((await ui.find({ type: 'Text', text: /^▾ ● Collect/ }))?.text).not.toContain('sonnet')
     expect(await ui.find({ type: 'Text', text: /^ {4}✓ investigate: map/ })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: 'collapse all' })).toBeDefined()
 
+    await ui.press({ key: 'all' })
+    expect(await ui.find({ type: 'Text', text: /^▸ ● Collect/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /^ {4}✓ investigate: map/ })).toBeUndefined()
+    expect(await ui.find({ type: 'Text', text: 'expand all' })).toBeDefined()
+
+    await ui.press({ key: 'phase:Collect' })
     await ui.press({ key: 'back' })
     await ui.press({ key: `run:${w.id()}` })
-    expect(await ui.find({ type: 'Text', text: /^▾ ● Collect/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /^▸ ● Collect/ })).toBeDefined()
     await ui.press({ key: 'back' })
     await ui.unmount()
   }
+})
+
+test('the run view draws the phases under a section head, then the checks, then the hint and buttons', async ($, on) => {
+  const w = await world($, on, { gate: true, record: PHASED })
+  await w.spawn('decide: pick', 'opus', 2)
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  await ui.press({ key: `run:${w.id()}` })
+  const texts = await shown(ui)
+  const at = (pattern: RegExp) => texts.findIndex(t => pattern.test(t))
+  const steps = [
+    /^ultraguard-eval › map/,
+    /^══ phases {2}2 agents ═+$/,
+    /^ +agent\s+ran on$/,
+    /^▸ ● Collect/,
+    /^▸ ○ Decide/,
+    /^ {2}✓ ran as the gate approved {2}✗ did not$/,
+    /^══ checks ═+$/,
+    /Approved by the gate/,
+    /At most \d+ Opus at once/,
+    /^↑↓ choose {2}enter opens or folds a phase$/,
+    /^expand all$/,
+    /^back to the list$/,
+  ].map(at)
+  expect(steps.every(i => i > -1)).toBe(true)
+  expect(steps).toEqual([...steps].sort((a, b) => a - b))
+  expect(texts.filter(t => /^══ /.test(t)).map(t => t.length)).toEqual([PANE.props.bodyColumns - 4, PANE.props.bodyColumns - 4])
+  expect(await ui.find({ type: 'Text', text: /^▾ / })).toBeUndefined()
+  expect((await ui.find({ type: 'Button', key: 'phase:Collect' }))?.props.autoFocus).toBe(true)
+  expect((await ui.find({ type: 'Button', key: 'phase:Decide' }))?.props.autoFocus).toBeUndefined()
+  await ui.unmount()
 })
 
 test('an agent that broke the plan turns its phase red and says why on its own line', async ($, on) => {
@@ -423,8 +455,10 @@ test('an agent that broke the plan turns its phase red and says why on its own l
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
   await ui.press({ key: `run:${w.id()}` })
 
-  expect((await ui.find({ type: 'Text', text: /^▾ ● Map/ }))?.text).toContain('  1 red')
+  expect((await ui.find({ type: 'Text', text: /^▸ ● Map/ }))?.text).toContain('  1 red')
   expect((await ui.find({ type: 'Text', text: /^●$/ }))?.props.color).toBe('error')
+  expect(await ui.find({ type: 'Text', text: /^ {4}✗ investigate: map/ })).toBeUndefined()
+  await ui.press({ key: 'phase:Map' })
   expect(await ui.find({ type: 'Text', text: /^ {4}✗ investigate: map/ })).toBeDefined()
   const reason = await ui.find({ type: 'Text', text: /^ {6}agent "investigate: map" ran on sonnet, the gate approved opus/ })
   expect(reason?.props.color).toBe('error')
@@ -438,6 +472,12 @@ test('a gate with no phases keeps the flat agent table', async ($, on) => {
   expect(await ui.find({ type: 'Button', key: 'all' })).toBeUndefined()
   expect(await ui.find({ type: 'Text', text: /^ {4}□ investigate: map\s+sonnet —$/ })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /^ +agent\s+ran on$/ })).toBeDefined()
+  const texts = await shown(ui)
+  const steps = [/^ultraguard-eval › map/, /^══ agents {2}1 agent ═+$/, /^ +agent\s+ran on$/, /^ {4}□ investigate: map/, /^══ checks ═+$/, /Approved by the gate/, /^back to the list$/].map(p => texts.findIndex(t => p.test(t)))
+  expect(steps.every(i => i > -1)).toBe(true)
+  expect(steps).toEqual([...steps].sort((a, b) => a - b))
+  expect(texts.filter(t => /^══ /.test(t)).map(t => t.length)).toEqual([PANE.props.bodyColumns - 4, PANE.props.bodyColumns - 4])
+  expect(await ui.find({ type: 'Text', text: /^══ phases/ })).toBeUndefined()
   await ui.unmount()
 })
 
@@ -552,8 +592,6 @@ test('a folded phase lists its models in order after the status, name bold in it
   const w = await threeModels($, on)
   const ui = await $.ui.mount({ ...PANE, props: { ...PANE.props, bodyColumns: 100 }, surface: 'terminal' })
   await ui.press({ key: `run:${w.id()}` })
-  expect((await ui.find({ type: 'Text', text: /^▾ ● Collect/ }))?.text).not.toMatch(/opus|haiku/)
-  await ui.press({ key: 'phase:Collect' })
 
   const head = await ui.find({ type: 'Text', text: /^▸ ● Collect/ })
   expect(head?.text).toMatch(/Collect {2}running {2}0 of 3 done\s+opus 1 {2}sonnet 1 {2}haiku 1$/)
@@ -565,6 +603,8 @@ test('a folded phase lists its models in order after the status, name bold in it
   const haiku = await ui.findAll({ type: 'Text', text: /^haiku$/ })
   expect(haiku.at(-1)?.props.weight).toBe('bold')
   expect((await ui.findAll({ type: 'Text', text: /^ 1$/ })).at(-1)?.props.dimColor).toBe(true)
+  await ui.press({ key: 'phase:Collect' })
+  expect((await ui.find({ type: 'Text', text: /^▾ ● Collect/ }))?.text).not.toMatch(/opus|haiku/)
   await ui.unmount()
 })
 
@@ -572,7 +612,6 @@ test('a folded phase wraps its models onto continuation lines at the same column
   const w = await threeModels($, on)
   const ui = await $.ui.mount({ ...PANE, props: { ...PANE.props, bodyColumns: 59 }, surface: 'terminal' })
   await ui.press({ key: `run:${w.id()}` })
-  await ui.press({ key: 'phase:Collect' })
 
   const head = (await ui.find({ type: 'Text', text: /^▸ ● Collect/ }))?.text ?? ''
   const at = head.indexOf('opus 1')

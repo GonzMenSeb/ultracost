@@ -5,7 +5,7 @@ import { recordPath } from '../src/record.mjs'
 import { readFileSync } from 'node:fs'
 import { loadPrices } from '../src/prices.mjs'
 import { toastText } from '../src/savedText.mjs'
-import { STOPPED, UNKNOWN_PHASE, noteFocus, phaseOpen, setFolds, agentPieces, finishedRuns, hideFinished, noteMainStep, noteMeterReading, noteSaved, noteStored, noteUsage, stoppedRuns } from '../src/eval.mjs'
+import { STOPPED, TALLY_PREFIX, UNKNOWN_PHASE, noteFocus, phaseOpen, setFolds, agentPieces, finishedRuns, hideFinished, noteMainStep, noteMeterReading, noteSaved, noteStored, noteUsage, staleTallies, storedTally, stoppedRuns } from '../src/eval.mjs'
 import {
   activeRuns,
   bandText,
@@ -902,32 +902,34 @@ test('a red agent makes its phase red and counts it', () => {
   s = spawn(s, 3, 'investigate: map', OPUS)
   const phases = phasesOf(s)
   const bad = phases.find((p) => p.title === 'Investigate')
-  assert.deepEqual([bad.ok, bad.red, bad.open], [false, 1, true])
+  assert.deepEqual([bad.ok, bad.red, bad.open], [false, 1, false])
   assert.equal(phases[0].ok, true)
   assert.match(bad.agents[0].reason, /ran on opus, the gate approved sonnet/)
 })
 
-test('a finished green phase starts folded only on a run of more than 12 agents', () => {
+test('every phase starts collapsed, a red one and a running one included', () => {
   let few = phasedRun()
-  few = done(done(spawn(few, 3, 'investigate: map', SONNET), 1), 2)
-  assert.equal(phasesOf(few)[0].open, true)
+  few = done(done(spawn(few, 3, 'investigate: map', OPUS), 1), 2)
+  assert.deepEqual(phasesOf(few).map((p) => [p.state, p.red, p.open]), [['done', 0, false], ['running', 1, false], ['not started', 0, false]])
   let many = launched({ record: phasedGate() })
   for (let n = 1; n <= 13; n++) many = spawn(many, n, `grunt: facts ${n}`, HAIKU)
   for (let n = 1; n <= 13; n++) many = done(many, n)
   many = spawn(many, 14, 'investigate: map', SONNET)
-  const phases = phasesOf(many)
-  assert.deepEqual([phases[0].state, phases[0].open], ['done', false])
-  assert.deepEqual([phases[1].state, phases[1].open], ['running', true])
+  assert.deepEqual(phasesOf(many).map((p) => [p.state, p.open]), [['done', false], ['running', false], ['not started', false]])
+  const ended = noteRunEnd(many, { toolUseId: TU, taskId: 'w1', status: 'completed', at: 3000 })
+  assert.ok(runView(finishedRuns(ended)[0]).phases.every((p) => p.open === false))
 })
 
 test('a toggle beats the default and survives a redraw; opening another run resets it', () => {
   const s = done(done(phasedRun(), 1), 2)
   const first = phasesOf(s)[0]
-  assert.equal(phaseOpen(first, undefined), true)
-  assert.equal(phaseOpen(first, {}), true)
-  const folded = setFolds(openRun(s, TU), [first.key], true)
+  assert.equal(phaseOpen(first, undefined), false)
+  assert.equal(phaseOpen(first, {}), false)
+  const opened = setFolds(openRun(s, TU), [first.key], false)
+  assert.equal(phaseOpen(first, opened.ui.folds), true)
+  assert.equal(setFolds(opened, [first.key], false), opened)
+  const folded = setFolds(opened, [first.key], true)
   assert.equal(phaseOpen(first, folded.ui.folds), false)
-  assert.equal(setFolds(folded, [first.key], true), folded)
   const all = setFolds(folded, ['Investigate', 'Decide'], false)
   assert.deepEqual(all.ui.folds, { Collect: true, Investigate: false, Decide: false })
   assert.equal(phaseOpen(first, all.ui.folds), false)
@@ -979,4 +981,30 @@ test('the focused element is kept in the ui state, and the same one is not a cha
   assert.equal(noteFocus(focused, null).ui.focus, null)
   assert.equal(noteFocus(s, null), s)
   assert.equal(noteFocus(focused, 'run:abc').ui.run, focused.ui.run)
+})
+
+const DAY_MS = 24 * 3600 * 1000
+const tallyAt = (...ats) => ({ v: 1, runs: Object.fromEntries(ats.map((at, i) => [`r${i}`, { key: `r${i}`, status: 'completed', baseline: null, agents: [], windows: { five_hour: null, seven_day: null }, at }])) })
+
+test('a stored tally is used only when it is a version 1 tally with a runs map', () => {
+  const good = tallyAt(5)
+  assert.equal(storedTally(good), good)
+  assert.equal(storedTally({ v: 1, runs: {}, overall: { status: 'unknown', count: 0 } })?.v, 1)
+  for (const bad of [undefined, null, 7, 'x', [], { v: 2, runs: {} }, { v: 1 }, { v: 1, runs: null }, { v: 1, runs: [] }]) assert.equal(storedTally(bad), null)
+})
+
+test('the tally keys older than 30 days are stale, never the own key and never a key with a recent run', () => {
+  const now = 100 * DAY_MS
+  const own = `${TALLY_PREFIX}sess-1`
+  const stored = {
+    [own]: tallyAt(1000),
+    [`${TALLY_PREFIX}ancient`]: tallyAt(1000, now - 31 * DAY_MS),
+    [`${TALLY_PREFIX}recent`]: tallyAt(1000, now - 29 * DAY_MS),
+    [`${TALLY_PREFIX}empty`]: tallyAt(),
+    [`${TALLY_PREFIX}broken`]: { v: 1, runs: 'x' },
+    'meter:old': { v: 1, five_hour: [], seven_day: [] }
+  }
+  assert.deepEqual(staleTallies(stored, own, now).sort(), [`${TALLY_PREFIX}ancient`, `${TALLY_PREFIX}broken`, `${TALLY_PREFIX}empty`])
+  assert.deepEqual(staleTallies(undefined, own, now), [])
+  assert.equal(TALLY_PREFIX, 'tally:')
 })

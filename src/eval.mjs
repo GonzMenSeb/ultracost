@@ -17,7 +17,6 @@ const GATE_TRIES = 5
 const NO_GATE = 'not approved by the gate'
 const NO_PLAN = 'no approved plan to compare against'
 const MAX_PHASES = 64
-const FOLD_ABOVE = 12
 export const UNKNOWN_PHASE = '\u0000unknown'
 
 const hasOwn = (o, k) => Object.prototype.hasOwnProperty.call(o, k)
@@ -498,6 +497,21 @@ export function stoppedRuns(state) {
     .sort(newestEnded)
 }
 
+export const TALLY_PREFIX = 'tally:'
+const TALLY_MAX_AGE_MS = 30 * 24 * 3600 * 1000
+
+export function storedTally(value) {
+  const ok = value !== null && typeof value === 'object' && value.v === 1 && value.runs !== null && typeof value.runs === 'object' && !Array.isArray(value.runs)
+  return ok ? value : null
+}
+
+export function staleTallies(stored, sessionKey, now) {
+  const fresh = (value) => Object.values(storedTally(value)?.runs ?? {}).some((r) => Number.isFinite(r?.at) && r.at >= now - TALLY_MAX_AGE_MS)
+  return Object.entries(stored ?? {})
+    .filter(([key, value]) => key.startsWith(TALLY_PREFIX) && key !== sessionKey && !fresh(value))
+    .map(([key]) => key)
+}
+
 export function agentPieces(run) {
   return run.agents.map((a) => ({
     agentId: a.agentId,
@@ -605,7 +619,7 @@ function phaseViews(run, plan, views) {
       done,
       red,
       ok: red === 0,
-      open: red > 0 || state === 'running' || run.agents.length <= FOLD_ABOVE,
+      open: false,
       counts,
       agentIds: agents.map((a) => a.agentId),
       agents
