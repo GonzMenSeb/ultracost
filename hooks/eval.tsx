@@ -39,6 +39,7 @@ import {
 } from '../src/eval.mjs'
 import { contextFill, createContext, forgetCompactRead, noteBreakdown, noteContext } from '../src/context.mjs'
 import { intervalsOf, staleKeys, storedValue, usedOf } from '../src/meter.mjs'
+import { arrowOf, boxKeyOf, paneNav, stepFocus } from '../src/nav.mjs'
 import { familyColor, modelColor, savedColor } from '../src/palette.mjs'
 import { loadPrices, priceFamily } from '../src/prices.mjs'
 import { agentColumn, listCell, listHeader, modelLines, phaseHeadLength, phaseLayout, phaseStatus, phaseTitle, savedBlock, toastText } from '../src/savedText.mjs'
@@ -457,7 +458,27 @@ export const register: Register = on => {
 
   on('ui.focus', { component: 'Pane', requestId: PANE }, async ($, e, next) => {
     await guard($, 'focus', () => update($, ev, s => noteFocus(s, e.element ?? null)))
-    return next(e)
+    const done = await next(e)
+    const element = e.element
+    if (element) {
+      await guard($, 'focus scroll', async () => {
+        await $.ui.scroll({ to: { key: boxKeyOf(element) }, in: PANE })
+      })
+    }
+    return done
+  })
+
+  on('ui.scroll', { component: 'Pane', requestId: PANE }, async ($, e, next) => {
+    const dir = arrowOf(e)
+    if (dir === 0) return next(e)
+    let moved = false
+    await guard($, 'arrow', async () => {
+      const state = await read($, ev)
+      const target = stepFocus(paneNav(state), state.ui.focus ?? null, dir)
+      if (target === null) return
+      moved = (await $.ui.focus({ requestId: PANE, key: target })).deny === undefined
+    })
+    return moved ? {} : next(e)
   })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
@@ -481,8 +502,7 @@ export const register: Register = on => {
     const runs = activeRuns(state).map(r => runView(r))
     const finished = finishedRuns(state).map(r => runView(r))
     const open = [...runs, ...finished].find(v => v.key === state.ui.run)
-    let reachable: string[] = []
-    let resting: string | null = null
+    const { reachable, resting } = paneNav(state)
     const picked = (key: string) => e.props.isFocused && (reachable.includes(state.ui.focus ?? '') ? state.ui.focus : resting) === key
 
     const counts = (c: { opus: number; sonnet: number; haiku: number }) => {
@@ -577,8 +597,6 @@ export const register: Register = on => {
         const openOf = (p: EvalPhaseView) => phaseOpen(p, state.ui.folds)
         const anyFolded = filled.some(p => !openOf(p))
         const focusKey = (filled.find(p => p.state === 'running' || p.red > 0) ?? filled[0])?.key
-        resting = focusKey ? `phase:${focusKey}` : 'back'
-        reachable = [...filled.map(p => `phase:${p.key}`), 'all', 'back']
         let follows = false
         const phaseBlock = (p: EvalPhaseView, first: boolean) => {
           const key = `phase:${p.key}`
@@ -640,8 +658,6 @@ export const register: Register = on => {
         )
       }
 
-      resting = 'back'
-      reachable = ['back']
       return (
         <Box flexDirection="column">
           {crumbAndChecks}
@@ -656,8 +672,6 @@ export const register: Register = on => {
 
     const view = bandView(state)
     const all = [...runs, ...finished]
-    reachable = all.map(v => `run:${v.key}`)
-    resting = runs[0] ? `run:${runs[0].key}` : null
     const nameWidth = Math.min(30, Math.max(12, 12, ...all.map(v => v.title.length + 4)))
     const agentsWidth = Math.max(12, ...runs.map(v => countsWidth(v.counts) + 2))
     const row = (v: (typeof all)[number], i: number, ended: boolean) => {

@@ -41,7 +41,7 @@ One cell holds two halves, so a bar has twice as many steps as it has cells.
 | `╸` | half cell (left half) | same |
 | `─` | track, empty | `subtle` |
 | `│` | the limit, at 100 percent | `inactive` |
-| `»` | use plus saving passes 150 percent of the limit | saving color |
+| `»` | use plus saving passes the end of the bar, a little over 150 percent of the limit | saving color |
 
 The used part is the theme's text color. A cell that holds the end of use and the start of saving keeps the text color.
 
@@ -49,7 +49,7 @@ The used part is the theme's text color. A cell that holds the end of use and th
 
 - **Length:** `T = clamp(width - 15 - usedW - figW, 12, 48)` cells, with `usedW` the widest used text (at least 4) and `figW` the widest figure (at least 12).
 - **Scale:** the longest use plus saving over the rows, clamped to 100 to 150 percent. Up to 100 the limit mark is the last cell. Past it, `ceil(T * (S - 100) / S)` cells go after the mark and the bar spills over it.
-- **Cap:** when use plus saving is past 150 percent the last cell is `»`.
+- **Cap:** when use plus saving passes the end of the bar the last cell is `»`. The scale tops out at 150 percent of the limit, so that is a little over 150 percent, and the exact total moves with `T`. For a 5-hour row with use 100, the first cap is at a total of 158 at widths 56 to 110 and 166 at width 44.
 - **Saving always shows:** a saving above zero draws at least a half cell, even when it rounds to nothing.
 - **Context** has no saving. Its bar is use alone.
 
@@ -80,7 +80,7 @@ Under the bars, one sentence per outcome, wrapped to the block width. They look 
 
 - **Near** counts the points left (`100 - total`, rounded); under 1 it reads "less than 1%".
 - **Half** is the third band. It needs use strictly under 50 and total strictly above 50. A stronger band wins: a row past 90 gets its own message, not the half one.
-- **Hedges:** a saving under 2 points hedges the first two bands. The word is "likely" ("would likely have blown past", "would likely have had only") when use plus the low end of the range stays in the same band, else "might" ("might have hit your 5-hour limit", "might have had only"). The half band hedges on margin: when total is under 5 points over 50 it reads "would likely have been past half". The half band never says "might".
+- **Hedges:** a saving under 2 points hedges the first two bands. The word is "likely" ("would likely have hit your 5-hour limit", "would likely have had only") when use plus the low end of the range stays in the same band, else "might" ("might have hit your 5-hour limit", "might have had only"). The half band hedges on margin: when total is under 5 points over 50 it reads "would likely have been past half". The half band never says "might".
 - **Merging:** rows with the same outcome and hedge become one sentence: "... your 5-hour and weekly limits". Two near rows never merge, because each has its own points left.
 
 The wording is provisional; the user will change it. The thresholds sit in `src/limitText.mjs` as `NEAR`, `TINY`, `HALF` and `HALF_MARGIN`.
@@ -96,14 +96,14 @@ The wording is provisional; the user will change it. The thresholds sit in `src/
 
 Coverage lines are dim and appear only when something is off:
 
-- `from 5 of 6 agents: ultraguard has no price for the model one agent ran on` (unpriced agents, or "has no ratio for sonnet high against opus xhigh");
-- the ratio source lines: "ratio measured at high effort, adjusted with published figures for xhigh" and "no replay measured sonnet high against opus xhigh; using published figures, so ± is wide", with "ratio measured on N replayed agents" ahead of them when some pairs were measured.
+- `from 5 of 6 agents: ultraguard has no price for the model one agent ran on` (unpriced agents, or "has no ratio for sonnet high against opus xhigh"), with "ratio measured on N replayed agents" after it when some pairs were measured;
+- the ratio source lines: "ratio measured at high effort, adjusted with published figures for xhigh" and "no replay measured sonnet high against opus xhigh; using published figures, so ± is wide".
 
-When every agent counted and every ratio was measured, none of these lines print. They used to print every time.
+When nothing is missing (every agent priced, every ratio found, all agents used), the bare `from N of N agents` line and the measured-on line are dropped, and only the ratio source lines print, when they apply. When there are none either, no coverage line prints. They used to print every time.
 
 ## Frozen usage
 
-The gray part of a limit bar is the use at the last estimate, so use and saving describe one moment. A finished run keeps the usage from its last estimate; it does not drift as the account keeps filling.
+The used part of a limit bar is the use at the last estimate, so use and saving describe one moment. A finished run keeps the usage from its last estimate; it does not drift as the account keeps filling.
 
 - `usedOf(last, now)` in `src/meter.mjs` returns the last reading's percent, or null when there is no reading, the percent is not a number, or `resetsAt` is already past.
 - After the estimate, `hooks/eval.tsx` stores `used: { five_hour, seven_day }` on the saved record. Each is a percent or null.
@@ -114,11 +114,12 @@ The gray part of a limit bar is the use at the last estimate, so use and saving 
 
 Reads the session's live context window the way a status line does.
 
-- **Data flow:** on `session.start` the mod reads `$.session.usage().context`; on every `session.measure` whose change includes `context` it takes `e.context`. Both carry `window` and, when known, `tokens` and `percent`. `noteContext` records them in the context state and says whether to ask for the compaction window.
-- **Window:** the model window, or the smaller compaction window when auto-compaction is on and its `rawMaxTokens` is under the model window. The compaction window comes from `$.session.usage({ breakdown: 'summary' })`, a local estimate that sends no request, read once per model window. After 3 missed reads for one window it stops asking. A new model window forgets the read.
-- **After a fresh session or a compaction** the host sends no tokens until the next response. `session.compact` on the main loop and `/clear` set the tokens to null. The row shows an empty track and a dash: `context ──────── — — of 1M`.
-- **Shown as:** the percent rounded down, then `125k of 1M`. The percent can pass 100 against a compaction window; the bar clamps it, the text does not.
-- **Where it lives:** its own atom (`context`, shape `context-1`), apart from the eval atom. Nothing in it reaches `persist`, so no run record or `.eval.json` file carries it; the pane reads it at draw time and passes it to `savedBlock(saved, { width, context })`.
+- **Data flow:** on `session.start` the mod reads `$.session.usage().context`, and on every `session.measure`, whatever its `changed` list says, it takes `e.context`. `noteContext` takes the `tokens` and the `window`, stores them in the context state and says whether to ask for the compaction window. No percent is stored; `contextFill` computes it.
+- **Window:** the model window, or the smaller compaction window when auto-compaction is on and its `rawMaxTokens` is under the model window. The compaction window comes from `$.session.usage({ breakdown: 'summary' })`, a local estimate that sends no request. The state claims at most one read per model window, and after 3 missed reads for one window it stops asking. The read is forgotten when the window changes and when the main-loop model changes (`forgetCompactRead` in `src/context.mjs`, called from the `turn.step` handler).
+- **Draw time:** the pane reads `$.session.usage()` again for the fill. After `/compact` the host raises no measurement until the next response, so the fill fed by events would stay at the figure from before the compaction. Verified live: the live usage has no tokens right after `/compact`, so the row shows an empty track and a dash. The stored state is only the fallback, if that read fails, and the carrier of the compaction-window read.
+- **After a fresh session or a compaction** the host sends no tokens until the next response, and the row shows an empty track and a dash: `context ──────── — — of 1M`. There is no `session.compact` handler, and nothing is reset on `/clear`, because the run list is cleared anyway.
+- **Shown as:** the percent rounded to the nearest whole percent, then `125k of 1M`. The percent can pass 100 against a compaction window; the bar clamps it, the text does not.
+- **Where it lives:** its own atom (`context`, shape `context-1`), apart from the eval atom. Nothing in it reaches `persist`, so no run record or `.eval.json` file carries it; the pane builds the fill at draw time and passes it to `savedBlock(saved, { width, context })`.
 - Reimplemented from the host's typed API (`.claude-plugin/types/claude-code/index.d.ts`); no code was copied from another plugin, so `NOTICE` does not change.
 
 ## Width
@@ -134,14 +135,20 @@ Made:
 - The half band, with its margin hedge.
 - Limit usage frozen at the last estimate.
 - A separate context atom, so live state cannot leak into records.
-- Coverage lines only when something is off, extended to the published-figure ratio lines. That extension is the owner's reading of "only when incomplete".
+- Coverage lines only when something is off, extended to the published-figure ratio lines. That extension is the owner's reading of "only when incomplete". The bare agent count and the measured-on line print only when something is missing.
 
 Dropped:
 
 - **Teal for the used part.** An unchosen toggle in the mock. No `planMode` color either. The text color is the only one.
-- **The 60 percent cap rule** (anything past a 60 percent saving shown only as `»`). `»` now means only use plus saving past 150 percent of the limit; a large saving shows as the deep purple.
+- **The 60 percent cap rule** (anything past a 60 percent saving shown only as `»`). `»` now means only use plus saving past the end of the bar, a little over 150 percent of the limit; a large saving shows as the deep purple.
 - **The 30/40 toggle.** The ramp ends at 40.
 - The mock's bar-shape and layout toggles.
+
+Added beyond the approved plan:
+
+- **The draw-time live context read.** The pane reads `$.session.usage()` when it draws the context row (see The context row), instead of showing only the fill that events carried.
+- **The gate's relaunch rule.** A rejected model gives way to the next lower one at `xhigh` (`src/rules.mjs` and `policy/guidance.md`). The `PAIR` denial for a model its class does not allow says `Relaunch on sonnet with effort "xhigh".` before the allowed list.
+- **The dropped bare coverage line.** With nothing missing, the bare `from N of N agents` line and the measured-on line no longer print (see Coverage).
 
 ## Out of scope
 
@@ -149,10 +156,13 @@ A bar for the weekly Fable limit (not exposed), a history of saved percent acros
 
 ## Limits
 
-- Not verified in the host: the width of `─ ━ ╸ │ »` (if the terminal treats them as double width, bars overflow), whether an explicit `color` wins over `dimColor` on the same text, and the real left offset of the saved block (the `- 4` in the width is provisional).
+- Checked live: the bar glyphs line up, and the colors apply (text, track, limit mark and the model color in the heading). Not checked in the host: the width of `»`, because the cap was not drawn, and the real left offset of the saved block (the `- 4` in the width is provisional).
 - The deep purple has low contrast on dark terminals, about 1.6 to 1 on `#262626`. The bar's end, the `+N` figure, `»` and list figures can be near invisible there. The palette tests keep 3 to 1 up to 20 percent only.
+- On white the deep purple is 9.4 to 1, but the cyan end of the ramp is about 1.5 to 1, so small savings are faint on a light terminal. Light terminal rendering has not been checked live.
 - When use is above about 96 percent and use plus saving stays under 100, the bar has no room to spill, and the saved part can be hidden under the used cell.
-- Over-the-limit, `»` and tiny-saving cases need an account at those levels, so only the unit tests exercise them.
+- A total just above 100 percent can show no spill: the mark sits inside the bar, but the bar stops at it.
+- The cost row at a block narrower than about 48 columns is cut by the bar's 12-cell minimum.
+- Not verified live: bars with a calibrated limit window (a window needs 5 readings), the over, near and half messages and the cap `»` (unit tests only), `/clear` and the cost bar of an API key.
 - The context row needs a response before it shows tokens, and the compaction window depends on the host reporting `isAutoCompactEnabled` and `rawMaxTokens`.
 
 ## Version
