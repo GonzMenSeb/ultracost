@@ -8,7 +8,7 @@ const AGENT_EFFORTS = ['medium', 'high', 'xhigh']
 const Z90 = 1.645
 const SINGLE_SOURCE_STEP_SD = 0.4
 const MIN_STEP_SD = 0.25
-const BORROWED_FRESH_EXPONENT = 0.77
+export const BORROWED_FRESH_EXPONENT = 0.77
 const BORROWED_FRESH_SD = 0.2
 const SPREAD_PROXY = 'sonnet'
 const MIN_PRIOR_SD = 0.6
@@ -151,6 +151,11 @@ function stepsOf(sources) {
 
 function priorsOf(sources, prices) {
   const priors = {}
+  const tokensOf = (config, field) => {
+    const [family, effort] = config.split(':')
+    const tokens = tableOf(sources, 'wholeIndex', family)?.efforts?.[effort]?.[field]
+    return tokens > 0 ? tokens : null
+  }
   for (const f1 of AGENT_FAMILIES) {
     for (const e1 of AGENT_EFFORTS) {
       for (const f2 of FAMILIES) {
@@ -162,7 +167,19 @@ function priorsOf(sources, prices) {
             .filter(([a, b]) => a > 0 && b > 0)
             .map(([a, b]) => Math.log(b / a) - price)
           if (!logs.length) continue
-          priors[`${f1}:${e1}>${f2}:${e2}`] = { mu: mean(logs), sd: Math.max(MIN_PRIOR_SD, logSd(logs)), sources: logs.length }
+          const from = `${f1}:${e1}`
+          const to = `${f2}:${e2}`
+          const sd = Math.max(MIN_PRIOR_SD, logSd(logs))
+          const prior = { mu: mean(logs), sd, sources: logs.length }
+          const out = [tokensOf(from, 'outputTokens'), tokensOf(to, 'outputTokens')]
+          const input = [tokensOf(from, 'inputTokens'), tokensOf(to, 'inputTokens')]
+          if (out.every(Boolean) && input.every(Boolean)) {
+            const output = Math.log(out[1] / out[0])
+            prior.output = { mu: output, sd }
+            prior.fresh = { mu: BORROWED_FRESH_EXPONENT * output, sd: Math.hypot(sd, BORROWED_FRESH_SD) }
+            prior.read = { mu: Math.log(input[1] / input[0]), sd }
+          }
+          priors[`${from}>${to}`] = prior
         }
       }
     }
