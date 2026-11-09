@@ -40,7 +40,8 @@ import {
   STOPPED,
   storedTally,
   stoppedRuns,
-  TALLY_PREFIX
+  TALLY_PREFIX,
+  TALLY_STORE_MAX
 } from '../src/eval.mjs'
 import { contextFill, createContext, forgetCompactRead, noteBreakdown, noteContext } from '../src/context.mjs'
 import { intervalsOf, staleKeys, storedValue, usedOf } from '../src/meter.mjs'
@@ -57,6 +58,7 @@ const TITLE = 'ultraguard-eval'
 const KEPT = 20
 const TOAST_MS = 8000
 const DRAWS_RUNNING = 1000
+const TALLY_TOO_BIG = `ultraguard: the session tally is over ${TALLY_STORE_MAX / 1024} KiB, so it is no longer kept in the plugin store`
 const PHASES_HEAD = 'phases'
 const AGENTS_HEAD = 'agents'
 const CHECKS_HEAD = 'checks'
@@ -226,7 +228,7 @@ const stampsOf = (m: EvalMeter) => ({ five_hour: m.last.five_hour?.resetsAt ?? n
 function overallOf(t: TallyState, { data, meter, last }: { data: Data; meter: EstimateMeter; last: EvalMeter }, now: number) {
   const running = Object.values(t.runs).some(r => r.status === 'running')
   const one = (baseline: TallyRun['baseline'], agents: TallyRun['agents']) =>
-    estimateRun({ agents, baseline, ratios: data.ratios, prices: data.prices, meter, seed: seedOf('overall'), ...(running ? { draws: DRAWS_RUNNING } : {}), running })
+    estimateRun({ agents, baseline, ratios: data.ratios, prices: data.prices, meter, seed: seedOf('overall'), draws: DRAWS_RUNNING, running })
   const estimates = overallInput(t, stampsOf(last), now).groups.map((g: Pooled) => ({
     all: one(g.baseline, g.all),
     five_hour: one(g.baseline, g.five_hour),
@@ -242,7 +244,12 @@ async function noteTally($: EngineInterface, run: TallyRun, inputs: { data: Data
     const noted = noteTallyRun(t, run, { log: (line: string) => dropped.push(line) }) as TallyState
     return { ...noted, overall: overallOf(noted, inputs, run.at) }
   })
-  await guard($, 'tally store', async () => $.store.set(`${TALLY_PREFIX}${await $.session.id()}`, next))
+  await guard($, 'tally store', async () => {
+    const key = `${TALLY_PREFIX}${await $.session.id()}`
+    if (JSON.stringify(next).length <= TALLY_STORE_MAX) return $.store.set(key, next)
+    await $.store.delete(key)
+    dropped.push(TALLY_TOO_BIG)
+  })
   for (const line of dropped) $.ui.log(line, { to: 'debug' })
 }
 

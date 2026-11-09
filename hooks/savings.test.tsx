@@ -528,7 +528,7 @@ test('a clear resets the session tally and leaves the stored one of the ended se
   const next = await w.launch()
   await w.end(next)
   expect(Object.keys(tallyOf(w).runs)).toEqual([next])
-  expect(tallyOf(w).overall).toEqual({ status: 'unknown', count: 1 })
+  expect(tallyOf(w).overall).toEqual({ status: 'unknown', count: 1, running: false })
 })
 
 test('a session start loads its own stored tally and removes tally keys older than 30 days', async ($, on) => {

@@ -1008,3 +1008,11 @@ test('the tally keys older than 30 days are stale, never the own key and never a
   assert.deepEqual(staleTallies(undefined, own, now), [])
   assert.equal(TALLY_PREFIX, 'tally:')
 })
+
+test('the store keeps the tallies of the 3 newest other sessions, never the own key', () => {
+  const now = 100 * DAY_MS
+  const own = `${TALLY_PREFIX}sess-1`
+  const stored = { [own]: tallyAt(1000, now - 9 * DAY_MS) }
+  for (let i = 1; i <= 5; i++) stored[`${TALLY_PREFIX}s${i}`] = tallyAt(1000, now - i * DAY_MS)
+  assert.deepEqual(staleTallies(stored, own, now).sort(), [`${TALLY_PREFIX}s4`, `${TALLY_PREFIX}s5`])
+})

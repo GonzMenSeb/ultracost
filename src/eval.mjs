@@ -499,6 +499,8 @@ export function stoppedRuns(state) {
 
 export const TALLY_PREFIX = 'tally:'
 const TALLY_MAX_AGE_MS = 30 * 24 * 3600 * 1000
+const TALLY_KEEP_OTHERS = 3
+export const TALLY_STORE_MAX = 512 * 1024
 
 export function storedTally(value) {
   const ok = value !== null && typeof value === 'object' && value.v === 1 && value.runs !== null && typeof value.runs === 'object' && !Array.isArray(value.runs)
@@ -506,10 +508,12 @@ export function storedTally(value) {
 }
 
 export function staleTallies(stored, sessionKey, now) {
-  const fresh = (value) => Object.values(storedTally(value)?.runs ?? {}).some((r) => Number.isFinite(r?.at) && r.at >= now - TALLY_MAX_AGE_MS)
-  return Object.entries(stored ?? {})
-    .filter(([key, value]) => key.startsWith(TALLY_PREFIX) && key !== sessionKey && !fresh(value))
-    .map(([key]) => key)
+  const newest = (value) => Math.max(-Infinity, ...Object.values(storedTally(value)?.runs ?? {}).map((r) => (Number.isFinite(r?.at) ? r.at : -Infinity)))
+  const others = Object.entries(stored ?? {})
+    .filter(([key]) => key.startsWith(TALLY_PREFIX) && key !== sessionKey)
+    .map(([key, value]) => ({ key, at: newest(value) }))
+    .sort((a, b) => b.at - a.at)
+  return others.filter(({ at }, i) => i >= TALLY_KEEP_OTHERS || !(at >= now - TALLY_MAX_AGE_MS)).map(({ key }) => key)
 }
 
 export function agentPieces(run) {
