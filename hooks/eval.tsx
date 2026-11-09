@@ -12,6 +12,8 @@ import {
   closeRun,
   createState,
   endAllRuns,
+  endedRecord,
+  endTallyRun,
   evalRecord,
   finishedRuns,
   gateWanted,
@@ -285,13 +287,15 @@ function overallOf(t: TallyState, data: Data, last: EvalMeter, now: number): Tal
 
 let tallyQueue: Promise<void> = Promise.resolve()
 
-function noteTally($: EngineInterface, sid: string, run: TallyRun | null, build: Build, ifAbsent = false) {
-  const done = tallyQueue.then(() => tallyTurn($, sid, run, build, ifAbsent)).catch(err => note($, 'tally', err))
+type Ending = { key: string; status: string }
+
+function noteTally($: EngineInterface, sid: string, run: TallyRun | null, build: Build, ifAbsent = false, ending: Ending | null = null) {
+  const done = tallyQueue.then(() => tallyTurn($, sid, run, build, ifAbsent, ending)).catch(err => note($, 'tally', err))
   tallyQueue = done
   return done
 }
 
-async function tallyTurn($: EngineInterface, sid: string, run: TallyRun | null, build: Build, ifAbsent: boolean) {
+async function tallyTurn($: EngineInterface, sid: string, run: TallyRun | null, build: Build, ifAbsent: boolean, ending: Ending | null) {
   if ((await $.session.id()) !== sid) return
   const data = await getData($)
   if (!data) return
@@ -299,6 +303,11 @@ async function tallyTurn($: EngineInterface, sid: string, run: TallyRun | null, 
   if (t.sid !== sid) {
     const stored = await $.store.get(tallyKey(sid))
     t = await update($, tally, cur => tallyFor(cur, sid, stored) as TallyState)
+  }
+  if (ending) {
+    const was = t.runs[ending.key]?.status
+    t = await update($, tally, cur => (cur.sid === sid ? (endTallyRun(cur, ending.key, ending.status) as TallyState) : cur))
+    if (t.runs[ending.key]?.status !== was) build = 'always'
   }
   const dropped: string[] = []
   if (run) {
@@ -419,6 +428,7 @@ async function endRuns($: EngineInterface, notices: Notice[]) {
     const before = await read($, ev)
     const out = await update($, ev, s => noteRunEnd(s, { ...n, at }))
     const run = (n.toolUseId && out.runs[n.toolUseId]) || Object.values(out.runs).find(r => (n.toolUseId && r.toolUseId === n.toolUseId) || (n.taskId && r.taskId === n.taskId))
+    if (!run && n.toolUseId) await guard($, 'orphan end', () => endOrphan($, n.toolUseId as string, n.status, at))
     if (!run || run.status === 'running') continue
     const fresh = before.runs[run.key]?.status === 'running'
     if (fresh) await guard($, 'savings', () => estimate($, run.key))
@@ -430,6 +440,18 @@ async function endRuns($: EngineInterface, notices: Notice[]) {
       })
     }
   }
+}
+
+async function endOrphan($: EngineInterface, key: string, status: string, at: number) {
+  const sid = await $.session.id()
+  await noteTally($, sid, null, 'missing', false, { key, status })
+  const t = await read($, tally)
+  if (t.sid !== sid || t.runs[key]?.status !== status) return
+  const dir = await configDir($)
+  const path = dir ? recordPath(dir, sid, key, 'eval') : null
+  if (!path) return
+  const ended = endedRecord(JSON.parse(await $.fs.read(path)), status, at)
+  if (ended) await $.fs.write(path, `${JSON.stringify(ended, null, 2)}\n`)
 }
 
 async function reconcile($: EngineInterface) {

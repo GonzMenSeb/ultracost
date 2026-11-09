@@ -524,6 +524,17 @@ export function settledTally(tally) {
   return { ...kept, runs }
 }
 
+export function endTallyRun(tally, key, status) {
+  const held = tally?.runs?.[key]
+  if (!held || !ENDING.has(status) || (held.status !== 'running' && held.status !== 'cleared')) return tally
+  return { ...tally, runs: { ...tally.runs, [key]: { ...held, status } } }
+}
+
+export function endedRecord(record, status, at) {
+  if (record === null || typeof record !== 'object' || record.kind !== 'eval' || record.status !== 'running' || !ENDING.has(status)) return null
+  return { ...record, status, endedAt: iso(at) }
+}
+
 export function tallyFor(current, sid, stored) {
   if (current?.sid === sid) return current
   return { ...(settledTally(storedTally(stored)) ?? createTally()), sid }

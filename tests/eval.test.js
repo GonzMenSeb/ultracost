@@ -5,7 +5,7 @@ import { recordPath } from '../src/record.mjs'
 import { readFileSync } from 'node:fs'
 import { loadPrices } from '../src/prices.mjs'
 import { toastText } from '../src/savedText.mjs'
-import { STOPPED, TALLY_PREFIX, UNKNOWN_PHASE, noteFocus, phaseOpen, setFolds, agentPieces, finishedRuns, hideFinished, noteMainStep, noteMeterReading, noteSaved, noteStored, noteUsage, staleTallies, storedTally, settledTally, stoppedRuns, setStoppedOpen, stoppedOpen, tallyFor } from '../src/eval.mjs'
+import { STOPPED, TALLY_PREFIX, UNKNOWN_PHASE, noteFocus, phaseOpen, setFolds, agentPieces, finishedRuns, hideFinished, noteMainStep, noteMeterReading, noteSaved, noteStored, noteUsage, staleTallies, storedTally, settledTally, endTallyRun, endedRecord, stoppedRuns, setStoppedOpen, stoppedOpen, tallyFor } from '../src/eval.mjs'
 import {
   activeRuns,
   bandText,
@@ -1079,6 +1079,27 @@ test('tallyFor keeps the tally of the session it belongs to and swaps in the sto
   assert.equal('overall' in resumed, false)
   for (const none of [undefined, null, { v: 2, runs: {} }]) assert.deepEqual(tallyFor(mine, 's3', none), { v: 1, runs: {}, sid: 's3' })
   assert.deepEqual(tallyFor({ v: 1, runs: {} }, 's1', undefined), { v: 1, runs: {}, sid: 's1' })
+})
+
+test('a late end notice settles a stored run that was running or settled as cleared, and leaves an ended one alone', () => {
+  const t = tallyAt(5, 6)
+  t.runs.r1.status = 'running'
+  assert.equal(endTallyRun(t, 'r1', STOPPED).runs.r1.status, STOPPED)
+  assert.equal(endTallyRun(settledTally(t), 'r1', STOPPED).runs.r1.status, STOPPED)
+  assert.equal(endTallyRun(t, 'r0', STOPPED), t)
+  assert.equal(endTallyRun(t, 'nope', STOPPED), t)
+  assert.equal(endTallyRun(t, 'r1', 'running'), t)
+  assert.equal(endTallyRun(null, 'r1', STOPPED), null)
+  assert.equal(t.runs.r1.status, 'running')
+})
+
+test('endedRecord ends a running eval record with the status and time of the notice, and nothing else', () => {
+  const record = { session_id: 's1', kind: 'eval', key: 'k', status: 'running', startedAt: '1970-01-01T00:00:01.000Z', endedAt: null }
+  assert.deepEqual(endedRecord(record, STOPPED, 5000), { ...record, status: STOPPED, endedAt: '1970-01-01T00:00:05.000Z' })
+  assert.equal(endedRecord({ ...record, status: 'completed' }, STOPPED, 5000), null)
+  assert.equal(endedRecord({ ...record, kind: 'gate' }, STOPPED, 5000), null)
+  assert.equal(endedRecord(record, 'running', 5000), null)
+  for (const bad of [null, 'x', 3]) assert.equal(endedRecord(bad, STOPPED, 5000), null)
 })
 
 test('a running estimate never replaces the saved of a run that has ended', () => {

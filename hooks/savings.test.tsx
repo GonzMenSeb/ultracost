@@ -62,10 +62,10 @@ const drain = async (stream: AsyncGenerator<unknown, unknown>) => {
   return r.value
 }
 
-type Options = { subscription: boolean; context?: { tokens?: number }; compact?: number; gate?: boolean; agents?: number; readings?: number; finish?: boolean; complete?: boolean; launched?: boolean; preload?: Record<string, unknown>; now?: number; record?: Record<string, unknown>; name?: string }
+type Options = { subscription: boolean; context?: { tokens?: number }; compact?: number; gate?: boolean; agents?: number; readings?: number; finish?: boolean; complete?: boolean; launched?: boolean; preload?: Record<string, unknown>; now?: number; record?: Record<string, unknown>; name?: string; files?: Record<string, string> }
 
 async function flow($: any, on: any, options: Options) {
-  const { subscription, context = {}, compact, gate = true, agents = 1, readings = 6, finish = true, complete = true, launched = true, preload = {}, now = 5000, record = {}, name = 'map' } = options
+  const { subscription, context = {}, compact, gate = true, agents = 1, readings = 6, finish = true, complete = true, launched = true, preload = {}, now = 5000, record = {}, name = 'map', files = {} } = options
   const writes: Record<string, string> = {}
   const toasts: string[] = []
   const store: Record<string, unknown> = { ...preload }
@@ -121,6 +121,8 @@ async function flow($: any, on: any, options: Options) {
     if (path.endsWith('/data/prices.json')) return { value: data('prices') }
     if (path.endsWith('/data/ratios.json')) return { value: data('ratios') }
     if (gate && path === `${CONFIG}/ultraguard/sessions/${sid}/${toolUseId}.gate.json`) return { value: gateRecord(toolUseId, record) }
+    if (path in writes) return { value: writes[path] }
+    if (path in files) return { value: files[path] }
     return { deny: `ENOENT ${path}` }
   })
   on('tool.call', (_: any, e: any) => {
@@ -694,6 +696,31 @@ test('a resume swaps in the tally of the resumed session, and the runs of the en
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
   expect(await ui.find({ type: 'Text', text: /^══ overall savings for this session so far {2}2 workflows ═+$/ })).toBeDefined()
   await ui.unmount()
+})
+
+test('after a restart a stopped notice ends the stored run as stopped in the tally and in its record', async ($, on) => {
+  const path = `${CONFIG}/ultraguard/sessions/${SESSION}/orphan.eval.json`
+  const record = { session_id: SESSION, kind: 'eval', key: 'orphan', tool_use_id: 'orphan', name: 'r1', status: 'running', startedAt: '1970-01-01T00:00:04.000Z', endedAt: null, ok: true }
+  const earlier = { key: 'orphan', status: 'running', baseline: OPUS_HIGH, agents: PIECES, windows: { five_hour: FIVE_RESET, seven_day: '2026-11-12T12:00:00Z' }, at: 4000 }
+  const w = await flow($, on, { subscription: true, launched: false, preload: { [TALLY]: { v: 1, sid: SESSION, runs: { orphan: earlier } } }, files: { [path]: JSON.stringify(record) } })
+  expect(tallyOf(w).runs.orphan.status).toBe('cleared')
+  await w.end('orphan', 'stopped')
+  expect(tallyOf(w).runs.orphan.status).toBe('killed')
+  expect(tallyOf(w).overall).toMatchObject({ count: 1, running: false })
+  expect(JSON.parse(w.writes[path])).toEqual({ ...record, status: 'killed', endedAt: new Date(w.clock.now()).toISOString() })
+  await w.end('orphan', 'stopped')
+  expect(Object.keys(w.writes).filter(p => p.endsWith('.eval.json'))).toEqual([path])
+  expect(w.logs.filter(l => /orphan|tally/.test(l))).toEqual([])
+})
+
+test('an end notice for a task ultraguard never tracked changes no tally and writes no record', async ($, on) => {
+  const w = await flow($, on, { subscription: true })
+  const before = JSON.stringify(tallyOf(w).runs)
+  const writes = Object.keys(w.writes).length
+  await w.end('toolu_bash01', 'completed')
+  expect(JSON.stringify(tallyOf(w).runs)).toBe(before)
+  expect(Object.keys(w.writes).length).toBe(writes)
+  expect(w.logs.filter(l => /orphan/.test(l))).toEqual([])
 })
 
 test('an estimate that started before a resume is dropped, so the resumed tally never gets the run of the ended session', async ($, on) => {
