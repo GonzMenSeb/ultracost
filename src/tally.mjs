@@ -88,8 +88,9 @@ function addSources(alls) {
 
 export function combine(estimates, { tally, meter, now }) {
   const count = Object.keys(tally.runs).length
+  const running = runsOf(tally).some((r) => r.status === 'running')
   const kept = estimates.filter((e) => e?.all?.status === 'estimated')
-  if (kept.length === 0) return { status: 'unknown', count }
+  if (kept.length === 0) return { status: 'unknown', count, running }
   const alls = kept.map((e) => e.all)
   const subscription = meter?.subscription ?? null
   const current = both((k) => meter?.last?.[k]?.resetsAt ?? null)
@@ -105,7 +106,7 @@ export function combine(estimates, { tally, meter, now }) {
     why: null,
     count,
     counted: both((k) => countedRuns(tally, k, current[k], now).length),
-    running: runsOf(tally).some((r) => r.status === 'running'),
+    running,
     subscription,
     baseline: kept.length === 1 ? alls[0].baseline : null,
     dollars: addRanges(present(alls.map((e) => e.dollars))),

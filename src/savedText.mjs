@@ -1,5 +1,5 @@
 import { modelColor, savedColor } from './palette.mjs'
-import { MAX_WIDTH, layoutOf, rowLine } from './bars.mjs'
+import { MAX_WIDTH, layoutOf, rowLines } from './bars.mjs'
 import { limitMessages, wrapText } from './limitText.mjs'
 import { STOPPED } from './eval.mjs'
 
@@ -20,8 +20,10 @@ export const fmtPct = (x) => (Math.abs(x) < 0.1 ? '< 0.1%' : `${x.toFixed(1)}%`)
 
 export const fmtUsd = (x) => `${x < 0 ? '-' : ''}$${Math.abs(x).toFixed(2)}`
 
+const cents = (x) => fmtUsd(Math.abs(x) < 0.005 ? 0 : x)
+
 export const rangeText = (range, kind) => {
-  const f = kind === 'usd' ? fmtUsd : tenths
+  const f = kind === 'usd' ? cents : tenths
   return ` (${f(range.lo)} to ${f(range.hi)})`
 }
 
@@ -43,6 +45,11 @@ const RANGE_NOTE = 'range = 9 times in 10'
 const RANGE_WIDE = 'so the range is wide'
 const MIXED_BASELINE = "vs your session's model at each launch"
 const RUN_NOTHING = 'this run may have saved nothing'
+const OVERALL_TITLE = 'overall savings for this session'
+const OVERALL_COUNT = (n) => `${n} workflows`
+const OVERALL_NOTHING = 'these workflows may have saved nothing'
+const OVERALL_SCOPE = (label, n) => `${label} counts the ${n} workflows of this window`
+const NO_ESTIMATE = 'no estimate yet'
 
 export const RULE = '═'
 export const SUB_RULE = '─'
@@ -149,10 +156,11 @@ function costRow(saved) {
   }
 }
 
-function moneyLine(saved) {
+function moneyLines(saved, width) {
   const { dollars } = saved
-  if (!dollars) return null
-  return [seg('  '), bold(fmtUsd(dollars.mid)), dim(rangeText(dollars, 'usd')), seg(saved.subscription === false ? ' off your API bill' : ' at API prices')]
+  if (!dollars) return []
+  const parts = [bold(fmtUsd(dollars.mid)), dim(rangeText(dollars, 'usd')), seg(saved.subscription === false ? ' off your API bill' : ' at API prices')]
+  return 2 + textOf(parts) <= width ? [[seg('  '), ...parts]] : wrapLine(parts, width)
 }
 
 function tokenLines(saved, width) {
@@ -206,14 +214,11 @@ export function savedBody(saved, { width = MAX_WIDTH, context = null, nothing } 
   const out = []
   if (rows.length > 0) {
     const layout = layoutOf(rows, width)
-    out.push(...rows.map((r) => rowLine(r, layout)))
+    out.push(...rows.flatMap((r) => rowLines(r, layout)))
   }
   for (const message of limitMessages(limits)) out.push(...proseLines(message, width))
 
-  if (!cost) {
-    const money = moneyLine(saved)
-    if (money) out.push(money)
-  }
+  if (!cost) out.push(...moneyLines(saved, width))
   out.push(...tokenLines(saved, width))
 
   const firstRange = rows.find((r) => r.range)?.range ?? saved.dollars
@@ -238,6 +243,21 @@ export function savedBlock(saved, { width = MAX_WIDTH, headWidth = width, contex
 
   const out = [...head, ...savedBody(saved, { width: room, context, nothing: RUN_NOTHING })]
   for (const line of coverageLines(saved)) out.push(...proseLines(line, room, 'dim'))
+  return out
+}
+
+export function overallBlock(overall, { width = MAX_WIDTH, context = null } = {}) {
+  if (!(overall?.count > 0)) return []
+  const room = Math.min(width, MAX_WIDTH)
+  const head = sectionHead(overall.running ? `${OVERALL_TITLE} so far` : OVERALL_TITLE, { extra: OVERALL_COUNT(overall.count), width })
+  if (overall.status !== 'estimated') return [head, ...proseLines(NO_ESTIMATE, room, 'dim')]
+  const out = [head, baselineLine(overall.baseline), ...savedBody(overall, { width: room, context, nothing: OVERALL_NOTHING })]
+  if (overall.subscription === true && overall.limits) {
+    for (const [key, label] of LIMIT_KEYS) {
+      const n = overall.counted?.[key]
+      if (finite(n) && n < overall.count) out.push(...proseLines(OVERALL_SCOPE(label, n), room, 'dim'))
+    }
+  }
   return out
 }
 

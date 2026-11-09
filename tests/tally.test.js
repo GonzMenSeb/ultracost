@@ -244,8 +244,15 @@ test('combine with no estimated group is unknown with the count', () => {
   const meter = meterWith()
   const t = tallyOf(runInfo('r1', { agents: agentsOf('r1', 2, 'sonnet', 'xhigh') }), runInfo('r2', { baseline: null, at: 2000 }))
   const estimates = estimateGroups(overallInput(t, { five_hour: 'A', seven_day: 'W' }, 3000), meter)
-  assert.deepEqual(combine(estimates, { tally: t, meter, now: 3000 }), { status: 'unknown', count: 2 })
-  assert.deepEqual(combine([], { tally: createTally(), meter, now: 0 }), { status: 'unknown', count: 0 })
+  assert.deepEqual(combine(estimates, { tally: t, meter, now: 3000 }), { status: 'unknown', count: 2, running: false })
+  assert.deepEqual(combine([], { tally: createTally(), meter, now: 0 }), { status: 'unknown', count: 0, running: false })
+})
+
+test('combine with no estimated group still says a run is going', () => {
+  const meter = meterWith()
+  const t = tallyOf(runInfo('r1', { status: 'running', agents: agentsOf('r1', 2, 'sonnet', 'xhigh') }))
+  const estimates = estimateGroups(overallInput(t, { five_hour: 'A', seven_day: 'W' }, 3000), meter)
+  assert.deepEqual(combine(estimates, { tally: t, meter, now: 3000 }), { status: 'unknown', count: 1, running: true })
 })
 
 test('combine off a subscription has no limits and no used figures', () => {

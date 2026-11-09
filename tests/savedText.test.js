@@ -1,7 +1,13 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { fmtPct, fmtUsd, fmtTokens, modelLines, phaseHeadLength, phaseLayout, phaseStatus, phaseTitle, rangeText, savedBlock, savedBody, sectionHead, subHead, baselineLine, RULE, SUB_RULE, agentColumn, listHeader, listCell, toastText } from '../src/savedText.mjs'
+import { readFileSync } from 'node:fs'
+import { fmtPct, fmtUsd, fmtTokens, modelLines, phaseHeadLength, phaseLayout, phaseStatus, phaseTitle, rangeText, savedBlock, savedBody, overallBlock, sectionHead, subHead, baselineLine, RULE, SUB_RULE, agentColumn, listHeader, listCell, toastText } from '../src/savedText.mjs'
 import { modelColor, savedColor } from '../src/palette.mjs'
+import { createTally, noteTallyRun, overallInput, combine } from '../src/tally.mjs'
+import { estimateRun } from '../src/savings.mjs'
+import { loadPrices } from '../src/prices.mjs'
+import { seedOf } from '../src/stats.mjs'
+import { createMeter } from '../src/meter.mjs'
 
 const range = (mid, pm, lo = mid - pm) => ({ mid, lo, hi: mid + pm, pm })
 const text = (line) => line.map((s) => s.text).join('')
@@ -69,6 +75,9 @@ test('a range reads low to high, in tenths of a point or in cents', () => {
   assert.equal(rangeText({ mid: 12.04, lo: 1.2, hi: 35.21 }, 'usd'), ' ($1.20 to $35.21)')
   assert.equal(rangeText({ mid: 1.4, lo: -0.3, hi: 2.1 }, 'points'), ' (-0.3 to 2.1)')
   assert.equal(rangeText({ mid: 1.4, lo: -0.04, hi: 2.1 }, 'points'), ' (0.0 to 2.1)')
+  assert.equal(rangeText({ mid: 1, lo: -0.004, hi: 2 }, 'usd'), ' ($0.00 to $2.00)')
+  assert.equal(rangeText({ mid: -0.001, lo: -0.3, hi: -0.0049 }, 'usd'), ' (-$0.30 to $0.00)')
+  assert.equal(rangeText({ mid: 1, lo: -0.006, hi: 2 }, 'usd'), ' (-$0.01 to $2.00)')
 })
 
 test('every saving figure of the block reads as a range, never with ±', () => {
@@ -223,19 +232,44 @@ test('the head spans the width and no other line is wider than the block, which 
     saved({ subscription: false, limits: null }),
     saved({ tokens: { saved: -8_800_000, outputSaved: -1 }, transitions: [{ from: 'sonnet:high', to: 'opus:high', source: 'measured' }] }),
     saved({ limits: wide, used: { five_hour: 60, seven_day: 70 }, dollars: { mid: 12.04, lo: 1.2, hi: 35.21, pm: 23.17 } }),
-    saved({ subscription: false, limits: null, dollars: { mid: 9.5, lo: 1.2, hi: 9.99, pm: 8.3 }, actualDollars: 4.5, baselineDollars: 14 })
+    saved({ subscription: false, limits: null, dollars: { mid: 9.5, lo: 1.2, hi: 9.99, pm: 8.3 }, actualDollars: 4.5, baselineDollars: 14 }),
+    saved({ subscription: false, limits: null, dollars: { mid: 12.04, lo: 1.2, hi: 35.21, pm: 23.17 }, actualDollars: 5.5, baselineDollars: 17.54 })
   ]
+  for (const mid of [0.004, 1.5, 12.04, 123.45, 1234.56]) {
+    const dollars = { mid, lo: mid / 10, hi: mid * 3, pm: mid * 2 }
+    states.push(saved({ subscription: false, limits: null, dollars, actualDollars: mid / 2.2, baselineDollars: mid + mid / 2.2 }))
+    states.push(saved({ subscription: null, limits: null, dollars }))
+  }
+  for (const mid of [0.04, 1.4, 17.8, 99.9]) {
+    const limit = { mid, lo: -mid / 10, hi: mid * 3, pm: mid * 2 }
+    states.push(saved({ limits: { five_hour: limit, seven_day: limit, readings: { five_hour: 8, seven_day: 8 } }, used: { five_hour: 100, seven_day: 7 } }))
+  }
   for (const state of states) {
     for (const width of [44, 56, 72, 110]) {
       const [first, ...rest] = savedBlock(state, { width, context: CONTEXT })
       assert.equal(text(first).length, width)
-      for (const line of rest) {
-        const size = text(line).length
-        assert.ok(size <= 56, `${width}: ${size} ${text(line)}`)
-        if (!text(line).includes('│')) assert.ok(size <= Math.max(width, 10), `${width}: ${text(line)}`)
-      }
+      for (const line of rest) assert.ok(text(line).length <= Math.min(width, 56), `${width}: ${text(line)}`)
     }
   }
+})
+
+test('a cost row too wide for a 12-cell bar keeps to 56 columns, and below 48 its range moves under the bar', () => {
+  const state = saved({ subscription: false, limits: null, dollars: { mid: 12.04, lo: 1.2, hi: 35.21, pm: 23.17 }, actualDollars: 5.5, baselineDollars: 17.54 })
+  const at56 = lines(state)
+  assert.equal(at56[2].length, 56)
+  assert.ok(at56[2].endsWith('  $5.50  +$12.04 ($1.20 to $35.21)'))
+  const at44 = lines(state, { width: 44 })
+  assert.ok(at44[2].endsWith('  $5.50  +$12.04'))
+  assert.equal(at44[3], '          ($1.20 to $35.21)')
+})
+
+test('a money line wider than the block wraps, its parts keeping their looks', () => {
+  const block = savedBlock(saved({ subscription: null, limits: null, dollars: { mid: 1234.56, lo: 123.46, hi: 3703.68, pm: 2469.12 } }), { width: 44 })
+  const i = block.findIndex((l) => text(l).includes('$1234.56'))
+  assert.equal(text(block[i]), '  $1234.56 ($123.46 to $3703.68) at API')
+  assert.equal(text(block[i + 1]), '  prices')
+  assert.deepEqual(block[i].find((s) => s.text === '$1234.56'), { text: '$1234.56', style: 'bold' })
+  assert.ok(block[i].some((s) => s.text === '$3703.68)' && s.style === 'dim'))
 })
 
 test('an API key shows a cost bar from the bill it avoided', () => {
@@ -553,4 +587,109 @@ test('the toast names the reason of a red run', () => {
 test('the toast stays plain when there is no estimate', () => {
   assert.equal(toastText(view({ saved: null })), 'ultraguard: research-config finished as approved')
   assert.equal(toastText(view({ saved: saved({ status: 'unknown', dollars: null }) })), 'ultraguard: research-config finished as approved')
+})
+
+const data = (name) => JSON.parse(readFileSync(new URL(`../data/${name}.json`, import.meta.url), 'utf8'))
+const RATIOS = data('ratios')
+const PRICES = loadPrices(data('prices'))
+const NOW = 3000
+const SONNET_XHIGH = { family: 'sonnet', effort: 'xhigh' }
+const OPUS_HIGH = { family: 'opus', effort: 'high' }
+const SUBSCRIBED = { ...createMeter(), subscription: true, last: { five_hour: { pct: 13, resetsAt: 'B' }, seven_day: { pct: 50, resetsAt: 'W' } } }
+const API_KEY = { ...createMeter(), subscription: false }
+const INTERVALS = Array.from({ length: 8 }, (_, i) => ({ d: 1, u: 0.5, c: 0.4, at: i }))
+const tallyRun = (key, over = {}) => ({
+  key,
+  status: 'completed',
+  baseline: SONNET_XHIGH,
+  agents: [0, 1].map((i) => ({ agentId: `${key}-a${i}`, pieces: [{ family: 'haiku', effort: 'high', input: 2000, output: 40000, cacheRead: 300000, cacheWrite: 30000 }] })),
+  windows: { five_hour: 'B', seven_day: 'W' },
+  at: 1000,
+  ...over
+})
+
+function overallOf(runs, meter = SUBSCRIBED) {
+  const tally = runs.reduce((t, r) => noteTallyRun(t, r), createTally())
+  const current = { five_hour: meter.last?.five_hour?.resetsAt ?? null, seven_day: meter.last?.seven_day?.resetsAt ?? null }
+  const one = (baseline, agents) =>
+    estimateRun({ agents, baseline, ratios: RATIOS, prices: PRICES, meter: { subscription: meter.subscription, five_hour: INTERVALS, seven_day: INTERVALS }, seed: seedOf('overall') })
+  const estimates = overallInput(tally, current, NOW).groups.map((g) => ({ all: one(g.baseline, g.all), five_hour: one(g.baseline, g.five_hour), seven_day: one(g.baseline, g.seven_day) }))
+  return combine(estimates, { tally, meter, now: NOW })
+}
+
+const fifteen = (over = () => ({})) => Array.from({ length: 15 }, (_, i) => tallyRun(`r${i}`, { at: 1000 + i, windows: { five_hour: i < 8 ? 'A' : 'B', seven_day: 'W' }, ...over(i) }))
+const overallLines = (overall, opts) => overallBlock(overall, opts).map(text)
+const SCOPE_FIVE = (n) => `  5-hour counts the ${n} workflows of this window`
+const SCOPE_WEEK = (n) => `  weekly counts the ${n} workflows of this window`
+
+test('the overall block opens with its section head at the pane width, so far while a run is going', () => {
+  const going = overallBlock(overallOf(fifteen((i) => (i === 14 ? { status: 'running' } : {}))), { width: 80, context: CONTEXT })
+  assert.ok(text(going[0]).startsWith('══ overall savings for this session so far'))
+  assert.ok(text(going[0]).includes('  15 workflows'))
+  assert.equal(text(going[0]).length, 80)
+  assert.deepEqual(going[0].find((s) => s.style === 'bold'), { text: 'overall savings for this session so far', style: 'bold' })
+  const ended = overallLines(overallOf(fifteen()), { width: 80, context: CONTEXT })
+  assert.equal(ended[0], '══ overall savings for this session  15 workflows ' + '═'.repeat(30))
+})
+
+test('the overall block names the baseline, or the session model at each launch when the baselines differ', () => {
+  assert.equal(overallLines(overallOf(fifteen()), { width: 80 })[1], '  vs every agent on Sonnet xhigh')
+  const mixed = overallOf(fifteen((i) => (i % 2 ? { baseline: OPUS_HIGH } : {})))
+  assert.equal(mixed.baseline, null)
+  assert.equal(overallLines(mixed, { width: 80 })[1], "  vs your session's model at each launch")
+})
+
+test('the overall rows are the rows a run block draws for the same figures', () => {
+  const overall = overallOf(fifteen())
+  const rowsOf = (block) => block.filter((l) => text(l).includes('│'))
+  const mine = rowsOf(overallBlock(overall, { width: 80, context: CONTEXT }))
+  assert.deepEqual(mine.map((l) => text(l).slice(2, 9)), ['context', '5-hour ', 'weekly '])
+  assert.ok(mine.every((l) => text(l).includes('│')))
+  assert.deepEqual(mine, rowsOf(savedBlock(overall, { width: 80, context: CONTEXT })))
+})
+
+test('a scope line says how many workflows a limit counts when it is fewer than all', () => {
+  const block = overallLines(overallOf(fifteen()), { width: 80, context: CONTEXT })
+  assert.equal(block.at(-1), SCOPE_FIVE(7))
+  assert.ok(!block.some((l) => l.startsWith('  weekly counts')))
+  assert.ok(overallBlock(overallOf(fifteen()), { width: 80 }).at(-1).every((s) => s.style === 'dim'))
+  const weeks = overallLines(overallOf(fifteen((i) => ({ windows: { five_hour: 'B', seven_day: i < 3 ? 'V' : 'W' } }))), { width: 80 })
+  assert.deepEqual(weeks.slice(-1), [SCOPE_WEEK(12)])
+  assert.ok(!weeks.some((l) => l.startsWith('  5-hour counts')))
+  const all = overallLines(overallOf(fifteen(() => ({ windows: { five_hour: 'B', seven_day: 'W' } }))), { width: 80 })
+  assert.ok(!all.some((l) => l.includes('counts the')))
+})
+
+test('on an API key the overall block has a cost row, no money line and no scope line', () => {
+  const block = overallLines(overallOf(fifteen(), API_KEY), { width: 80, context: CONTEXT })
+  assert.ok(block.some((l) => l.startsWith('  cost    ')))
+  assert.ok(!block.some((l) => l.includes('API bill') || l.includes('API prices')))
+  assert.ok(!block.some((l) => l.includes('counts the')))
+})
+
+test('a range below zero says these workflows may have saved nothing', () => {
+  const overall = overallOf(fifteen())
+  const block = overallLines({ ...overall, limits: { ...overall.limits, five_hour: { mid: 0.4, lo: -0.7, hi: 1.5, pm: 1.1 } } }, { width: 80 })
+  assert.deepEqual(block.slice(-3), ['  range = 9 times in 10', '  these workflows may have saved nothing', SCOPE_FIVE(7)])
+})
+
+test('the overall block is empty with no workflow and says no estimate yet without one', () => {
+  assert.deepEqual(overallBlock(combine([], { tally: createTally(), meter: SUBSCRIBED, now: NOW }), { width: 80 }), [])
+  const same = (i) => ({ status: i === 0 ? 'running' : 'completed', agents: [{ agentId: `s${i}`, pieces: [{ family: 'sonnet', effort: 'xhigh', input: 1, output: 1, cacheRead: 0, cacheWrite: 0 }] }] })
+  const unknown = overallOf(fifteen(same))
+  assert.equal(unknown.status, 'unknown')
+  const block = overallBlock(unknown, { width: 80, context: CONTEXT })
+  assert.equal(block.length, 2)
+  assert.ok(text(block[0]).startsWith('══ overall savings for this session so far  15 workflows '))
+  assert.deepEqual(block[1], [{ text: '  no estimate yet', style: 'dim' }])
+})
+
+test('every overall line fits the width, capped at 56, past its head', () => {
+  for (const overall of [overallOf(fifteen()), overallOf(fifteen(), API_KEY), overallOf(fifteen((i) => (i % 2 ? { baseline: OPUS_HIGH } : {})))]) {
+    for (const width of [44, 56, 72, 110]) {
+      const [first, ...rest] = overallBlock(overall, { width, context: CONTEXT })
+      assert.equal(text(first).length, width)
+      for (const line of rest) assert.ok(text(line).length <= Math.min(width, 56), `${width}: ${text(line)}`)
+    }
+  }
 })
