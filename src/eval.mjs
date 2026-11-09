@@ -1,6 +1,7 @@
 import { priceFamily } from './prices.mjs'
 import { createMeter, mergeStored, noteRequest, noteReading } from './meter.mjs'
 import { seedOf } from './stats.mjs'
+import { createTally } from './tally.mjs'
 
 export const EVAL_VERSION = 1
 export const DEFAULT_MAX_OPUS = 3
@@ -347,7 +348,8 @@ export function hideFinished(state) {
 
 export function noteSaved(state, key, saved) {
   const run = get(state.runs, key)
-  return run ? setRun(state, { ...run, saved }) : state
+  if (!run || (saved?.running && run.status !== 'running')) return state
+  return setRun(state, { ...run, saved })
 }
 
 export function noteAgentDone(state, { agentId }) {
@@ -515,8 +517,14 @@ export function storedTally(value) {
 
 export function settledTally(tally) {
   if (!tally) return tally
+  const { overall, ...kept } = tally
   const runs = Object.fromEntries(Object.entries(tally.runs).map(([key, r]) => [key, r.status === 'running' ? { ...r, status: 'cleared' } : r]))
-  return { ...tally, runs, ...(tally.overall ? { overall: { ...tally.overall, running: false } } : {}) }
+  return { ...kept, runs }
+}
+
+export function tallyFor(current, sid, stored) {
+  if (current?.sid === sid) return current
+  return { ...(settledTally(storedTally(stored)) ?? createTally()), sid }
 }
 
 export function staleTallies(stored, sessionKey, now) {

@@ -66,6 +66,24 @@ test('noteTallyRun with the same key keeps one entry, replaced', () => {
   assert.equal(first.runs.r1.status, 'running')
 })
 
+test('noteTallyRun never puts an ended run back to running', () => {
+  for (const status of ['completed', 'killed', 'cleared']) {
+    const ended = tallyOf(runInfo('r1', { status, at: 2000 }))
+    assert.equal(noteTallyRun(ended, runInfo('r1', { status: 'running', agents: agentsOf('r1', 1), at: 3000 })), ended)
+    assert.equal(noteTallyRun(ended, runInfo('r1', { status: 'failed', at: 4000 })).runs.r1.status, 'failed')
+  }
+  const launched = tallyOf(runInfo('r1', { status: 'running', agents: [] }))
+  assert.equal(noteTallyRun(launched, runInfo('r1', { status: 'running', at: 2000 })).runs.r1.agents.length, 2)
+})
+
+test('noteTallyRun with ifAbsent notes a new run and leaves one already there as it is', () => {
+  const launch = runInfo('r1', { status: 'running', agents: [] })
+  const fresh = noteTallyRun(createTally(), launch, { ifAbsent: true })
+  assert.deepEqual(fresh.runs.r1.agents, [])
+  const seen = tallyOf(runInfo('r1', { status: 'running' }))
+  assert.equal(noteTallyRun(seen, launch, { ifAbsent: true }), seen)
+})
+
 test('noteTallyRun normalizes missing windows to null', () => {
   const t = noteTallyRun(createTally(), { ...runInfo('r1'), windows: undefined })
   assert.deepEqual(t.runs.r1.windows, { five_hour: null, seven_day: null })
@@ -225,7 +243,7 @@ test('combine takes the zero range of a window whose agents all ran on the basel
   assert.notEqual(s.limits.five_hour, null)
 })
 
-test('combine leaves out groups that are not estimated', () => {
+test('combine counts a group whose agents all ran on its baseline as a zero saving', () => {
   const meter = meterWith()
   const t = tallyOf(
     runInfo('r1', { baseline: SONNET_XHIGH, agents: agentsOf('r1', 2, 'sonnet', 'xhigh') }),
@@ -234,25 +252,58 @@ test('combine leaves out groups that are not estimated', () => {
   const input = overallInput(t, { five_hour: 'A', seven_day: 'W' }, 3000)
   const estimates = estimateGroups(input, meter)
   const opus = estimates[input.groups.findIndex((g) => g.baseline.family === 'opus')]
+  const same = estimates[input.groups.findIndex((g) => g.baseline.family === 'sonnet')]
+  assert.equal(same.all.status, 'none')
   const s = combine(estimates, { tally: t, meter, now: 3000 })
+  assert.equal(s.status, 'estimated')
   assert.deepEqual(s.dollars, opus.all.dollars)
-  assert.deepEqual(s.baseline, OPUS_HIGH)
+  assert.deepEqual(s.tokens, opus.all.tokens)
+  assert.deepEqual(s.limits.five_hour, opus.five_hour.limits.five_hour)
+  assert.deepEqual(s.limits.seven_day, opus.seven_day.limits.seven_day)
+  assert.equal(s.actualDollars, opus.all.actualDollars + same.all.actualDollars)
+  assert.equal(s.baselineDollars, opus.all.baselineDollars + same.all.baselineDollars)
+  assert.equal(s.coverage.total, 4)
   assert.equal(s.count, 2)
 })
 
-test('combine with no estimated group is unknown with the count', () => {
+test('combine reads the baseline from the groups it was given, so two baselines are mixed even with one estimated', () => {
+  const meter = meterWith()
+  for (const agents of [agentsOf('r1', 2, 'sonnet', 'xhigh'), agentsOf('r1', 2, 'gpt', 'high')]) {
+    const t = tallyOf(runInfo('r1', { baseline: SONNET_XHIGH, agents }), runInfo('r2', { baseline: OPUS_HIGH, at: 2000 }))
+    const estimates = estimateGroups(overallInput(t, { five_hour: 'A', seven_day: 'W' }, 3000), meter)
+    assert.equal(estimates.filter((e) => e.all.status === 'estimated').length, 1)
+    const s = combine(estimates, { tally: t, meter, now: 3000 })
+    assert.equal(s.status, 'estimated')
+    assert.equal(s.baseline, null)
+  }
+})
+
+test('combine with every group on its own baseline is none, with the count and the baseline', () => {
   const meter = meterWith()
   const t = tallyOf(runInfo('r1', { agents: agentsOf('r1', 2, 'sonnet', 'xhigh') }), runInfo('r2', { baseline: null, at: 2000 }))
   const estimates = estimateGroups(overallInput(t, { five_hour: 'A', seven_day: 'W' }, 3000), meter)
-  assert.deepEqual(combine(estimates, { tally: t, meter, now: 3000 }), { status: 'unknown', count: 2, running: false })
-  assert.deepEqual(combine([], { tally: createTally(), meter, now: 0 }), { status: 'unknown', count: 0, running: false })
+  assert.deepEqual(combine(estimates, { tally: t, meter, now: 3000 }), { status: 'none', count: 2, running: false, baseline: SONNET_XHIGH })
+  const two = tallyOf(runInfo('r1', { agents: agentsOf('r1', 2, 'sonnet', 'xhigh') }), runInfo('r2', { baseline: OPUS_HIGH, agents: agentsOf('r2', 1, 'opus', 'high'), at: 2000 }))
+  const both = estimateGroups(overallInput(two, { five_hour: 'A', seven_day: 'W' }, 3000), meter)
+  assert.deepEqual(combine(both, { tally: two, meter, now: 3000 }), { status: 'none', count: 2, running: false, baseline: null })
 })
 
-test('combine with no estimated group still says a run is going', () => {
+test('combine with every group on its own baseline still says a run is going', () => {
   const meter = meterWith()
   const t = tallyOf(runInfo('r1', { status: 'running', agents: agentsOf('r1', 2, 'sonnet', 'xhigh') }))
   const estimates = estimateGroups(overallInput(t, { five_hour: 'A', seven_day: 'W' }, 3000), meter)
-  assert.deepEqual(combine(estimates, { tally: t, meter, now: 3000 }), { status: 'unknown', count: 1, running: true })
+  assert.deepEqual(combine(estimates, { tally: t, meter, now: 3000 }), { status: 'none', count: 1, running: true, baseline: SONNET_XHIGH })
+})
+
+test('combine is unknown while no group is estimated and one has no estimate', () => {
+  const meter = meterWith()
+  assert.deepEqual(combine([], { tally: createTally(), meter, now: 0 }), { status: 'unknown', count: 0, running: false })
+  const t = tallyOf(runInfo('r1', { agents: agentsOf('r1', 2, 'gpt', 'high') }), runInfo('r2', { baseline: null, at: 2000 }))
+  const estimates = estimateGroups(overallInput(t, { five_hour: 'A', seven_day: 'W' }, 3000), meter)
+  assert.deepEqual(combine(estimates, { tally: t, meter, now: 3000 }), { status: 'unknown', count: 2, running: false })
+  const pending = tallyOf(runInfo('r1', { agents: agentsOf('r1', 2, 'sonnet', 'xhigh') }), runInfo('r2', { baseline: OPUS_HIGH, status: 'running', agents: [], at: 2000 }))
+  const waiting = estimateGroups(overallInput(pending, { five_hour: 'A', seven_day: 'W' }, 3000), meter)
+  assert.deepEqual(combine(waiting, { tally: pending, meter, now: 3000 }), { status: 'unknown', count: 2, running: true })
 })
 
 test('combine off a subscription has no limits and no used figures', () => {

@@ -707,15 +707,29 @@ test('a range below zero says these workflows may have saved nothing', () => {
   assert.deepEqual(block.slice(-3), ['  range = 9 times in 10', '  these workflows may have saved nothing', SCOPE_FIVE(7)])
 })
 
+const onlyOn = (family, effort) => (i) => ({ status: i === 0 ? 'running' : 'completed', agents: [{ agentId: `s${i}`, pieces: [{ family, effort, input: 1, output: 1, cacheRead: 0, cacheWrite: 0 }] }] })
+
 test('the overall block is empty with no workflow and says no estimate yet without one', () => {
   assert.deepEqual(overallBlock(combine([], { tally: createTally(), meter: SUBSCRIBED, now: NOW }), { width: 80 }), [])
-  const same = (i) => ({ status: i === 0 ? 'running' : 'completed', agents: [{ agentId: `s${i}`, pieces: [{ family: 'sonnet', effort: 'xhigh', input: 1, output: 1, cacheRead: 0, cacheWrite: 0 }] }] })
-  const unknown = overallOf(fifteen(same))
+  const unknown = overallOf(fifteen(onlyOn('gpt', 'high')))
   assert.equal(unknown.status, 'unknown')
   const block = overallBlock(unknown, { width: 80, context: CONTEXT })
   assert.equal(block.length, 2)
   assert.ok(text(block[0]).startsWith('══ overall savings for this session so far  15 workflows '))
   assert.deepEqual(block[1], [{ text: '  no estimate yet', style: 'dim' }])
+})
+
+test('with every agent on its baseline the overall block says nothing was saved, as a run block does', () => {
+  const none = overallOf(fifteen(onlyOn('sonnet', 'xhigh')))
+  assert.equal(none.status, 'none')
+  const block = overallLines(none, { width: 80, context: CONTEXT })
+  assert.ok(block[0].startsWith('══ overall savings for this session so far  15 workflows '))
+  const run = lines({ ...saved(), status: 'none', baseline: SONNET_XHIGH }, { width: 80 })
+  assert.deepEqual(block.slice(1), run.slice(1))
+  assert.deepEqual(block.slice(1), ['  vs every agent on Sonnet xhigh', "  every agent ran on your session's model and effort, so", '  nothing was saved'])
+  const mixed = overallOf(fifteen((i) => ({ ...onlyOn(i % 2 ? 'opus' : 'sonnet', i % 2 ? 'high' : 'xhigh')(i), ...(i % 2 ? { baseline: OPUS_HIGH } : {}) })))
+  assert.equal(mixed.status, 'none')
+  assert.deepEqual(overallLines(mixed, { width: 56 }).slice(1), ["  vs your session's model at each launch", "  every agent ran on your session's model and effort, so", '  nothing was saved'])
 })
 
 test('every overall line fits the width, capped at 56, past its head', () => {

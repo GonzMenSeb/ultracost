@@ -50,8 +50,9 @@ const gateRecord = (toolUseId: string, over: Record<string, unknown> = {}) =>
     ...over,
   })
 
-const limits = (five: number) => [
-  { kind: 'five_hour', percentUsed: five, resetsAt: '2026-11-08T12:00:00Z' },
+const FIVE_RESET = '2026-11-08T12:00:00Z'
+const limits = (five: number, fiveReset = FIVE_RESET) => [
+  { kind: 'five_hour', percentUsed: five, resetsAt: fiveReset },
   { kind: 'seven_day', percentUsed: five / 5, resetsAt: '2026-11-12T12:00:00Z' },
 ]
 
@@ -61,10 +62,10 @@ const drain = async (stream: AsyncGenerator<unknown, unknown>) => {
   return r.value
 }
 
-type Options = { subscription: boolean; context?: { tokens?: number }; compact?: number; gate?: boolean; agents?: number; readings?: number; finish?: boolean; complete?: boolean; preload?: Record<string, unknown>; now?: number; record?: Record<string, unknown> }
+type Options = { subscription: boolean; context?: { tokens?: number }; compact?: number; gate?: boolean; agents?: number; readings?: number; finish?: boolean; complete?: boolean; launched?: boolean; preload?: Record<string, unknown>; now?: number; record?: Record<string, unknown> }
 
 async function flow($: any, on: any, options: Options) {
-  const { subscription, context = {}, compact, gate = true, agents = 1, readings = 6, finish = true, complete = true, preload = {}, now = 5000, record = {} } = options
+  const { subscription, context = {}, compact, gate = true, agents = 1, readings = 6, finish = true, complete = true, launched = true, preload = {}, now = 5000, record = {} } = options
   const writes: Record<string, string> = {}
   const toasts: string[] = []
   const store: Record<string, unknown> = { ...preload }
@@ -73,16 +74,33 @@ async function flow($: any, on: any, options: Options) {
   let percent = 10
   let spawned = 0
   let index = 0
+  let sid = SESSION
+  let following: string | null = null
+  let fiveReset = FIVE_RESET
   mock.env(on, { CLAUDE_CONFIG_DIR: CONFIG })
   const clock = mock.clock(on, { now })
-  on('session.id', () => ({ value: SESSION }))
-  on('session.end', () => ({ sessionId: SESSION }))
+  on('session.id', () => ({ value: sid }))
+  on('session.end', () => {
+    const ended = sid
+    if (following) sid = following
+    return { sessionId: ended }
+  })
   on('session.start', (_: any, e: any) => ({ cwd: e.cwd }))
   on('session.messages', () => ({ value: notices }))
   let fill: Record<string, unknown> = { window: 200000, ...context }
-  on('session.usage', (_: any, e: any) => ({
-    value: { startedAt: 0, context: e.breakdown && compact ? { ...fill, breakdown: { rawMaxTokens: compact, isAutoCompactEnabled: true } } : fill, rateLimits: subscription ? limits(percent) : [] }
-  }))
+  let hold: Promise<void> | null = null
+  on('session.usage', async (_: any, e: any) => {
+    if (hold) await hold
+    return { value: { startedAt: 0, context: e.breakdown && compact ? { ...fill, breakdown: { rawMaxTokens: compact, isAutoCompactEnabled: true } } : fill, rateLimits: subscription ? limits(percent, fiveReset) : [] } }
+  })
+  const pause = () => {
+    let release = () => {}
+    hold = new Promise<void>(resolve => (release = resolve))
+    return () => {
+      hold = null
+      release()
+    }
+  }
   on('session.measure', (_: any, e: any) => ({ changed: e.changed }))
   on('command.register', () => ({ value: { command: 'ultraguard' } }))
   on('turn.complete', () => ({ text: '' }))
@@ -98,7 +116,7 @@ async function flow($: any, on: any, options: Options) {
     if (path.endsWith('/policy/default.json')) return { value: JSON.stringify({ limits: { maxConcurrentOpus: 3 } }) }
     if (path.endsWith('/data/prices.json')) return { value: data('prices') }
     if (path.endsWith('/data/ratios.json')) return { value: data('ratios') }
-    if (gate && path === `${CONFIG}/ultraguard/sessions/${SESSION}/${toolUseId}.gate.json`) return { value: gateRecord(toolUseId, record) }
+    if (gate && path === `${CONFIG}/ultraguard/sessions/${sid}/${toolUseId}.gate.json`) return { value: gateRecord(toolUseId, record) }
     return { deny: `ENOENT ${path}` }
   })
   on('tool.call', (_: any, e: any) => {
@@ -123,32 +141,35 @@ async function flow($: any, on: any, options: Options) {
     return <Text>engine</Text>
   })
   const step = (over: Record<string, unknown>) => drain($.turn.step({ turnId: 't1', index: (index += 1), model: SONNET, messageCount: 1, ...over }))
-  const measure = () => $.session.measure({ context: fill, rateLimits: subscription ? limits(percent) : [], changed: ['rateLimits'] })
+  const measure = () => $.session.measure({ context: fill, rateLimits: subscription ? limits(percent, fiveReset) : [], changed: ['rateLimits'] })
+  const done = (agentId: string) => $.turn.complete({ answer: '', durationMs: 1, isAborted: false, turnId: 't1', reason: 'answer', agentId })
 
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
   await step({ model: OPUS, effort: 'high' })
-  await $.tool.call({ tool: 'Workflow', script: SCRIPT })
-  for (let i = 1; i <= agents; i++) {
-    await $.agent.spawn({
-      tool_use_id: toolUseId,
-      prompt: 'p',
-      description: 'investigate: map',
-      subagentType: 'general-purpose',
-      provider: { plugin: 'engine', tier: 'core' },
-      model: 'sonnet',
-      parentModel: OPUS,
-      background: true,
-      fork: false,
-      workflow: { runId: 'wf_run001', agentIndex: i },
-    })
+  if (launched) {
+    await $.tool.call({ tool: 'Workflow', script: SCRIPT })
+    for (let i = 1; i <= agents; i++) {
+      await $.agent.spawn({
+        tool_use_id: toolUseId,
+        prompt: 'p',
+        description: 'investigate: map',
+        subagentType: 'general-purpose',
+        provider: { plugin: 'engine', tier: 'core' },
+        model: 'sonnet',
+        parentModel: OPUS,
+        background: true,
+        fork: false,
+        workflow: { runId: 'wf_run001', agentIndex: i },
+      })
+    }
+    for (let i = 1; i <= readings; i++) {
+      await step({ agentId: 'a1', model: SONNET, effort: 'high' })
+      percent = 10 + i * 0.5
+      await clock.advance(60000)
+      await measure()
+    }
+    if (complete) await done('a1')
   }
-  for (let i = 1; i <= readings; i++) {
-    await step({ agentId: 'a1', model: SONNET, effort: 'high' })
-    percent = 10 + i * 0.5
-    await clock.advance(60000)
-    await measure()
-  }
-  if (complete) await $.turn.complete({ answer: '', durationMs: 1, isAborted: false, turnId: 't1', reason: 'answer', agentId: 'a1' })
   let notified = 0
   const end = (id: string) =>
     $.session.append({
@@ -164,8 +185,23 @@ async function flow($: any, on: any, options: Options) {
     await $.tool.call({ tool: 'Workflow', script: SCRIPT })
     return toolUseId
   }
-  if (finish) await end(toolUseId)
-  return { writes, toasts, store, clock, id: () => toolUseId, end, launch, setContext: (next: Record<string, unknown>) => (fill = { window: 200000, ...next }) }
+  if (launched && finish) await end(toolUseId)
+  return {
+    writes,
+    toasts,
+    store,
+    clock,
+    id: () => toolUseId,
+    end,
+    launch,
+    measure,
+    done,
+    step,
+    pause,
+    follow: (next: string) => (following = next),
+    roll: (reset: string) => (fiveReset = reset),
+    setContext: (next: Record<string, unknown>) => (fill = { window: 200000, ...next }),
+  }
 }
 
 const detail = async ($: any, id: string) => {
@@ -533,7 +569,7 @@ test('a long list draws its rows in a window, and the overall section stays the 
   for (let i = 0; i < 14; i++) await w.launch()
   const ui = await $.ui.mount({ ...PANE, props: { ...PANE.props, scroll: { offset: 0, bodyRows: 20 } }, surface: 'terminal' })
   const texts: string[] = (await ui.findAll({ type: 'Text' })).map((t: any) => String(t.text ?? ''))
-  expect(texts.find(t => /^══ /.test(t))).toMatch(/^══ overall savings for this session {2}1 workflow ═+$/)
+  expect(texts.find(t => /^══ /.test(t))).toMatch(/^══ overall savings for this session so far {2}15 workflows ═+$/)
   const below = texts.find(t => /^ {2}↓ \d+ more$/.test(t))
   expect(below).toBeDefined()
   const drawn = (await ui.findAll({ type: 'Button' })).filter((b: any) => String(b.key).startsWith('run:')).length
@@ -554,12 +590,16 @@ test('the overall section of the list draws the context row from the live usage,
   await ui.unmount()
 })
 
-test('a clear resets the session tally and leaves the stored one of the ended session alone', async ($, on) => {
+test('a clear starts the next session on an empty tally and leaves the stored one of the ended session alone', async ($, on) => {
   const w = await flow($, on, { subscription: true, finish: false })
   const before = w.id()
   expect(Object.keys(tallyOf(w).runs)).toEqual([before])
+  w.follow('sess-2')
   await $.session.end({ reason: 'clear', sessionId: SESSION, resume: { id: SESSION } })
   expect(Object.keys(tallyOf(w).runs)).toEqual([before])
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  expect(await ui.find({ type: 'Text', text: /overall savings/ })).toBeUndefined()
+  await ui.unmount()
   await $.agent.spawn({
     tool_use_id: before,
     prompt: 'p',
@@ -575,8 +615,116 @@ test('a clear resets the session tally and leaves the stored one of the ended se
   await $.turn.complete({ answer: '', durationMs: 1, isAborted: false, turnId: 't2', reason: 'answer', agentId: 'a2' })
   const next = await w.launch()
   await w.end(next)
-  expect(Object.keys(tallyOf(w).runs)).toEqual([next])
-  expect(tallyOf(w).overall).toEqual({ status: 'unknown', count: 1, running: false })
+  expect(Object.keys(tallyOf(w).runs)).toEqual([before])
+  const fresh = w.store['tally:sess-2'] as any
+  expect(fresh.sid).toBe('sess-2')
+  expect(Object.keys(fresh.runs)).toEqual([next])
+  expect(fresh.overall).toMatchObject({ status: 'unknown', count: 1, running: false })
+})
+
+const OPUS_HIGH = { family: 'opus', effort: 'high' }
+const PIECES = [{ agentId: 'x1', pieces: [{ family: 'sonnet', effort: 'high', input: 1000, output: 2000, cacheRead: 50000, cacheWrite: 5000 }] }]
+const WEEK_RESET = '2026-11-12T12:00:00Z'
+
+test('a launched workflow is in the tally from the start, so the overall head says so far and counts it', async ($, on) => {
+  const w = await flow($, on, { subscription: true, agents: 0, readings: 0, complete: false, finish: false })
+  expect(tallyOf(w).runs[w.id()]).toMatchObject({ status: 'running', agents: [], baseline: OPUS_HIGH })
+  expect(tallyOf(w).overall).toMatchObject({ status: 'unknown', count: 1, running: true })
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  const { at } = await order(ui, [/^══ overall savings for this session so far {2}1 workflow ═+$/, /^ {2}no estimate yet$/, /^══ workflows {2}1 running ═+$/])
+  expect(inOrder(at)).toBe(true)
+  await ui.unmount()
+})
+
+test('a second launch counts at once next to the finished one', async ($, on) => {
+  const w = await flow($, on, { subscription: true })
+  const first = w.id()
+  const next = await w.launch()
+  expect(tallyOf(w).runs[first].status).toBe('completed')
+  expect(tallyOf(w).runs[next]).toMatchObject({ status: 'running', agents: [] })
+  expect(tallyOf(w).overall).toMatchObject({ status: 'estimated', count: 2, running: true })
+})
+
+test('a new 5-hour window builds the overall again, so it counts only the workflows of that window', async ($, on) => {
+  const w = await flow($, on, { subscription: true })
+  expect(tallyOf(w).overall).toMatchObject({ counted: { five_hour: 1, seven_day: 1 }, windows: { five_hour: FIVE_RESET, seven_day: WEEK_RESET } })
+  const NEXT = '2026-11-08T17:00:00Z'
+  w.roll(NEXT)
+  await w.clock.advance(60000)
+  await w.measure()
+  expect(tallyOf(w).overall).toMatchObject({ status: 'estimated', count: 1, counted: { five_hour: 0, seven_day: 1 }, windows: { five_hour: NEXT, seven_day: WEEK_RESET }, at: w.clock.now() })
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  expect(await ui.find({ type: 'Text', text: /^ {2}5-hour counts the 0 workflows of this window$/ })).toBeDefined()
+  await ui.unmount()
+})
+
+test('a session start builds the overall of its stored tally again from the current windows', async ($, on) => {
+  const now = 100 * 24 * 3600 * 1000
+  const old = { five_hour: 'old', seven_day: 'old-week' }
+  const stale = { status: 'estimated', count: 1, counted: { five_hour: 1, seven_day: 1 }, running: true, subscription: true, baseline: OPUS_HIGH, limits: { five_hour: { mid: 9, lo: 1, hi: 20, pm: 11 }, seven_day: null, readings: { five_hour: 8, seven_day: 8 } }, windows: old, at: 1 }
+  const preload = { [TALLY]: { v: 1, sid: SESSION, runs: { earlier: { key: 'earlier', status: 'completed', baseline: OPUS_HIGH, agents: PIECES, windows: old, at: now - 3600 * 1000 } }, overall: stale } }
+  const w = await flow($, on, { subscription: true, now, preload, launched: false })
+  expect(tallyOf(w).overall).toMatchObject({ status: 'estimated', count: 1, counted: { five_hour: 0, seven_day: 0 }, running: false, windows: { five_hour: FIVE_RESET, seven_day: WEEK_RESET }, at: now })
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  expect(await ui.find({ type: 'Text', text: /^══ overall savings for this session {2}1 workflow ═+$/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^ {2}5-hour counts the 0 workflows of this window$/ })).toBeDefined()
+  await ui.unmount()
+})
+
+test('a resume swaps in the tally of the resumed session, and the runs of the ended one never reach it', async ($, on) => {
+  const resumed = { key: 'earlier', status: 'running', baseline: OPUS_HIGH, agents: PIECES, windows: { five_hour: FIVE_RESET, seven_day: WEEK_RESET }, at: 4000 }
+  const w = await flow($, on, { subscription: true, preload: { 'tally:sess-b': { v: 1, sid: 'sess-b', runs: { earlier: resumed } } } })
+  const before = w.id()
+  w.follow('sess-b')
+  await $.session.end({ reason: 'resume', sessionId: SESSION, resume: { id: SESSION } })
+  await w.measure()
+  const b = () => w.store['tally:sess-b'] as any
+  expect(Object.keys(b().runs)).toEqual(['earlier'])
+  expect(b().runs.earlier.status).toBe('cleared')
+  expect(b().overall).toMatchObject({ status: 'estimated', count: 1, running: false })
+  const next = await w.launch()
+  expect(Object.keys(b().runs).sort()).toEqual(['earlier', next].sort())
+  expect(Object.keys(tallyOf(w).runs)).toEqual([before])
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  expect(await ui.find({ type: 'Text', text: /^══ overall savings for this session so far {2}2 workflows ═+$/ })).toBeDefined()
+  await ui.unmount()
+})
+
+test('an estimate that started before a resume is dropped, so the resumed tally never gets the run of the ended session', async ($, on) => {
+  const resumed = { key: 'earlier', status: 'completed', baseline: OPUS_HIGH, agents: PIECES, windows: { five_hour: FIVE_RESET, seven_day: WEEK_RESET }, at: 4000 }
+  const w = await flow($, on, { subscription: true, agents: 2, finish: false, preload: { 'tally:sess-b': { v: 1, sid: 'sess-b', runs: { earlier: resumed } } } })
+  const ended = JSON.stringify(tallyOf(w))
+  const release = w.pause()
+  const late = w.done('a2')
+  await w.clock.settle()
+  w.follow('sess-b')
+  await $.session.end({ reason: 'resume', sessionId: SESSION, resume: { id: SESSION } })
+  await w.clock.advance(1000)
+  release()
+  await late
+  await w.measure()
+  expect(Object.keys((w.store['tally:sess-b'] as any).runs)).toEqual(['earlier'])
+  expect(JSON.stringify(tallyOf(w))).toBe(ended)
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  expect(await ui.find({ type: 'Text', text: /^══ overall savings for this session {2}1 workflow ═+$/ })).toBeDefined()
+  await ui.unmount()
+})
+
+test('while a workflow runs the overall is built again at most once every 30 seconds', async ($, on) => {
+  const w = await flow($, on, { subscription: true, agents: 3, complete: false, finish: false })
+  await w.done('a1')
+  const first = tallyOf(w).overall.at
+  expect(first).toBe(w.clock.now())
+  await w.clock.advance(29000)
+  await w.done('a2')
+  expect(tallyOf(w).runs[w.id()].at).toBe(w.clock.now())
+  expect(tallyOf(w).overall.at).toBe(first)
+  await w.clock.advance(1000)
+  await w.done('a3')
+  expect(tallyOf(w).overall.at).toBe(w.clock.now())
+  await w.clock.advance(1000)
+  await w.end(w.id())
+  expect(tallyOf(w).overall).toMatchObject({ running: false, at: w.clock.now() })
 })
 
 test('a session start loads its own stored tally and removes tally keys older than 30 days', async ($, on) => {

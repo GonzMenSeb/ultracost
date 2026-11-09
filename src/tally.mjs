@@ -16,7 +16,9 @@ export function createTally() {
   return { v: 1, runs: {} }
 }
 
-export function noteTallyRun(tally, { key, status, baseline, agents, windows, at }, { log } = {}) {
+export function noteTallyRun(tally, { key, status, baseline, agents, windows, at }, { log, ifAbsent = false } = {}) {
+  const held = tally.runs[key]
+  if (held && (ifAbsent || (held.status !== 'running' && status === 'running'))) return tally
   const runs = { ...tally.runs, [key]: { key, status, baseline: baseline ?? null, agents, windows: both((k) => stamp(windows?.[k])), at } }
   const all = Object.values(runs)
   if (all.length <= MAX_RUNS) return { ...tally, runs }
@@ -89,8 +91,10 @@ function addSources(alls) {
 export function combine(estimates, { tally, meter, now }) {
   const count = Object.keys(tally.runs).length
   const running = runsOf(tally).some((r) => r.status === 'running')
-  const kept = estimates.filter((e) => e?.all?.status === 'estimated')
-  if (kept.length === 0) return { status: 'unknown', count, running }
+  const baseline = estimates.length === 1 ? estimates[0].all.baseline : null
+  if (estimates.length > 0 && estimates.every((e) => e?.all?.status === 'none')) return { status: 'none', count, running, baseline }
+  const kept = estimates.filter((e) => e?.all?.status === 'estimated' || e?.all?.status === 'none')
+  if (!kept.some((e) => e.all.status === 'estimated')) return { status: 'unknown', count, running }
   const alls = kept.map((e) => e.all)
   const subscription = meter?.subscription ?? null
   const current = both((k) => meter?.last?.[k]?.resetsAt ?? null)
@@ -108,7 +112,7 @@ export function combine(estimates, { tally, meter, now }) {
     counted: both((k) => countedRuns(tally, k, current[k], now).length),
     running,
     subscription,
-    baseline: kept.length === 1 ? alls[0].baseline : null,
+    baseline,
     dollars: addRanges(present(alls.map((e) => e.dollars))),
     actualDollars: addNumbers(alls.map((e) => e.actualDollars)),
     baselineDollars: addNumbers(alls.map((e) => e.baselineDollars)),
