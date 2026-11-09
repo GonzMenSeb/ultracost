@@ -149,6 +149,7 @@ Added beyond the approved plan:
 - **The draw-time live context read.** The pane reads `$.session.usage()` when it draws the context row (see The context row), instead of showing only the fill that events carried.
 - **The gate's relaunch rule.** A rejected model gives way to the next lower one at `xhigh` (`src/rules.mjs` and `policy/guidance.md`). The `PAIR` denial for a model its class does not allow says `Relaunch on sonnet with effort "xhigh".` before the allowed list.
 - **The dropped bare coverage line.** With nothing missing, the bare `from N of N agents` line and the measured-on line no longer print (see Coverage).
+- **Arrow keys with a scrolling pane.** When the pane has rows to scroll, the host turns the arrows into scrolling and the selection stays put. A one-row `ui.scroll` by the person with no pointer is an arrow: it moves the focus to the next or previous stop (`src/nav.mjs`), and every focus move scrolls the focused row into view. At the first or last stop the arrow scrolls. Wheel and page keys are untouched.
 
 ## Out of scope
 

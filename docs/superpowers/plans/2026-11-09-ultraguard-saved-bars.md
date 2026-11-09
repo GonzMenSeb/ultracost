@@ -191,7 +191,7 @@
 - [x] **Step 1:** `CHANGELOG.md`: a 0.4.14 entry; mention the deep purple's contrast on dark terminals.
 - [x] **Step 2:** `README.md` (the "See what it saved" part): the bars, the gradient, the limit messages and the context row, in the README's own words.
 - [x] **Step 3:** `docs/reference.md`: replace the sample block and its bullets in "Savings" with the new block; update the colors paragraph (the ramp now ends at 40 percent in `#641aa5`); add `used` to the record table with the note that older records lack it. Lines that carry the middle dot as a separator in existing text stay as they are.
-- [ ] **Step 4:** Rebuild `assets/eval-pane.svg` from a real capture of the detail view, with the svg tool in the session scratchpad.
+- [x] **Step 4:** Rebuild the saved block of `assets/eval-pane.svg` from the real `savedBlock` output (a generated picture, not a terminal capture).
 
 ### Task 8: Version
 
@@ -203,16 +203,17 @@
 
 ### Task 9: Verification
 
-- [ ] **Step 1:** `npm test` -> PASS (no Node 20+ APIs; CI runs Node 18).
-- [ ] **Step 2:** `claude plugin validate .` and `claude plugin test .` -> PASS.
+- [x] **Step 1:** `npm test` -> PASS on Node 24 and on Node 18 (775 tests).
+- [x] **Step 2:** `claude plugin validate .` and `claude plugin test .` -> PASS (50 hook tests).
 - [ ] **Step 3:** Live verification, partly done (see Verification status). `claude --plugin-dir /home/sebastian/versioned-code/ultraguard`, `/effort ultracode`, run a real workflow, open `ultraguard-eval`, press Enter on the run.
-- [ ] **Step 4:** Commit the work in steps, then push the branch and open a PR to `GonzMenSeb/ultraguard` (`--repo GonzMenSeb/ultraguard`). Merge only when the user says so.
+- [ ] **Step 4:** Commit the work in steps, then push the branch and open a PR to `GonzMenSeb/ultraguard` (`--repo GonzMenSeb/ultraguard`). Merge to main once CI passes; the user asked for it in production.
 
 ## Added beyond the approved plan
 
 - **The draw-time live context read.** The pane reads `$.session.usage()` when it draws the context row, instead of showing only the fill that events carried (Task 6, Width and fill).
 - **The gate's relaunch rule.** A rejected model gives way to the next lower one at `xhigh`, in `src/rules.mjs` and `policy/guidance.md`. The `PAIR` denial for a model its class does not allow says `Relaunch on sonnet with effort "xhigh".` before the allowed list.
 - **The dropped bare coverage line.** With nothing missing, the bare `from N of N agents` line and the measured-on line no longer print (Task 5).
+- **Arrow keys with a scrolling pane.** `src/nav.mjs` (`paneNav`, `stepFocus`, `arrowOf`, `boxKeyOf`) and two hooks in `hooks/eval.tsx`: `ui.scroll` turns a one-row scroll by the person into a focus move, and `ui.focus` scrolls the focused row into view. The render uses `paneNav` for its reachable stops.
 
 ## Verification status
 
@@ -225,6 +226,7 @@ Verified live:
 - the row layout at a pane about 44 columns wide;
 - coverage lines wrapping;
 - the gate's new relaunch sentence in a real denial.
+- the arrow keys move the selection and the view follows it in a pane too short to hold the list and in the detail view; at the first row an arrow scrolls up.
 
 Not verified live:
 

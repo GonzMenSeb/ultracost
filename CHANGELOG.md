@@ -9,6 +9,7 @@
 - The context row reads the session's live context window the way a status line does: tokens against the model's window, or against the smaller compaction window when auto-compaction is on. Right after a fresh session or a compaction it shows an empty track and a dash until the next response.
 - The limit usage drawn as the used part of the bar is frozen at the last estimate and stored on the saved record as `used: { five_hour, seven_day }` (percent or null). Records written before 0.4.14 have no `used` and draw the row without a bar.
 - A rejected model gives way to the next lower one at `xhigh`. The `PAIR` denial for a model its class does not allow now says `Relaunch on sonnet with effort "xhigh".` before the allowed list, and the session guidance states the rule: on a Sonnet session the four Opus classes run on `sonnet` at `xhigh`.
+- The arrow keys in ultraguard-eval always move the selection, also when the pane has rows to scroll (the host used to turn them into scrolling), and the pane scrolls to keep the selected row in view. At the first or last row an arrow scrolls as before.
 - The deep purple end of the gradient (`#641aa5`) has low contrast on dark terminals, about 1.6 to 1 on `#262626`, so a large saving is hard to read there. On white the deep purple is 9.4 to 1, but the cyan end of the ramp is about 1.5 to 1, so small savings are faint on a light terminal. Light terminal rendering has not been checked live.
 
 ## 0.4.13 - ultraguard
