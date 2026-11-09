@@ -13,7 +13,6 @@ const SHOWN_PAIRS = [
   [['haiku'], ['opus', 'sonnet']],
   [['opus', 'sonnet'], ['haiku']],
 ]
-const PREFERRED = 'A'
 const TIE = 0.02
 const EPS = 1e-9
 
@@ -125,8 +124,8 @@ export function pickOf(summary) {
   const scored = CANDIDATES.filter((name) => summary[name].buckets !== null)
   const best = Math.min(...scored.map((name) => summary[name].buckets))
   const near = scored.filter((name) => summary[name].buckets <= best + TIE + EPS)
-  if (near.includes(PREFERRED)) return PREFERRED
-  return scored.find((name) => summary[name].buckets <= best + EPS)
+  const dollars = (name) => summary[name].dollars ?? Infinity
+  return near.reduce((a, b) => (dollars(b) < dollars(a) - EPS ? b : a))
 }
 
 export function crossRows({ priors, wholeIndex, prices }) {
@@ -218,7 +217,7 @@ export function report({ cases, summary, pick, cross, prices, truth }) {
     'Mean absolute ln error. Bucket cases are workflows x {output, fresh, read}; dollars are one case per workflow.',
     table(['Candidate', 'Cases', 'output', 'fresh', 'read', 'All buckets', 'Dollars'], summaryRows, 'lrrrrrr'),
     '',
-    `A against A2 on all buckets: ${signed(margin)} (A minus A2). Lowest: ${best}. A is preferred when it is within ${TIE} of the lowest.`,
+    `A against A2 on all buckets: ${signed(margin)} (A minus A2). Lowest: ${best}. Candidates within ${TIE} of the lowest are ranked by their dollar error.`,
     `Pick: ${pick}`,
     '',
     'Bucket ratios (output fresh read) for Haiku to Opus or Sonnet and Opus or Sonnet to Haiku, efforts medium, high and xhigh on both sides:',

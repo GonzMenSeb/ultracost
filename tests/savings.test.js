@@ -215,8 +215,7 @@ test('a cross-family prior uses the three buckets of its own, with the prior sd'
   const ln = (k) => Math.log(aa.opus.efforts.xhigh[k] / aa.haiku.efforts.high[k])
   assert.ok(Math.abs(r.output.mu - ln('outputTokens')) < 1e-8)
   assert.ok(Math.abs(r.read.mu - ln('inputTokens')) < 1e-8)
-  assert.ok(Math.abs(r.fresh.mu - 0.77 * ln('outputTokens')) < 1e-8)
-  assert.ok(r.read.mu > r.fresh.mu)
+  assert.ok(Math.abs(r.fresh.mu - ln('inputTokens')) < 1e-8)
   assert.ok(r.fresh.sigma > r.output.sigma)
 })
 

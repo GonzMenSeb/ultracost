@@ -125,15 +125,15 @@ test('ratios stay keyed by family, never by price row', () => {
   for (const config of configs) assert.ok(FAMILIES.includes(config.split(':')[0]), config)
 })
 
-test('a prior takes its buckets from the Artificial Analysis token counts of both configurations', () => {
+test('a prior takes its buckets from the Artificial Analysis token counts of both configurations, fresh and read from the total input', () => {
   const p = ratios.priors['sonnet:high>opus:xhigh']
   const run = aa().wholeIndex
   const ln = (k) => Math.log(run.opus.efforts.xhigh[k] / run.sonnet.efforts.high[k])
   within(p.output.mu, ln('outputTokens'), 1e-9)
   within(p.read.mu, ln('inputTokens'), 1e-9)
-  within(p.fresh.mu, 0.77 * ln('outputTokens'), 1e-9)
+  within(p.fresh.mu, ln('inputTokens'), 1e-9)
   within(Math.exp(p.output.mu), 1.848, 0.001)
-  within(Math.exp(p.fresh.mu), 1.605, 0.001)
+  within(Math.exp(p.fresh.mu), 2.384, 0.001)
   within(Math.exp(p.read.mu), 2.384, 0.001)
   within(p.output.sd, 0.61)
   within(p.read.sd, 0.61)
@@ -153,7 +153,7 @@ test('a prior keeps its scalar, the mean log cost ratio less the input-price rat
   assert.deepEqual(Object.keys(p), ['mu', 'sd', 'sources', 'output', 'fresh', 'read'])
 })
 
-test('every prior between Opus, Sonnet and Haiku carries three buckets that share the scalar sd, a borrowed fresh adding 0.2', () => {
+test('every prior between Opus, Sonnet and Haiku carries three buckets that share the scalar sd, the fresh proxy adding 0.2', () => {
   let checked = 0
   for (const [key, p] of Object.entries(ratios.priors)) {
     const [from, to] = key.split('>').map((c) => c.split(':')[0])
@@ -186,7 +186,7 @@ test('a prior spread wider than 0.6 across sources is every bucket sd, with 0.2 
   within(p.fresh.sd, Math.hypot(spread, 0.2), 1e-9)
   within(Math.exp(p.output.mu), 4, 1e-9)
   within(Math.exp(p.read.mu), 1.5, 1e-9)
-  within(Math.exp(p.fresh.mu), 4 ** 0.77, 1e-9)
+  within(Math.exp(p.fresh.mu), 1.5, 1e-9)
 })
 
 test('a prior without token data for both configurations keeps the scalar alone', () => {

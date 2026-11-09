@@ -174,10 +174,10 @@ function priorsOf(sources, prices) {
           const out = [tokensOf(from, 'outputTokens'), tokensOf(to, 'outputTokens')]
           const input = [tokensOf(from, 'inputTokens'), tokensOf(to, 'inputTokens')]
           if (out.every(Boolean) && input.every(Boolean)) {
-            const output = Math.log(out[1] / out[0])
-            prior.output = { mu: output, sd }
-            prior.fresh = { mu: BORROWED_FRESH_EXPONENT * output, sd: Math.hypot(sd, BORROWED_FRESH_SD) }
-            prior.read = { mu: Math.log(input[1] / input[0]), sd }
+            const inputs = Math.log(input[1] / input[0])
+            prior.output = { mu: Math.log(out[1] / out[0]), sd }
+            prior.fresh = { mu: inputs, sd: Math.hypot(sd, BORROWED_FRESH_SD) }
+            prior.read = { mu: inputs, sd }
           }
           priors[`${from}>${to}`] = prior
         }

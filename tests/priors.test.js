@@ -112,14 +112,14 @@ test('the summary is the mean absolute ln error over bucket cases, and over doll
   within(s.A2.dollars, (Math.log(18450 / 15160) + Math.log(52.5 / 45)) / 2)
 })
 
-test('the pick is the lowest bucket error, and A when it is within 0.02 of the lowest', () => {
-  const of = (current, A, A2, B) => ({ current: { buckets: current }, A: { buckets: A }, A2: { buckets: A2 }, B: { buckets: B } })
-  assert.equal(pickOf(of(0.3, 0.25, 0.235, 0.3)), 'A')
-  assert.equal(pickOf(of(0.3, 0.255, 0.235, 0.3)), 'A')
-  assert.equal(pickOf(of(0.3, 0.26, 0.235, 0.3)), 'A2')
-  assert.equal(pickOf(of(0.2, 0.3, 0.25, 0.2)), 'current')
-  assert.equal(pickOf(of(0.2, 0.215, 0.25, 0.2)), 'A')
-  assert.equal(pickOf(of(0.3, null, null, 0.28)), 'B')
+test('the pick is the lowest bucket error, and among those within 0.02 of it the lowest dollar error', () => {
+  const of = (...rows) => Object.fromEntries(['current', 'A', 'A2', 'B'].map((name, i) => [name, { buckets: rows[i][0], dollars: rows[i][1] }]))
+  assert.equal(pickOf(of([0.284, 0.177], [0.22, 0.205], [0.216, 0.161], [0.284, 0.177])), 'A2')
+  assert.equal(pickOf(of([0.3, 0.2], [0.25, 0.1], [0.235, 0.15], [0.3, 0.2])), 'A')
+  assert.equal(pickOf(of([0.3, 0.2], [0.26, 0.1], [0.235, 0.15], [0.3, 0.2])), 'A2')
+  assert.equal(pickOf(of([0.2, 0.3], [0.3, 0.1], [0.25, 0.1], [0.2, 0.3])), 'current')
+  assert.equal(pickOf(of([0.31, 0.2], [null, null], [null, null], [0.28, 0.25])), 'B')
+  assert.equal(pickOf(of([0.3, 0.2], [null, null], [null, null], [0.28, 0.25])), 'current')
 })
 
 test('price class ratios, and the cross-family rows follow the shown efforts and family pairs', () => {
@@ -132,7 +132,7 @@ test('price class ratios, and the cross-family rows follow the shown efforts and
   assert.deepEqual(rows.map((r) => r.key), [KEY, 'sonnet:high>haiku:high'])
 })
 
-test('on the shipped data the backtest is 3 workflows on 2 transitions, A is picked and B equals current', () => {
+test('on the shipped data the backtest is 3 workflows on 2 transitions, A2 is picked and B equals current', () => {
   const b = backtest({ replays: read('replays'), published: read('published'), prices: loadPrices(read('prices')) })
   assert.deepEqual(b.truth.map((t) => `${t.workflow} ${t.transition}`), ['w1 sonnet:high>opus:high', 'w2 sonnet:high>opus:medium', 'w3 sonnet:high>opus:medium'])
   assert.equal(b.summary.current.cases, 9)
@@ -142,7 +142,7 @@ test('on the shipped data the backtest is 3 workflows on 2 transitions, A is pic
   within(b.summary.current.dollars, 0.177, 0.001)
   within(b.summary.A.dollars, 0.205, 0.001)
   within(b.summary.A2.dollars, 0.161, 0.001)
-  assert.equal(b.pick, 'A')
+  assert.equal(b.pick, 'A2')
   for (const c of b.cases) {
     for (const name of BUCKETS) within(c.byCandidate.B.ratios[name], c.byCandidate.current.ratios[name], 1e-12)
   }
@@ -163,10 +163,10 @@ test('the candidate for the pick equals the shipped prior buckets, and Fable pai
   for (const [key, prior] of Object.entries(shipped)) {
     const c = candidateRatios(key, { priors: shipped, wholeIndex, prices: p })
     if (!prior.output) {
-      assert.equal(c.A, null, key)
+      assert.equal(c.A2, null, key)
       continue
     }
-    for (const name of BUCKETS) within(c.A[name], Math.exp(prior[name].mu), 1e-7)
+    for (const name of BUCKETS) within(c.A2[name], Math.exp(prior[name].mu), 1e-7)
     within(c.current.output, Math.exp(prior.mu), 1e-12)
     checked++
   }
