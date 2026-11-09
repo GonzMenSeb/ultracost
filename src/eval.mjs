@@ -17,7 +17,6 @@ const GATE_TRIES = 5
 const NO_GATE = 'not approved by the gate'
 const NO_PLAN = 'no approved plan to compare against'
 const MAX_PHASES = 64
-const FOLD_ABOVE = 12
 export const UNKNOWN_PHASE = '\u0000unknown'
 
 const hasOwn = (o, k) => Object.prototype.hasOwnProperty.call(o, k)
@@ -605,7 +604,7 @@ function phaseViews(run, plan, views) {
       done,
       red,
       ok: red === 0,
-      open: red > 0 || state === 'running' || run.agents.length <= FOLD_ABOVE,
+      open: false,
       counts,
       agentIds: agents.map((a) => a.agentId),
       agents

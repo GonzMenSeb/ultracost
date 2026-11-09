@@ -44,7 +44,7 @@ import { intervalsOf, staleKeys, storedValue, usedOf } from '../src/meter.mjs'
 import { arrowOf, boxKeyOf, paneNav, stepFocus } from '../src/nav.mjs'
 import { familyColor, modelColor, savedColor } from '../src/palette.mjs'
 import { loadPrices, priceFamily } from '../src/prices.mjs'
-import { agentColumn, listCell, listHeader, modelLines, phaseHeadLength, phaseLayout, phaseStatus, phaseTitle, savedBlock, toastText } from '../src/savedText.mjs'
+import { agentColumn, listCell, listHeader, modelLines, phaseHeadLength, phaseLayout, phaseStatus, phaseTitle, savedBlock, sectionHead, toastText } from '../src/savedText.mjs'
 import { estimateRun } from '../src/savings.mjs'
 import { seedOf } from '../src/stats.mjs'
 
@@ -53,6 +53,10 @@ const TITLE = 'ultraguard-eval'
 const KEPT = 20
 const TOAST_MS = 8000
 const DRAWS_RUNNING = 1000
+const PHASES_HEAD = 'phases'
+const AGENTS_HEAD = 'agents'
+const CHECKS_HEAD = 'checks'
+const agentsText = (n: number) => `${n} agent${n === 1 ? '' : 's'}`
 
 const ev = atom({ plugin: 'ultraguard', key: 'eval' } as const, createState() as EvalState, { shape: 'eval-2' })
 const ctx = atom({ plugin: 'ultraguard', key: 'context' } as const, createContext() as ContextState, { shape: 'context-1' })
@@ -536,6 +540,8 @@ export const register: Register = on => {
     if (open) {
       const phases: EvalPhaseView[] | null = open.phases
       const column = open.saved ? agentColumn(open.saved) : null
+      const width = e.props.bodyColumns - 4
+      const section = (title: string, extra = '') => line(sectionHead(title, { extra, width }))
       const crumb = (
         <Text wrap="truncate-end">
           <Text weight="bold">{TITLE}</Text>
@@ -551,16 +557,25 @@ export const register: Register = on => {
           {c.ok ? c.detail && <Text dimColor>{`  ${c.detail}`}</Text> : <Text color="error">{`  ${c.reason}`}</Text>}
         </Text>
       ))
-      const width = e.props.bodyColumns - 4
       const stored = await read($, ctx)
       const live = open.saved ? await $.session.usage().then(u => u.context, () => null) : null
       const context = contextFill(live ? { ...stored, window: live.window > 0 ? live.window : stored.window, tokens: typeof live.tokens === 'number' ? live.tokens : null } : stored)
-      const saved = open.saved && (
+      const top = (
         <Box flexDirection="column">
-          {savedBlock(open.saved, { width, context }).map(line)}
+          {crumb}
+          <Text> </Text>
+          {open.saved && savedBlock(open.saved, { width, headWidth: width, context }).map(line)}
+          {open.saved && <Text> </Text>}
+        </Box>
+      )
+      const checksSection = (
+        <Box flexDirection="column">
+          {section(CHECKS_HEAD)}
+          {checks}
           <Text> </Text>
         </Box>
       )
+      const agentCount = agentsText(open.agents.length)
 
       const filled = (phases ?? []).filter(p => p.total > 0)
       const { field, savedAt, savedWidth, modelsAt } = phaseLayout({
@@ -594,14 +609,6 @@ export const register: Register = on => {
         <Box key="box:back" {...ring(picked('back'))}>
           <Button key="back" label="back to the list" plain hotkey="b" autoFocus={filled.length === 0 ? true : undefined} onPress={() => update($, ev, closeRun)}>{ZERO_WIDTH}</Button>
           <Text>back to the list</Text>
-        </Box>
-      )
-      const crumbAndChecks = (
-        <Box flexDirection="column">
-          {crumb}
-          <Text> </Text>
-          {checks}
-          <Text> </Text>
         </Box>
       )
 
@@ -644,7 +651,8 @@ export const register: Register = on => {
         }
         return (
           <Box flexDirection="column">
-            {crumbAndChecks}
+            {top}
+            {section(PHASES_HEAD, agentCount)}
             {headerRow(8)}
             {phases.map(p => {
               if (p.total === 0) {
@@ -657,7 +665,7 @@ export const register: Register = on => {
             })}
             <Text dimColor>{'  ✓ ran as the gate approved  ✗ did not'}</Text>
             <Text> </Text>
-            {saved}
+            {checksSection}
             <Text dimColor>↑↓ choose  enter opens or folds a phase</Text>
             {filled.length > 0 && (
               <Box key="box:all" {...ring(picked('all'))}>
@@ -672,11 +680,12 @@ export const register: Register = on => {
 
       return (
         <Box flexDirection="column">
-          {crumbAndChecks}
-          {saved}
+          {top}
+          {section(AGENTS_HEAD, agentCount)}
           {headerRow(6)}
           {open.agents.map((a: EvalAgentView) => agentRow(a, <Text color={tone(a.ok)}>□</Text>))}
           <Text> </Text>
+          {checksSection}
           {backButton()}
         </Box>
       )
