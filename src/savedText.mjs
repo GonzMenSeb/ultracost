@@ -1,9 +1,11 @@
 import { modelColor, savedColor } from './palette.mjs'
 import { MAX_WIDTH, layoutOf, rowLine } from './bars.mjs'
 import { limitMessages, wrapText } from './limitText.mjs'
+import { STOPPED } from './eval.mjs'
 
 const FAMILY_STYLES = new Set(['opus', 'sonnet', 'haiku', 'fable'])
 const DASH = '—'
+const STOPPED_TOAST = (title) => `ultraguard: ${title} stopped`
 
 const seg = (text, style = 'plain') => ({ text, style })
 const dim = (text) => seg(text, 'dim')
@@ -324,14 +326,16 @@ export function listCell(view) {
 }
 
 export function toastText(view) {
-  const head = `ultraguard: ${view.title} finished`
+  const stopped = view.status === STOPPED
+  const head = stopped ? STOPPED_TOAST(view.title) : `ultraguard: ${view.title} finished`
   if (!view.ok) return `${head}, but ${view.reason}`
+  const approved = stopped ? head : `${head} as approved`
   const saved = view.saved
-  if (saved?.status === 'none') return `${head} as approved; every agent ran on your session's model and effort`
-  if (saved?.status !== 'estimated') return `${head} as approved`
+  if (saved?.status === 'none') return stopped ? head : `${approved}; every agent ran on your session's model and effort`
+  if (saved?.status !== 'estimated') return approved
   const limit = fiveHourOf(saved)
-  if (limit) return `${head} as approved and saved about ${fmtPct(limit.mid)} of your 5-hour limit`
-  if (!saved.dollars) return `${head} as approved`
+  if (limit) return `${approved} and saved about ${fmtPct(limit.mid)} of your 5-hour limit`
+  if (!saved.dollars) return approved
   const where = saved.subscription === false ? 'off your API bill' : 'at API prices'
-  return `${head} as approved and saved about ${fmtUsd(saved.dollars.mid)} ${where}`
+  return `${approved} and saved about ${fmtUsd(saved.dollars.mid)} ${where}`
 }
