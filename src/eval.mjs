@@ -1,5 +1,5 @@
 import { priceFamily } from './prices.mjs'
-import { createMeter, mergeStored, noteRequest, noteReading } from './meter.mjs'
+import { createMeter, mergeStored, noteBoundary, noteRequest, noteReading, snapshotOf } from './meter.mjs'
 import { seedOf } from './stats.mjs'
 import { createTally } from './tally.mjs'
 
@@ -85,12 +85,12 @@ function prune(state) {
   return runs === state.runs && launches === state.launches ? state : { ...state, runs, launches }
 }
 
-const blankLaunch = (toolUseId, at, main) => ({ toolUseId, fingerprint: null, at, refused: false, pending: true, gate: null, gateTries: 0, baseline: { ...main } })
+const blankLaunch = (toolUseId, at, state) => ({ toolUseId, fingerprint: null, at, refused: false, pending: true, gate: null, gateTries: 0, baseline: { ...state.main }, launchReadings: snapshotOf(state.meter) })
 
 export function noteLaunch(state, { toolUseId, fingerprint, at = 0 }) {
   if (!isId(toolUseId)) return state
   const prev = get(state.launches, toolUseId)
-  const launch = prev ? { ...prev, fingerprint: text(fingerprint) || prev.fingerprint } : { ...blankLaunch(toolUseId, at, state.main), fingerprint: text(fingerprint) }
+  const launch = prev ? { ...prev, fingerprint: text(fingerprint) || prev.fingerprint } : { ...blankLaunch(toolUseId, at, state), fingerprint: text(fingerprint) }
   return prune({ ...state, launches: { ...state.launches, [toolUseId]: launch } })
 }
 
@@ -111,13 +111,14 @@ function newRun(state, key, launch, at) {
     peakOpus: 0,
     limit: state.limit,
     baseline: { ...((launch && launch.baseline) || state.main) },
+    launchReadings: launch ? (launch.launchReadings ?? null) : snapshotOf(state.meter),
     saved: null
   }
 }
 
 export function noteLaunchResult(state, { toolUseId, isError = false, taskId, runId, name, at = 0 }) {
   if (!isId(toolUseId)) return state
-  const known = get(state.launches, toolUseId) || blankLaunch(toolUseId, at, state.main)
+  const known = get(state.launches, toolUseId) || blankLaunch(toolUseId, at, state)
   if (isError) {
     const runs = { ...state.runs }
     const run = get(runs, toolUseId)
@@ -336,6 +337,11 @@ export function noteUsage(state, { agentId, effort, usage, prices }) {
 
 export function noteMeterReading(state, rateLimits, at, prices) {
   return { ...state, meter: noteReading(state.meter, rateLimits, at, prices) }
+}
+
+export function noteCompaction(state, { agentId, trigger, skip }) {
+  if (agentId !== undefined || trigger === 'precompute' || skip !== undefined) return state
+  return { ...state, meter: noteBoundary(state.meter) }
 }
 
 export function noteStored(state, stored, sessionKey, now) {

@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { createMeter, noteRequest, noteReading, intervalsOf, mergeStored, staleKeys, storedValue, usedOf } from '../src/meter.mjs'
+import { createMeter, noteBoundary, noteRequest, noteReading, intervalsOf, mergeStored, riseOf, snapshotOf, staleKeys, storedValue, usedOf } from '../src/meter.mjs'
 import { loadPrices } from '../src/prices.mjs'
 
 const prices = loadPrices(JSON.parse(readFileSync(new URL('../data/prices.json', import.meta.url), 'utf8')))
@@ -182,4 +182,131 @@ test('usedOf of a recorded reading matches the reading', () => {
   assert.equal(usedOf(m.last.five_hour, NOW), 37.5)
   assert.equal(usedOf(m.last.five_hour, NOW + 2 * DAY), null)
   assert.equal(usedOf(createMeter().last.five_hour, NOW), null)
+})
+
+test('a rise of 2 or more points is a jump: nothing is stored and the counters restart', () => {
+  let m = noteReading(createMeter(), limits(10, 2), 1, prices)
+  m = noteRequest(m, 'sonnet', each)
+  m = noteReading(m, limits(12, 4), 2, prices)
+  assert.deepEqual(m.mine.five_hour, [])
+  assert.deepEqual(m.mine.seven_day, [])
+  assert.deepEqual(m.acc.five_hour, {})
+  assert.deepEqual(m.acc.seven_day, {})
+  assert.equal(m.last.five_hour.pct, 12)
+  m = noteRequest(m, 'sonnet', each)
+  m = noteReading(m, limits(13, 5), 3, prices)
+  assert.equal(m.mine.five_hour.length, 1)
+  assert.equal(m.mine.five_hour[0].d, 1)
+  assert.equal(m.mine.five_hour[0].u, 14)
+})
+
+test('a rise of exactly 1 stays, and so does one below 2', () => {
+  let m = noteReading(createMeter(), limits(10, 2), 1, prices)
+  m = noteRequest(m, 'sonnet', each)
+  m = noteReading(m, limits(11, 3), 2, prices)
+  m = noteRequest(m, 'sonnet', each)
+  m = noteReading(m, limits(12.9, 3), 3, prices)
+  assert.deepEqual(m.mine.five_hour.map((i) => i.d), [1, 1.9])
+  assert.deepEqual(m.mine.seven_day.map((i) => i.d), [1])
+})
+
+test('a jump in one window leaves the other window recording', () => {
+  let m = noteReading(createMeter(), limits(10, 2), 1, prices)
+  m = noteRequest(m, 'sonnet', each)
+  m = noteReading(m, limits(30, 3), 2, prices)
+  assert.deepEqual(m.mine.five_hour, [])
+  assert.equal(m.mine.seven_day.length, 1)
+})
+
+test('stored intervals with a rise of 2 or more are ignored when read back', () => {
+  const value = { v: 1, five_hour: [iv(1, 1), iv(2, 2), iv(3, 1.9), iv(4, 7), iv(5, 0.4)], seven_day: [iv(6, 3)] }
+  const m = mergeStored(createMeter(), { 'meter:a': value, 'meter:own': value }, 'meter:own')
+  assert.deepEqual(intervalsOf(m, 'five_hour', SOON).map((i) => i.d).sort(), [0.4, 1, 1.9])
+  assert.deepEqual(intervalsOf(m, 'seven_day', SOON), [])
+  assert.deepEqual(m.mine.five_hour.map((i) => i.d).sort(), [0.4, 1, 1.9])
+})
+
+test('intervalsOf filters jumps from the lists it was handed too', () => {
+  const m = { ...createMeter(), mine: { five_hour: [iv(1, 2), iv(2, 1)], seven_day: [] }, others: { five_hour: [iv(3, 40), iv(4, 1)], seven_day: [] } }
+  assert.deepEqual(intervalsOf(m, 'five_hour', SOON).map((i) => i.at), [4, 2])
+})
+
+test('a stored key holding only jumps is stale', () => {
+  const stored = { 'meter:jumpy': { v: 1, five_hour: [iv(NOW - DAY, 5)], seven_day: [iv(NOW - DAY, 2)] }, 'meter:fine': { v: 1, five_hour: [iv(NOW - DAY)], seven_day: [] } }
+  assert.deepEqual(staleKeys(stored, 'meter:own', NOW), ['meter:jumpy'])
+})
+
+test('a percentUsed outside 0 to 100 or not finite is no reading', () => {
+  for (const bad of [101, -1, NaN, Infinity, -Infinity, '5', null, undefined]) {
+    let m = noteReading(createMeter(), limits(10), 1, prices)
+    m = noteRequest(m, 'sonnet', each)
+    const after = noteReading(m, limits(bad), 2, prices)
+    assert.equal(after.last.five_hour.pct, 10, String(bad))
+    assert.deepEqual(after.mine.five_hour, [], String(bad))
+    assert.deepEqual(after.acc.five_hour, m.acc.five_hour, String(bad))
+    const next = noteReading(after, limits(11), 3, prices)
+    assert.equal(next.mine.five_hour.length, 1, String(bad))
+    assert.equal(next.mine.five_hour[0].u, 14, String(bad))
+  }
+})
+
+test('a first reading outside 0 to 100 sets no last reading, and 0 and 100 are readings', () => {
+  assert.equal(noteReading(createMeter(), limits(101), 1, prices).last.five_hour, null)
+  assert.equal(noteReading(createMeter(), limits(0), 1, prices).last.five_hour.pct, 0)
+  assert.equal(noteReading(createMeter(), limits(100), 1, prices).last.five_hour.pct, 100)
+})
+
+test('noteBoundary clears the counters and the last readings, and keeps the rest', () => {
+  let m = noteReading(createMeter(), limits(10), 1, prices)
+  m = noteRequest(m, 'sonnet', each)
+  m = noteReading(m, limits(11), 2, prices)
+  m = noteRequest(m, 'sonnet', each)
+  const cut = noteBoundary(m)
+  assert.deepEqual(cut.acc, { five_hour: {}, seven_day: {} })
+  assert.deepEqual(cut.last, { five_hour: null, seven_day: null })
+  assert.equal(cut.subscription, true)
+  assert.deepEqual(cut.mine, m.mine)
+  assert.deepEqual(cut.others, m.others)
+  assert.notDeepEqual(m.acc.five_hour, {})
+})
+
+test('no interval spans a boundary', () => {
+  let m = noteReading(createMeter(), limits(10), 1, prices)
+  m = noteRequest(m, 'sonnet', each)
+  m = noteBoundary(m)
+  m = noteReading(m, limits(11), 2, prices)
+  assert.deepEqual(m.mine.five_hour, [])
+  assert.equal(m.last.five_hour.pct, 11)
+  m = noteRequest(m, 'sonnet', each)
+  m = noteReading(m, limits(12), 3, prices)
+  assert.equal(m.mine.five_hour.length, 1)
+  assert.equal(m.mine.five_hour[0].u, 14)
+})
+
+test('snapshotOf copies the last readings and is null where there is none', () => {
+  const m = noteReading(createMeter(), [{ kind: 'five_hour', percentUsed: 7, resetsAt: 'r1' }], 1, prices)
+  const snap = snapshotOf(m)
+  assert.deepEqual(snap, { five_hour: { pct: 7, resetsAt: 'r1' }, seven_day: null })
+  assert.notEqual(snap.five_hour, m.last.five_hour)
+  assert.deepEqual(snapshotOf(undefined), { five_hour: null, seven_day: null })
+})
+
+test('riseOf is the climb since the snapshot, in the same window, never negative', () => {
+  const last = { five_hour: { pct: 15, resetsAt: 'r1' }, seven_day: { pct: 3, resetsAt: 'w1' } }
+  const snap = { five_hour: { pct: 10, resetsAt: 'r1' }, seven_day: { pct: 3, resetsAt: 'w1' } }
+  assert.deepEqual(riseOf(snap, last, NOW), { five_hour: 5, seven_day: 0 })
+  assert.deepEqual(riseOf({ ...snap, five_hour: { pct: 10, resetsAt: 'r0' } }, last, NOW).five_hour, null)
+  assert.deepEqual(riseOf({ ...snap, five_hour: { pct: 20, resetsAt: 'r1' } }, last, NOW).five_hour, null)
+  assert.deepEqual(riseOf({ ...snap, five_hour: null }, last, NOW).five_hour, null)
+  assert.deepEqual(riseOf(snap, { ...last, five_hour: null }, NOW).five_hour, null)
+  assert.deepEqual(riseOf(null, last, NOW), { five_hour: null, seven_day: null })
+  assert.deepEqual(riseOf(snap, null, NOW), { five_hour: null, seven_day: null })
+})
+
+test('riseOf ignores a latest reading whose window has reset', () => {
+  const at = new Date(NOW - 1).toISOString()
+  const snap = { five_hour: { pct: 10, resetsAt: at }, seven_day: null }
+  const last = { five_hour: { pct: 15, resetsAt: at }, seven_day: null }
+  assert.equal(riseOf(snap, last, NOW).five_hour, null)
+  assert.equal(riseOf(snap, last, NOW - 2).five_hour, 5)
 })

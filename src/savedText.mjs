@@ -51,6 +51,7 @@ const OVERALL_COUNT = workflows
 const OVERALL_NOTHING = 'these workflows may have saved nothing'
 const OVERALL_SCOPE = (label, n) => `${label} counts the ${workflows(n)} of this window`
 const NO_ESTIMATE = 'no estimate yet'
+const CANT_TELL = "can't tell"
 
 export const PHASES_HEAD = 'phases'
 export const AGENTS_HEAD = 'agents'
@@ -150,7 +151,10 @@ function limitRows(saved) {
     const used = finite(saved.used?.[key]) ? clampPct(saved.used[key]) : null
     const usedText = used === null ? '' : `${Math.round(used)}%`
     const range = saved.limits[key]
-    if (!range) return { label, used, usedText, saved: 0, fig: [dim(`learning ${saved.limits.readings?.[key] ?? 0}/5`)], range: null }
+    if (!range) {
+      const text = saved.limits.implausible?.includes(key) ? CANT_TELL : `learning ${saved.limits.readings?.[key] ?? 0}/5`
+      return { label, used, usedText, saved: 0, fig: [dim(text)], range: null }
+    }
     const gain = range.mid > 0 ? range.mid : 0
     const amount = gain > 0 ? savedSeg(`+${range.mid < 0.1 ? '<0.1' : tenths(range.mid)}`, range.mid) : seg(signed(range.mid, 1))
     return { label, used, usedText, saved: gain, fig: [amount, dim(rangeText(range, 'points'))], range }

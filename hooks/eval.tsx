@@ -19,6 +19,7 @@ import {
   gateWanted,
   hideFinished,
   noteAgentDone,
+  noteCompaction,
   noteGateRecord,
   noteLaunch,
   noteLaunchResult,
@@ -49,7 +50,7 @@ import {
 } from '../src/eval.mjs'
 import { contextFill, createContext, forgetCompactRead, noteBreakdown, noteContext } from '../src/context.mjs'
 import { listLayout } from '../src/listWindow.mjs'
-import { intervalsOf, staleKeys, storedValue, usedOf } from '../src/meter.mjs'
+import { intervalsOf, riseOf, staleKeys, storedValue, usedOf } from '../src/meter.mjs'
 import { STOPPED_FOLD, arrowOf, boxKeyOf, listShown, paneNav, stepFocus } from '../src/nav.mjs'
 import { familyColor, modelColor, savedColor } from '../src/palette.mjs'
 import { loadPrices, priceFamily } from '../src/prices.mjs'
@@ -241,7 +242,7 @@ async function estimate($: EngineInterface, key: string) {
   if (!run) return
   const running = run.status === 'running'
   const baseline = baselineOf(run)
-  const meter = meterOf(s.meter, at)
+  const meter = { ...meterOf(s.meter, at), rise: riseOf(run.launchReadings, s.meter.last, at) }
   const agents = agentPieces(run)
   const saved = estimateRun({
     agents,
@@ -258,7 +259,7 @@ async function estimate($: EngineInterface, key: string) {
   const after = await update($, ev, st => noteSaved(st, key, { ...saved, used }))
   const current = after.runs[key]
   if (!current || current.hidden || (running && current.status !== 'running')) return
-  await guard($, 'tally', () => noteTally($, sid, { key, status: run.status, baseline, agents, windows: stampsOf(s.meter), at }, running ? 'due' : 'always'))
+  await guard($, 'tally', () => noteTally($, sid, { key, status: run.status, baseline, agents, windows: stampsOf(s.meter), withheld: saved.limits?.implausible ?? [], at }, running ? 'due' : 'always'))
 }
 
 type Pooled = { baseline: TallyRun['baseline'] } & Record<'all' | 'five_hour' | 'seven_day', TallyRun['agents']>
@@ -477,6 +478,12 @@ export const register: Register = on => {
       if (await noteWindow($, context)) await readWindow($, context.window)
     })
     return next(e)
+  })
+
+  on('session.compact', async ($, e, next) => {
+    const done = await next(e)
+    await guard($, 'compact', () => update($, ev, s => noteCompaction(s, { agentId: e.agentId, trigger: e.trigger, skip: done.skip })))
+    return done
   })
 
   on('session.measure', async ($, e, next) => {
