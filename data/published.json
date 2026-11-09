@@ -3,7 +3,7 @@
   "unit": "USD per task; compared only inside one source, never across sources",
   "sources": [
     {
-      "id": "aa-2026-11-08",
+      "id": "aa-v5.0.1-2026-11-08",
       "url": "https://artificialanalysis.ai/providers/anthropic",
       "cost": {
         "opus": { "low": 0.98, "medium": 2.45, "high": 3.46, "xhigh": 6.05, "max": 10.04 },
@@ -25,16 +25,23 @@
       "cost": {
         "opus": { "low": 0.35, "medium": 0.84, "high": 1.38, "xhigh": 4.11 },
         "sonnet": { "medium": 0.16, "high": 0.33 },
-        "fable": { "medium": 2.68 }
+        "fable": { "medium": 1.34 }
+      }
+    },
+    {
+      "id": "anthropic-managed-agents-134",
+      "url": "https://platform.claude.com/docs/en/about-claude/models/optimizing-for-cost-and-intelligence",
+      "cost": {
+        "opus": { "low": 1.84, "medium": 4.78 }
       }
     },
     {
       "id": "community-claude-effort-cost",
       "url": "https://huggingface.co/datasets/JOHNISKING/claude-effort-cost",
       "cost": {
-        "opus": { "low": 0.17, "medium": 0.25, "high": 0.35, "xhigh": 0.82, "max": 5.33 },
+        "opus": { "low": 0.17, "medium": 0.25, "high": 0.35, "xhigh": 0.82 },
         "sonnet": { "medium": 0.097, "high": 0.117 },
-        "haiku": { "low": 0.0095, "medium": 0.0142, "high": 0.0205, "xhigh": 0.0388, "max": 0.378 }
+        "haiku": { "low": 0.0095, "medium": 0.0142, "high": 0.0205, "xhigh": 0.0388 }
       }
     }
   ]

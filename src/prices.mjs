@@ -2,6 +2,7 @@ const NAMES = ['opus', 'sonnet', 'haiku', 'fable', 'mythos']
 const BUCKETS = ['input', 'output', 'cacheRead', 'cacheWrite']
 const PER = 1e6
 const PRICED_GENERATION = '5'
+const VERSION_ROWS = { opus: { '': 'opus-5' }, sonnet: { '': 'sonnet-5' }, fable: { '2': 'fable-5-2' } }
 
 const isNum = (v) => typeof v === 'number' && Number.isFinite(v) && v >= 0
 
@@ -10,7 +11,8 @@ export function priceFamily(modelId) {
   const id = modelId.toLowerCase()
   const found = NAMES.filter((n) => id.includes(n))
   if (found.length !== 1 || found[0] === 'mythos') return null
-  return new RegExp(`${found[0]}-${PRICED_GENERATION}(?!\\d)`).test(id) ? found[0] : null
+  const match = new RegExp(`${found[0]}-${PRICED_GENERATION}(?:[-.](\\d{1,2}))?(?!\\d)`).exec(id)
+  return match ? VERSION_ROWS[found[0]]?.[match[1] ?? ''] ?? found[0] : null
 }
 
 function checkRow(row, where) {

@@ -79,9 +79,9 @@
   "steps": {
     "opus": {
       "low>medium": {
-        "mu": 0.706012279,
-        "sd": 0.244324309,
-        "sources": 4
+        "mu": 0.755744818,
+        "sd": 0.239034314,
+        "sources": 5
       },
       "low>high": {
         "mu": 1.081228049,
@@ -94,14 +94,14 @@
         "sources": 4
       },
       "low>max": {
-        "mu": 2.886043951,
-        "sd": 0.790918917,
-        "sources": 2
+        "mu": 2.326779822,
+        "sd": 0.4,
+        "sources": 1
       },
       "medium>low": {
-        "mu": -0.706012279,
-        "sd": 0.244324309,
-        "sources": 4
+        "mu": -0.755744818,
+        "sd": 0.239034314,
+        "sources": 5
       },
       "medium>high": {
         "mu": 0.37521577,
@@ -114,9 +114,9 @@
         "sources": 4
       },
       "medium>max": {
-        "mu": 2.235067345,
-        "sd": 1.166129751,
-        "sources": 2
+        "mu": 1.41048909,
+        "sd": 0.4,
+        "sources": 1
       },
       "high>low": {
         "mu": -1.081228049,
@@ -134,9 +134,9 @@
         "sources": 4
       },
       "high>max": {
-        "mu": 1.894240944,
-        "sd": 1.172287469,
-        "sources": 2
+        "mu": 1.065308525,
+        "sd": 0.4,
+        "sources": 1
       },
       "xhigh>low": {
         "mu": -1.940795464,
@@ -154,29 +154,29 @@
         "sources": 4
       },
       "xhigh>max": {
-        "mu": 1.18916051,
-        "sd": 0.965401104,
-        "sources": 2
+        "mu": 0.506518842,
+        "sd": 0.4,
+        "sources": 1
       },
       "max>low": {
-        "mu": -2.886043951,
-        "sd": 0.790918917,
-        "sources": 2
+        "mu": -2.326779822,
+        "sd": 0.4,
+        "sources": 1
       },
       "max>medium": {
-        "mu": -2.235067345,
-        "sd": 1.166129751,
-        "sources": 2
+        "mu": -1.41048909,
+        "sd": 0.4,
+        "sources": 1
       },
       "max>high": {
-        "mu": -1.894240944,
-        "sd": 1.172287469,
-        "sources": 2
+        "mu": -1.065308525,
+        "sd": 0.4,
+        "sources": 1
       },
       "max>xhigh": {
-        "mu": -1.18916051,
-        "sd": 0.965401104,
-        "sources": 2
+        "mu": -0.506518842,
+        "sd": 0.4,
+        "sources": 1
       }
     },
     "sonnet": {
@@ -298,9 +298,9 @@
         "sources": 2
       },
       "low>max": {
-        "mu": 3.005440051,
-        "sd": 0.959066387,
-        "sources": 2
+        "mu": 2.327277706,
+        "sd": 0.4,
+        "sources": 1
       },
       "medium>low": {
         "mu": -0.606440191,
@@ -318,9 +318,9 @@
         "sources": 2
       },
       "medium>max": {
-        "mu": 2.39899986,
-        "sd": 1.248258954,
-        "sources": 2
+        "mu": 1.516347489,
+        "sd": 0.4,
+        "sources": 1
       },
       "high>low": {
         "mu": -1.077713724,
@@ -338,9 +338,9 @@
         "sources": 2
       },
       "high>max": {
-        "mu": 1.927726327,
-        "sd": 1.395465308,
-        "sources": 2
+        "mu": 0.940983344,
+        "sd": 0.4,
+        "sources": 1
       },
       "xhigh>low": {
         "mu": -1.619854956,
@@ -358,29 +358,29 @@
         "sources": 2
       },
       "xhigh>max": {
-        "mu": 1.385585095,
-        "sd": 1.259907099,
-        "sources": 2
+        "mu": 0.494696242,
+        "sd": 0.4,
+        "sources": 1
       },
       "max>low": {
-        "mu": -3.005440051,
-        "sd": 0.959066387,
-        "sources": 2
+        "mu": -2.327277706,
+        "sd": 0.4,
+        "sources": 1
       },
       "max>medium": {
-        "mu": -2.39899986,
-        "sd": 1.248258954,
-        "sources": 2
+        "mu": -1.516347489,
+        "sd": 0.4,
+        "sources": 1
       },
       "max>high": {
-        "mu": -1.927726327,
-        "sd": 1.395465308,
-        "sources": 2
+        "mu": -0.940983344,
+        "sd": 0.4,
+        "sources": 1
       },
       "max>xhigh": {
-        "mu": -1.385585095,
-        "sd": 1.259907099,
-        "sources": 2
+        "mu": -0.494696242,
+        "sd": 0.4,
+        "sources": 1
       }
     },
     "fable": {
@@ -533,9 +533,9 @@
       "sources": 2
     },
     "opus:medium>haiku:max": {
-      "mu": 3.001753021,
-      "sd": 1.556426469,
-      "sources": 2
+      "mu": 1.90119331,
+      "sd": 0.6,
+      "sources": 1
     },
     "opus:medium>fable:low": {
       "mu": -0.314990348,
@@ -543,7 +543,7 @@
       "sources": 1
     },
     "opus:medium>fable:medium": {
-      "mu": 0.073549401,
+      "mu": -0.273024189,
       "sd": 0.6,
       "sources": 2
     },
@@ -608,9 +608,9 @@
       "sources": 2
     },
     "opus:high>haiku:max": {
-      "mu": 2.660926621,
-      "sd": 1.562584187,
-      "sources": 2
+      "mu": 1.556012746,
+      "sd": 0.6,
+      "sources": 1
     },
     "opus:high>fable:low": {
       "mu": -0.660170912,
@@ -618,7 +618,7 @@
       "sources": 1
     },
     "opus:high>fable:medium": {
-      "mu": -0.347259325,
+      "mu": -0.693832915,
       "sd": 0.6,
       "sources": 2
     },
@@ -683,9 +683,9 @@
       "sources": 2
     },
     "opus:xhigh>haiku:max": {
-      "mu": 1.955846186,
-      "sd": 1.355697822,
-      "sources": 2
+      "mu": 0.997223063,
+      "sd": 0.6,
+      "sources": 1
     },
     "opus:xhigh>fable:low": {
       "mu": -1.218960595,
@@ -693,8 +693,8 @@
       "sources": 1
     },
     "opus:xhigh>fable:medium": {
-      "mu": -1.172323931,
-      "sd": 0.6,
+      "mu": -1.518897521,
+      "sd": 0.732769985,
       "sources": 2
     },
     "opus:xhigh>fable:high": {
@@ -733,9 +733,9 @@
       "sources": 3
     },
     "sonnet:medium>opus:max": {
-      "mu": 2.587569826,
-      "sd": 1.026264423,
-      "sources": 2
+      "mu": 1.861891293,
+      "sd": 0.6,
+      "sources": 1
     },
     "sonnet:medium>haiku:low": {
       "mu": 0.348815451,
@@ -758,9 +758,9 @@
       "sources": 2
     },
     "sonnet:medium>haiku:max": {
-      "mu": 3.354255502,
-      "sd": 1.416561141,
-      "sources": 2
+      "mu": 2.352595514,
+      "sd": 0.6,
+      "sources": 1
     },
     "sonnet:medium>fable:low": {
       "mu": 0.136411855,
@@ -768,8 +768,8 @@
       "sources": 1
     },
     "sonnet:medium>fable:medium": {
-      "mu": 0.78179095,
-      "sd": 0.604108752,
+      "mu": 0.43521736,
+      "sd": 0.6,
       "sources": 2
     },
     "sonnet:medium>fable:high": {
@@ -808,9 +808,9 @@
       "sources": 3
     },
     "sonnet:high>opus:max": {
-      "mu": 2.122259547,
-      "sd": 1.419199874,
-      "sources": 2
+      "mu": 1.118733692,
+      "sd": 0.6,
+      "sources": 1
     },
     "sonnet:high>haiku:low": {
       "mu": -0.116494828,
@@ -833,9 +833,9 @@
       "sources": 2
     },
     "sonnet:high>haiku:max": {
-      "mu": 2.888945223,
-      "sd": 1.809496592,
-      "sources": 2
+      "mu": 1.609437912,
+      "sd": 0.6,
+      "sources": 1
     },
     "sonnet:high>fable:low": {
       "mu": -0.606745746,
@@ -843,8 +843,8 @@
       "sources": 1
     },
     "sonnet:high>fable:medium": {
-      "mu": 0.04825273,
-      "sd": 0.617712611,
+      "mu": -0.29832086,
+      "sd": 0.6,
       "sources": 2
     },
     "sonnet:high>fable:high": {
@@ -958,9 +958,9 @@
       "sources": 2
     },
     "haiku:medium>opus:max": {
-      "mu": 1.632314184,
-      "sd": 0.857962236,
-      "sources": 2
+      "mu": 1.025643269,
+      "sd": 0.6,
+      "sources": 1
     },
     "haiku:medium>sonnet:low": {
       "mu": -1.261131218,
@@ -1033,9 +1033,9 @@
       "sources": 2
     },
     "haiku:high>opus:max": {
-      "mu": 1.16104065,
-      "sd": 1.00516859,
-      "sources": 2
+      "mu": 0.450279124,
+      "sd": 0.6,
+      "sources": 1
     },
     "haiku:high>sonnet:low": {
       "mu": -1.836495363,
@@ -1108,9 +1108,9 @@
       "sources": 2
     },
     "haiku:xhigh>opus:max": {
-      "mu": 0.618899419,
-      "sd": 0.869610381,
-      "sources": 2
+      "mu": 0.003992021,
+      "sd": 0.6,
+      "sources": 1
     },
     "haiku:xhigh>sonnet:low": {
       "mu": -2.282782466,
