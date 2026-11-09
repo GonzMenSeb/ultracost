@@ -75,7 +75,7 @@ Every `agent()` call carries a label that starts with a class, such as `decide:`
 - `decide:`, `judge:`, `synth:` and `design:` own open choices, reviews, synthesis and design. They run on Opus.
 - `investigate:` reads and reports findings. It runs on Sonnet only.
 - `build:`, `fix:` and `combine:` carry out work whose design is already decided. They run on Sonnet or Opus.
-- `code:` and `grunt:` do fully specified, fixed-shape work with nothing to decide: a table, a count, an extraction or a check over named inputs. They run on Sonnet, or on Haiku at any effort, and Haiku `medium` is the default.
+- `code:` and `grunt:` do fully specified, fixed-shape work with nothing to decide: a table, a count, an extraction or a check over named inputs. They run on Sonnet, or on Haiku at `medium`, `high` or `xhigh`, and Haiku `medium` is the default.
 
 Opus is spent where a wrong call is expensive. Everything else goes to the cheapest model that does the job as well.
 
@@ -88,7 +88,7 @@ Opus is spent where a wrong call is expensive. Everything else goes to the cheap
 | Investigation is `investigate:`, on Sonnet only. A `decide:`, `judge:` or `design:` label, or a fanned-out `synth:` label, that contains a word like research, map, explore, search, find or audit is denied. | Research dressed up as `decide:` or `synth:` to get Opus. |
 | `judge:` may run on Sonnet for one yes/no review, with a `pass`, `evidence`, `blocked_on` schema. | Opus spent on checks a cheaper model answers just as well. Findings lists and scores stay on Opus. |
 | `decide:`, `synth:` and `design:` may run on Sonnet for the simpler agents of a fan-out of more than 3. | Paying Opus for the long tail of a big fan-out, while the hardest items stay on Opus. |
-| Haiku only for `code:` and `grunt:`, at `medium`, `high` or `xhigh`. | Cheap output that has to be redone. Haiku gets work where two agents would produce the same result and a script can check it. Discovery, review and anything that weighs evidence stay on Sonnet or Opus. |
+| Haiku only for `code:` and `grunt:`, at `medium`, `high` or `xhigh`. | Cheap output that has to be redone. Haiku gets work where two agents would produce the same result and a script can check it; a replay of five fixed-shape tasks matched the recorded answer on all 30 Haiku runs, at 6 to 11 times less cost than Sonnet (see the [Haiku evidence](docs/reference.md#haiku-evidence)). Discovery, review and anything that weighs evidence stay on Sonnet or Opus. |
 | Every Sonnet and Haiku agent has a `blocked_on` field in its output schema. | A cheaper agent making a decision it does not own. It reports the open question instead, and Claude re-runs that stage as `decide:`. |
 | Efforts are `medium`, `high` or `xhigh`: never `low`, never `max`. Models are `opus`, `sonnet` and `haiku`: never Fable or Mythos as an agent model. | `max` burning tokens on stages that do not need it, `low` producing work that gets redone, and workers on the most expensive models. |
 | No agent uses a model above the session's. A Fable session counts as Opus. | A workflow reaching past the model you chose for the session. |
@@ -119,10 +119,10 @@ For Opus work over a list whose size is only known at run time, the alternative 
 ## When the gate says no
 
 <p align="center">
-  <img src="assets/terminal-deny.svg" alt="The deny reason Claude sees: ultraguard blocked this Workflow launch (2 problems). Line 3 of ten-opus.js gets LABEL and FANOUT: the synth: research label reads like investigation, and up to 10 Opus agents can run at once where the limit is 3, with the slice(0, 3) fix. It ends: If this is your second deny for the same workflow, stop and ask the user.">
+  <img src="assets/terminal-deny.svg" alt="The deny reason Claude sees: ultraguard blocked this Workflow launch (2 problems). Line 3 of ten-opus.js gets LABEL and FANOUT: the synth: research label reads like investigation, and up to 10 Opus agents can run at once where the limit is 3, with the slice(0, 3) fix. The reason also says that a fixed list, table or count over named inputs is grunt:, on Haiku or Sonnet. It ends: If this is your second deny for the same workflow, stop and ask the user.">
 </p>
 
-The deny shows in your terminal, and its reason goes to Claude. Each line names the script line, a code such as `FANOUT` or `LABEL` and what is wrong. The reason then lists the allowed models and efforts for each failing class. Claude reads it, fixes the script and launches again. The reason ends with "If this is your second deny for the same workflow, stop and ask the user," so a second deny turns into a question for you rather than a loop. Problems only you can fix, such as an environment variable that overrides the pinned model, are flagged so Claude tells you instead of relaunching.
+The deny shows in your terminal, and its reason goes to Claude. Each line names the script line, a code such as `FANOUT` or `LABEL` and what is wrong. The reason then lists the allowed models and efforts for each failing class, and, for a label that reads like investigation, says that a fixed list, table or count over named inputs is `grunt:`. Claude reads it, fixes the script and launches again. The reason ends with "If this is your second deny for the same workflow, stop and ask the user," so a second deny turns into a question for you rather than a loop. Problems only you can fix, such as an environment variable that overrides the pinned model, are flagged so Claude tells you instead of relaunching.
 
 ## Know it was enforced
 
