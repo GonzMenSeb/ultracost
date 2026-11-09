@@ -166,9 +166,28 @@ export type EvalState = {
   launches: Record<string, EvalLaunch>
   runs: Record<string, EvalRun>
   early: Record<string, { sent: EvalSent[]; done: boolean; usage: Record<string, EvalUsage> }>
-  ui: { run: string | null; folds?: Record<string, boolean>; focus?: string | null }
+  ui: { run: string | null; folds?: Record<string, boolean>; focus?: string | null; list?: { stoppedOpen?: boolean } }
   main: EvalBaseline
   meter: EvalMeter
+}
+
+export type TallyRun = {
+  key: string
+  status: string
+  baseline: { family: string; effort: string } | null
+  agents: { agentId: string; pieces: Omit<EvalUsage, 'requests'>[] }[]
+  windows: Record<MeterWindow, string | null>
+  at: number
+}
+
+export type TallyOverall =
+  | (Omit<Saved, 'agents' | 'groups'> & { count: number; counted: Record<MeterWindow, number> })
+  | { status: 'unknown'; count: number }
+
+export type TallyState = {
+  v: number
+  runs: Record<string, TallyRun>
+  overall?: TallyOverall
 }
 
 export type ContextState = {
@@ -181,6 +200,6 @@ export type ContextState = {
 
 declare module 'claude-code' {
   interface PluginState {
-    ultraguard: { eval: Shaped<EvalState>; context: Shaped<ContextState> }
+    ultraguard: { eval: Shaped<EvalState>; context: Shaped<ContextState>; tally: Shaped<TallyState> }
   }
 }

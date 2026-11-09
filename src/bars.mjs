@@ -37,14 +37,20 @@ export function barCells(row, T, L) {
   return [...cells.slice(0, L), plain('│', 'inactive'), ...cells.slice(L)]
 }
 
+const MIN_BAR = 4
+const MAX_BAR = 48
+const LABEL_W = 10
+
 export function layoutOf(rows, width) {
   const usedW = Math.max(4, ...rows.map((r) => r.usedText.length))
-  const figW = Math.max(12, ...rows.map((r) => lineLength(r.fig)))
-  const T = Math.min(48, Math.max(12, width - 15 - usedW - figW))
+  const room = (figs) => width - LABEL_W - 5 - usedW - Math.max(12, ...figs.map(lineLength))
+  const whole = room(rows.map((r) => r.fig))
+  const split = whole < MIN_BAR
+  const T = Math.min(MAX_BAR, split ? Math.max(MIN_BAR, room(rows.map((r) => r.fig.slice(0, 1)))) : whole)
   const top = Math.max(...rows.filter((r) => r.used !== null).map((r) => clampUsed(r.used) + Math.max(r.saved, 0)))
   const S = Math.min(150, Math.max(100, top))
   const O = S > 100 ? Math.ceil((T * (S - 100)) / S) : 0
-  return { T, L: T - O, usedW }
+  return { T, L: T - O, usedW, split }
 }
 
 export function rowLine(row, layout) {
@@ -52,4 +58,10 @@ export function rowLine(row, layout) {
   const label = plain('  ' + row.label.padEnd(8))
   if (row.used === null) return [label, plain(' '.repeat(T + 1)), plain(' '.repeat(2 + usedW + 2)), ...row.fig]
   return [label, ...barCells(row, T, L), plain('  ' + row.usedText.padStart(usedW) + '  '), ...row.fig]
+}
+
+export function rowLines(row, layout) {
+  if (!layout.split || row.fig.length < 2) return [rowLine(row, layout)]
+  const [amount, first, ...rest] = row.fig
+  return [rowLine({ ...row, fig: [amount] }, layout), [plain(' '.repeat(LABEL_W)), { ...first, text: first.text.trimStart() }, ...rest]]
 }

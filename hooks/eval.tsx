@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { ContextState, EvalAgentView, EvalPhaseView, EvalState } from '../types'
+import type { ContextState, EvalAgentView, EvalMeter, EvalPhaseView, EvalState, TallyRun, TallyState } from '../types'
 import { sha256Hex } from '../src/fingerprint.mjs'
 import { recordPath } from '../src/record.mjs'
 import {
@@ -35,25 +35,70 @@ import {
   phaseOpen,
   runOfAgent,
   runView,
-  setFolds
+  setFolds,
+  setStoppedOpen,
+  staleTallies,
+  STOPPED,
+  settledTally,
+  storedTally,
+  stoppedOpen,
+  stoppedRuns,
+  TALLY_PREFIX,
+  TALLY_STORE_MAX
 } from '../src/eval.mjs'
 import { contextFill, createContext, forgetCompactRead, noteBreakdown, noteContext } from '../src/context.mjs'
+import { listWindow } from '../src/listWindow.mjs'
 import { intervalsOf, staleKeys, storedValue, usedOf } from '../src/meter.mjs'
-import { arrowOf, boxKeyOf, paneNav, stepFocus } from '../src/nav.mjs'
+import { STOPPED_FOLD, arrowOf, boxKeyOf, paneNav, stepFocus } from '../src/nav.mjs'
 import { familyColor, modelColor, savedColor } from '../src/palette.mjs'
 import { loadPrices, priceFamily } from '../src/prices.mjs'
-import { agentColumn, listCell, listHeader, modelLines, phaseHeadLength, phaseLayout, phaseStatus, phaseTitle, savedBlock, toastText } from '../src/savedText.mjs'
+import {
+  AGENTS_HEAD,
+  agentColumn,
+  CHECKS_HEAD,
+  endedText,
+  FINISHED_TITLE,
+  FOCUS_HINT,
+  FOLD_HINT,
+  foldLine,
+  LIST_HINT,
+  listCell,
+  listHeader,
+  modelLines,
+  MORE_ABOVE,
+  MORE_BELOW,
+  NO_RUNNING,
+  overallBlock,
+  PHASES_HEAD,
+  phaseHeadLength,
+  phaseLayout,
+  phaseStatus,
+  phaseTitle,
+  RUNNING_EXTRA,
+  savedBlock,
+  sectionHead,
+  subHead,
+  toastText,
+  WORKFLOWS_HEAD
+} from '../src/savedText.mjs'
 import { estimateRun } from '../src/savings.mjs'
 import { seedOf } from '../src/stats.mjs'
+import { combine, createTally, noteTallyRun, overallInput } from '../src/tally.mjs'
 
 const PANE = 'ultraguard'
 const TITLE = 'ultraguard-eval'
 const KEPT = 20
 const TOAST_MS = 8000
 const DRAWS_RUNNING = 1000
+const TALLY_TOO_BIG = `ultraguard: the session tally is over ${TALLY_STORE_MAX / 1024} KiB, so it is no longer kept in the plugin store`
+const MIN_ROOM = 3
+const agentsText = (n: number) => `${n} agent${n === 1 ? '' : 's'}`
 
 const ev = atom({ plugin: 'ultraguard', key: 'eval' } as const, createState() as EvalState, { shape: 'eval-2' })
 const ctx = atom({ plugin: 'ultraguard', key: 'context' } as const, createContext() as ContextState, { shape: 'context-1' })
+const tally = atom({ plugin: 'ultraguard', key: 'tally' } as const, createTally() as TallyState, { shape: 'tally-1' })
+
+const windowFrom = new Map<string, number>()
 
 type Ids = { toolUseId: string; runId: string }
 type Notice = { toolUseId: string | null | undefined; taskId: string | null | undefined; status: string }
@@ -187,19 +232,66 @@ async function estimate($: EngineInterface, key: string) {
   if (!run) return
   const family = priceFamily(run.baseline.model)
   const running = run.status === 'running'
+  const baseline = family && run.baseline.effort ? { family, effort: run.baseline.effort } : null
+  const meter = { subscription: s.meter.subscription, five_hour: intervalsOf(s.meter, 'five_hour', at), seven_day: intervalsOf(s.meter, 'seven_day', at) }
+  const agents = agentPieces(run)
   const saved = estimateRun({
-    agents: agentPieces(run),
+    agents,
     groups: (runView(run).phases ?? []).map((p: EvalPhaseView) => ({ key: p.key, agentIds: p.agentIds })),
-    baseline: family && run.baseline.effort ? { family, effort: run.baseline.effort } : null,
+    baseline,
     ratios: data.ratios,
     prices: data.prices,
-    meter: { subscription: s.meter.subscription, five_hour: intervalsOf(s.meter, 'five_hour', at), seven_day: intervalsOf(s.meter, 'seven_day', at) },
+    meter,
     seed: seedOf(run.key),
     ...(running ? { draws: DRAWS_RUNNING } : {}),
     running
   })
   const used = s.meter.subscription === true ? { five_hour: usedOf(s.meter.last.five_hour, at), seven_day: usedOf(s.meter.last.seven_day, at) } : { five_hour: null, seven_day: null }
   await update($, ev, st => noteSaved(st, key, { ...saved, used }))
+  if (run.hidden) return
+  await guard($, 'tally', () => noteTally($, { key, status: run.status, baseline, agents, windows: stampsOf(s.meter), at }, { data, meter, last: s.meter }))
+}
+
+type EstimateMeter = { subscription: boolean | null; five_hour: unknown[]; seven_day: unknown[] }
+type Pooled = { baseline: TallyRun['baseline'] } & Record<'all' | 'five_hour' | 'seven_day', TallyRun['agents']>
+
+const stampsOf = (m: EvalMeter) => ({ five_hour: m.last.five_hour?.resetsAt ?? null, seven_day: m.last.seven_day?.resetsAt ?? null })
+
+function overallOf(t: TallyState, { data, meter, last }: { data: Data; meter: EstimateMeter; last: EvalMeter }, now: number) {
+  const running = Object.values(t.runs).some(r => r.status === 'running')
+  const one = (baseline: TallyRun['baseline'], agents: TallyRun['agents']) =>
+    estimateRun({ agents, baseline, ratios: data.ratios, prices: data.prices, meter, seed: seedOf('overall'), draws: DRAWS_RUNNING, running })
+  const estimates = overallInput(t, stampsOf(last), now).groups.map((g: Pooled) => ({
+    all: one(g.baseline, g.all),
+    five_hour: one(g.baseline, g.five_hour),
+    seven_day: one(g.baseline, g.seven_day)
+  }))
+  return combine(estimates, { tally: t, meter: last, now })
+}
+
+async function noteTally($: EngineInterface, run: TallyRun, inputs: { data: Data; meter: EstimateMeter; last: EvalMeter }) {
+  const dropped: string[] = []
+  const next = await update($, tally, t => {
+    dropped.length = 0
+    const noted = noteTallyRun(t, run, { log: (line: string) => dropped.push(line) }) as TallyState
+    return { ...noted, overall: overallOf(noted, inputs, run.at) }
+  })
+  await guard($, 'tally store', async () => {
+    const key = `${TALLY_PREFIX}${await $.session.id()}`
+    if (JSON.stringify(next).length <= TALLY_STORE_MAX) return $.store.set(key, next)
+    await $.store.delete(key)
+    dropped.push(TALLY_TOO_BIG)
+  })
+  for (const line of dropped) $.ui.log(line, { to: 'debug' })
+}
+
+async function loadTally($: EngineInterface) {
+  const own = `${TALLY_PREFIX}${await $.session.id()}`
+  const stored: Record<string, unknown> = {}
+  for (const key of await $.store.keys()) if (key.startsWith(TALLY_PREFIX)) stored[key] = await $.store.get(key)
+  for (const key of staleTallies(stored, own, await $.clock.now())) await $.store.delete(key)
+  const kept = settledTally(storedTally(stored[own])) as TallyState | null
+  if (kept) await update($, tally, t => (Object.keys(t.runs).length === 0 ? kept : t))
 }
 
 async function readWindow($: EngineInterface, window: number) {
@@ -310,6 +402,7 @@ export const register: Register = on => {
     })
     dataLoad = null
     await guard($, 'meter', () => loadMeter($))
+    await guard($, 'tally', () => loadTally($))
     await guard($, 'context', async () => {
       const { context } = await $.session.usage()
       if (await noteWindow($, context)) await readWindow($, context.window)
@@ -341,6 +434,7 @@ export const register: Register = on => {
         await update($, ev, s => hideFinished(endAllRuns(s, 'cleared', at)))
         for (const run of live) await persist($, run.key)
       })
+      await guard($, 'clear tally', () => update($, tally, () => createTally() as TallyState))
     }
     return next(e)
   })
@@ -361,6 +455,16 @@ export const register: Register = on => {
       const name = out.workflowName || (out.summary ? out.summary.slice(0, 48) : null)
       const s = await update($, ev, st => noteLaunchResult(st, { toolUseId, isError, taskId: out.taskId ?? null, runId: out.runId ?? null, name, at }))
       if (s.runs[toolUseId]) await persist($, toolUseId)
+    })
+    return ran
+  })
+
+  on('tool.call', { tool: 'TaskStop' }, async ($, e, next) => {
+    const ran = await next(e)
+    await guard($, 'stop', async () => {
+      const taskId = e.task_id ?? e.shell_id
+      if (ran.deny !== undefined || ran.isError === true || typeof taskId !== 'string') return
+      await endRuns($, [{ toolUseId: null, taskId, status: STOPPED }])
     })
     return ran
   })
@@ -451,8 +555,9 @@ export const register: Register = on => {
     const state = await read($, ev)
     if (state.ui.run !== null) {
       await update($, ev, closeRun)
-      if (e.origin.kind === 'person' && [...activeRuns(state), ...finishedRuns(state)].some(r => r.key === state.ui.run)) return { value: undefined }
+      if (e.origin.kind === 'person' && [...activeRuns(state), ...finishedRuns(state), ...stoppedRuns(state)].some(r => r.key === state.ui.run)) return { value: undefined }
     }
+    await update($, ev, s => setStoppedOpen(s, false))
     return next(e)
   })
 
@@ -474,9 +579,15 @@ export const register: Register = on => {
     let moved = false
     await guard($, 'arrow', async () => {
       const state = await read($, ev)
-      const target = stepFocus(paneNav(state), state.ui.focus ?? null, dir)
+      const before = state.ui.focus ?? null
+      const target = stepFocus(paneNav(state), before, dir)
       if (target === null) return
-      moved = (await $.ui.focus({ requestId: PANE, key: target })).deny === undefined
+      await update($, ev, s => noteFocus(s, target))
+      try {
+        moved = (await $.ui.focus({ requestId: PANE, key: target })).deny === undefined
+      } finally {
+        if (!moved) await update($, ev, s => noteFocus(s, before))
+      }
     })
     return moved ? {} : next(e)
   })
@@ -501,9 +612,17 @@ export const register: Register = on => {
     const state = await read($, ev)
     const runs = activeRuns(state).map(r => runView(r))
     const finished = finishedRuns(state).map(r => runView(r))
-    const open = [...runs, ...finished].find(v => v.key === state.ui.run)
+    const stopped = stoppedRuns(state).map(r => runView(r))
+    const open = [...runs, ...finished, ...stopped].find(v => v.key === state.ui.run)
     const { reachable, resting } = paneNav(state)
-    const picked = (key: string) => e.props.isFocused && (reachable.includes(state.ui.focus ?? '') ? state.ui.focus : resting) === key
+    const focusKey = reachable.includes(state.ui.focus ?? '') ? (state.ui.focus ?? null) : resting
+    const picked = (key: string) => e.props.isFocused && focusKey === key
+    const width = e.props.bodyColumns - 4
+    const overall = open ? null : ((await read($, tally)).overall ?? null)
+    const stored = await read($, ctx)
+    const wanted = open ? Boolean(open.saved) : overall?.status === 'estimated'
+    const live = wanted ? await $.session.usage().then(u => u?.context ?? null, () => null) : null
+    const context = contextFill(live ? { ...stored, window: live.window > 0 ? live.window : stored.window, tokens: typeof live.tokens === 'number' ? live.tokens : null } : stored)
 
     const counts = (c: { opus: number; sonnet: number; haiku: number }) => {
       const parts = (['opus', 'sonnet', 'haiku'] as const).filter(m => c[m] > 0)
@@ -524,6 +643,7 @@ export const register: Register = on => {
     if (open) {
       const phases: EvalPhaseView[] | null = open.phases
       const column = open.saved ? agentColumn(open.saved) : null
+      const section = (title: string, extra = '') => line(sectionHead(title, { extra, width }))
       const crumb = (
         <Text wrap="truncate-end">
           <Text weight="bold">{TITLE}</Text>
@@ -539,16 +659,22 @@ export const register: Register = on => {
           {c.ok ? c.detail && <Text dimColor>{`  ${c.detail}`}</Text> : <Text color="error">{`  ${c.reason}`}</Text>}
         </Text>
       ))
-      const width = e.props.bodyColumns - 4
-      const stored = await read($, ctx)
-      const live = open.saved ? await $.session.usage().then(u => u.context, () => null) : null
-      const context = contextFill(live ? { ...stored, window: live.window > 0 ? live.window : stored.window, tokens: typeof live.tokens === 'number' ? live.tokens : null } : stored)
-      const saved = open.saved && (
+      const top = (
         <Box flexDirection="column">
-          {savedBlock(open.saved, { width, context }).map(line)}
+          {crumb}
+          <Text> </Text>
+          {open.saved && savedBlock(open.saved, { width, headWidth: width, context }).map(line)}
+          {open.saved && <Text> </Text>}
+        </Box>
+      )
+      const checksSection = (
+        <Box flexDirection="column">
+          {section(CHECKS_HEAD)}
+          {checks}
           <Text> </Text>
         </Box>
       )
+      const agentCount = agentsText(open.agents.length)
 
       const filled = (phases ?? []).filter(p => p.total > 0)
       const { field, savedAt, savedWidth, modelsAt } = phaseLayout({
@@ -582,14 +708,6 @@ export const register: Register = on => {
         <Box key="box:back" {...ring(picked('back'))}>
           <Button key="back" label="back to the list" plain hotkey="b" autoFocus={filled.length === 0 ? true : undefined} onPress={() => update($, ev, closeRun)}>{ZERO_WIDTH}</Button>
           <Text>back to the list</Text>
-        </Box>
-      )
-      const crumbAndChecks = (
-        <Box flexDirection="column">
-          {crumb}
-          <Text> </Text>
-          {checks}
-          <Text> </Text>
         </Box>
       )
 
@@ -632,7 +750,8 @@ export const register: Register = on => {
         }
         return (
           <Box flexDirection="column">
-            {crumbAndChecks}
+            {top}
+            {section(PHASES_HEAD, agentCount)}
             {headerRow(8)}
             {phases.map(p => {
               if (p.total === 0) {
@@ -645,7 +764,7 @@ export const register: Register = on => {
             })}
             <Text dimColor>{'  ✓ ran as the gate approved  ✗ did not'}</Text>
             <Text> </Text>
-            {saved}
+            {checksSection}
             <Text dimColor>↑↓ choose  enter opens or folds a phase</Text>
             {filled.length > 0 && (
               <Box key="box:all" {...ring(picked('all'))}>
@@ -660,57 +779,93 @@ export const register: Register = on => {
 
       return (
         <Box flexDirection="column">
-          {crumbAndChecks}
-          {saved}
+          {top}
+          {section(AGENTS_HEAD, agentCount)}
           {headerRow(6)}
           {open.agents.map((a: EvalAgentView) => agentRow(a, <Text color={tone(a.ok)}>□</Text>))}
           <Text> </Text>
+          {checksSection}
           {backButton()}
         </Box>
       )
     }
 
-    const view = bandView(state)
-    const all = [...runs, ...finished]
-    const nameWidth = Math.min(30, Math.max(12, 12, ...all.map(v => v.title.length + 4)))
-    const agentsWidth = Math.max(12, ...runs.map(v => countsWidth(v.counts) + 2))
-    const row = (v: (typeof all)[number], i: number, ended: boolean) => {
+    const all = [...runs, ...finished, ...stopped]
+    const foldOpen = stoppedOpen(state)
+    const nameWidth = Math.min(30, Math.max(12, ...all.map(v => v.title.length + 4)))
+    const agentsWidth = Math.max(12, ...runs.map(v => countsWidth(v.counts) + 2), ...[...finished, ...stopped].map(v => endedText(v).length + 2))
+    type Draw = (first: boolean) => any
+    const runRow = (v: (typeof all)[number], live: boolean, autoFocus: boolean): Draw => first => {
       const rowKey = `run:${v.key}`
       const here = picked(rowKey)
       return (
-        <Box key={`box:${v.key}`} {...ring(here)}>
-          <Button key={rowKey} plain autoFocus={i === 0 && !ended ? true : undefined} onPress={() => update($, ev, s => openRun(s, v.key))}>{ZERO_WIDTH}</Button>
+        <Box key={boxKeyOf(rowKey)} marginTop={first ? 0 : -1} {...ring(here)}>
+          <Button key={rowKey} plain autoFocus={autoFocus ? true : undefined} onPress={() => update($, ev, s => openRun(s, v.key))}>{ZERO_WIDTH}</Button>
           <Text wrap="truncate-end">
             <Text color={tone(v.ok)}>{mark(here, '□', '■')}</Text>
             {' '}
             <Text weight={here ? 'bold' : undefined}>{fit(v.title, nameWidth - 2)}</Text>
             <Text dimColor>{fit(v.shortId, 9)}</Text>
-            {ended ? <Text dimColor>{fit(`done ${v.endedClock ?? ''}`.trim(), agentsWidth)}</Text> : <Text>{counts(v.counts)}{' '.repeat(Math.max(1, agentsWidth - countsWidth(v.counts)))}</Text>}
+            {live ? <Text>{counts(v.counts)}{' '.repeat(Math.max(1, agentsWidth - countsWidth(v.counts)))}</Text> : <Text dimColor>{fit(endedText(v), agentsWidth)}</Text>}
             {v.ok ? line(listCell(v)) : <Text color="error">{v.reason}</Text>}
           </Text>
         </Box>
       )
     }
+    const foldRow: Draw = first => {
+      const here = picked(STOPPED_FOLD)
+      return (
+        <Box key={boxKeyOf(STOPPED_FOLD)} marginTop={first ? 0 : -1} {...ring(here)}>
+          <Button key={STOPPED_FOLD} plain onPress={() => update($, ev, s => setStoppedOpen(s, !stoppedOpen(s)))}>{ZERO_WIDTH}</Button>
+          {line(foldLine({ open: foldOpen, count: stopped.length, picked: here }))}
+        </Box>
+      )
+    }
+
+    const items: { key: string; lines: number; row: boolean; first: boolean; draw: Draw }[] = []
+    const group = (rows: { key: string; draw: Draw }[], head?: string) => {
+      if (rows.length === 0) return
+      if (head) items.push({ key: `head:${head}`, lines: 2, row: false, first: false, draw: () => <Box flexDirection="column"><Text> </Text>{line(subHead(head, { width }))}</Box> })
+      rows.forEach((r, i) => items.push({ ...r, lines: i === 0 ? 3 : 2, row: true, first: i === 0 }))
+    }
+    const ended = (list: typeof all) => list.map(v => ({ key: `run:${v.key}`, draw: runRow(v, false, false) }))
+    group(runs.map((v, i) => ({ key: `run:${v.key}`, draw: runRow(v, true, i === 0) })))
+    group(ended(finished), FINISHED_TITLE)
+    if (stopped.length > 0) group([{ key: STOPPED_FOLD, draw: foldRow }, ...(foldOpen ? ended(stopped) : [])])
+
+    const overallLines = overall ? overallBlock(overall, { width, context }) : []
+    const top = [
+      <Text weight="bold">{TITLE}</Text>,
+      <Text> </Text>,
+      ...overallLines.map(line),
+      ...(overallLines.length > 0 ? [<Text> </Text>] : []),
+      line(sectionHead(WORKFLOWS_HEAD, { extra: RUNNING_EXTRA(runs.length), width })),
+      ...(runs.length === 0 ? [<Text dimColor>{`  ${NO_RUNNING}`}</Text>] : []),
+      ...(all.length > 0
+        ? [
+            <Text wrap="truncate-end">
+              <Text dimColor>{`  ${fit('  workflow', nameWidth)}${fit('id', 9)}${fit('agents', agentsWidth)}`}</Text>
+              {line(listHeader(all))}
+            </Text>
+          ]
+        : [])
+    ]
+    const hint = !e.props.isFocused ? FOCUS_HINT : focusKey === STOPPED_FOLD ? FOLD_HINT(foldOpen) : LIST_HINT
+    const bottom = all.length > 0 ? [<Text> </Text>, <Text dimColor>{hint}</Text>] : []
+    const full = e.props.scroll.bodyRows - top.length - bottom.length
+    const windowed = items.reduce((n, it) => n + it.lines, 0) > full
+    const shown = windowed
+      ? listWindow({ items, room: Math.max(MIN_ROOM, full - 2), focusKey, prevFrom: windowFrom.get(e.surface) })
+      : { from: 0, to: items.length, above: 0, below: 0 }
+    windowFrom.set(e.surface, shown.from)
+    const more = (n: number, text: (n: number) => string) => (n > 0 ? <Text dimColor>{text(n)}</Text> : <Text> </Text>)
     return (
       <Box flexDirection="column">
-        <Text wrap="truncate-end">
-          <Text weight="bold">{TITLE}</Text>
-          <Text dimColor>{view ? `  ${bandText(view)}` : ''}</Text>
-        </Text>
-        <Text> </Text>
-        {runs.length === 0 && <Text dimColor>No workflow is running.</Text>}
-        {all.length > 0 && (
-          <Text wrap="truncate-end">
-            <Text dimColor>{`  ${fit('  workflow', nameWidth)}${fit('id', 9)}${fit('agents', agentsWidth)}`}</Text>
-            {line(listHeader(all))}
-          </Text>
-        )}
-        {runs.map((v, i) => row(v, i, false))}
-        {finished.length > 0 && <Text> </Text>}
-        {finished.length > 0 && <Text dimColor>finished this session</Text>}
-        {finished.map((v, i) => row(v, runs.length + i, true))}
-        {all.length > 0 && <Text> </Text>}
-        {all.length > 0 && <Text dimColor>{e.props.isFocused ? '↑↓ choose  enter details  esc close' : 'ctrl+x tab: focus this pane'}</Text>}
+        {top}
+        {windowed && more(shown.above, MORE_ABOVE)}
+        {items.slice(shown.from, shown.to).map((it, i) => it.draw(it.first || i === 0))}
+        {windowed && more(shown.below, MORE_BELOW)}
+        {bottom}
       </Box>
     )
   }).catch(($, e, next) => {

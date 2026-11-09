@@ -5,8 +5,10 @@ import { seedOf } from './stats.mjs'
 export const EVAL_VERSION = 1
 export const DEFAULT_MAX_OPUS = 3
 
+export const STOPPED = 'killed'
+
 const FAMILIES = ['opus', 'sonnet', 'haiku']
-const ENDING = new Set(['completed', 'failed', 'killed'])
+const ENDING = new Set(['completed', 'failed', STOPPED])
 const MAX_ENDED = 20
 const MAX_LAUNCHES = 100
 const MAX_EARLY = 32
@@ -15,7 +17,6 @@ const GATE_TRIES = 5
 const NO_GATE = 'not approved by the gate'
 const NO_PLAN = 'no approved plan to compare against'
 const MAX_PHASES = 64
-const FOLD_ABOVE = 12
 export const UNKNOWN_PHASE = '\u0000unknown'
 
 const hasOwn = (o, k) => Object.prototype.hasOwnProperty.call(o, k)
@@ -388,6 +389,12 @@ export function noteFocus(state, key) {
   return (state.ui.focus ?? null) === key ? state : { ...state, ui: { ...state.ui, focus: key } }
 }
 
+export const stoppedOpen = (state) => state.ui.list?.stoppedOpen ?? false
+
+export function setStoppedOpen(state, open) {
+  return stoppedOpen(state) === open ? state : { ...state, ui: { ...state.ui, list: { ...state.ui.list, stoppedOpen: open } } }
+}
+
 export function setFolds(state, keys, folded) {
   const current = state.ui.folds || {}
   if (keys.every((k) => current[k] === folded)) return state
@@ -482,10 +489,43 @@ export function activeRuns(state) {
     .sort((a, b) => a.at - b.at || (a.key < b.key ? -1 : 1))
 }
 
+const newestEnded = (a, b) => (b.endedAt || 0) - (a.endedAt || 0) || (a.key < b.key ? -1 : 1)
+
 export function finishedRuns(state) {
   return runsOf(state)
-    .filter((r) => r.status !== 'running' && r.status !== 'cleared' && !r.hidden)
-    .sort((a, b) => (b.endedAt || 0) - (a.endedAt || 0) || (a.key < b.key ? -1 : 1))
+    .filter((r) => r.status !== 'running' && r.status !== 'cleared' && r.status !== STOPPED && !r.hidden)
+    .sort(newestEnded)
+}
+
+export function stoppedRuns(state) {
+  return runsOf(state)
+    .filter((r) => r.status === STOPPED && !r.hidden)
+    .sort(newestEnded)
+}
+
+export const TALLY_PREFIX = 'tally:'
+const TALLY_MAX_AGE_MS = 30 * 24 * 3600 * 1000
+const TALLY_KEEP_OTHERS = 3
+export const TALLY_STORE_MAX = 512 * 1024
+
+export function storedTally(value) {
+  const ok = value !== null && typeof value === 'object' && value.v === 1 && value.runs !== null && typeof value.runs === 'object' && !Array.isArray(value.runs)
+  return ok ? value : null
+}
+
+export function settledTally(tally) {
+  if (!tally) return tally
+  const runs = Object.fromEntries(Object.entries(tally.runs).map(([key, r]) => [key, r.status === 'running' ? { ...r, status: 'cleared' } : r]))
+  return { ...tally, runs, ...(tally.overall ? { overall: { ...tally.overall, running: false } } : {}) }
+}
+
+export function staleTallies(stored, sessionKey, now) {
+  const newest = (value) => Math.max(-Infinity, ...Object.values(storedTally(value)?.runs ?? {}).map((r) => (Number.isFinite(r?.at) ? r.at : -Infinity)))
+  const others = Object.entries(stored ?? {})
+    .filter(([key]) => key.startsWith(TALLY_PREFIX) && key !== sessionKey)
+    .map(([key, value]) => ({ key, at: newest(value) }))
+    .sort((a, b) => b.at - a.at)
+  return others.filter(({ at }, i) => i >= TALLY_KEEP_OTHERS || !(at >= now - TALLY_MAX_AGE_MS)).map(({ key }) => key)
 }
 
 export function agentPieces(run) {
@@ -595,7 +635,7 @@ function phaseViews(run, plan, views) {
       done,
       red,
       ok: red === 0,
-      open: red > 0 || state === 'running' || run.agents.length <= FOLD_ABOVE,
+      open: false,
       counts,
       agentIds: agents.map((a) => a.agentId),
       agents
@@ -625,6 +665,7 @@ export function runView(run) {
     counts,
     saved: run.saved || null,
     endedClock: run.endedAt ? hhmm(run.endedAt) : null,
+    stoppedClock: run.status === STOPPED && run.endedAt ? hhmm(run.endedAt) : null,
     countsText: [`${counts.opus} opus`, `${counts.sonnet} sonnet`, ...(counts.haiku > 0 ? [`${counts.haiku} haiku`] : [])].join('  '),
     checks: checks.map((c) => ({ ...c, title: CHECK_TITLES[c.id](run), detail: c.ok ? CHECK_DETAILS[c.id](run) : null })),
     agents,

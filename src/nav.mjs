@@ -1,10 +1,18 @@
-import { activeRuns, finishedRuns, runView } from './eval.mjs'
+import { activeRuns, finishedRuns, runView, stoppedOpen, stoppedRuns } from './eval.mjs'
+
+export const STOPPED_FOLD = 'fold:stopped'
+
+const rowKey = (v) => `run:${v.key}`
 
 export function paneNav(state) {
   const runs = activeRuns(state).map((r) => runView(r))
   const all = [...runs, ...finishedRuns(state).map((r) => runView(r))]
-  const open = all.find((v) => v.key === state.ui.run)
-  if (!open) return { reachable: all.map((v) => `run:${v.key}`), resting: runs[0] ? `run:${runs[0].key}` : null }
+  const stopped = stoppedRuns(state).map((r) => runView(r))
+  const open = [...all, ...stopped].find((v) => v.key === state.ui.run)
+  if (!open) {
+    const fold = stopped.length === 0 ? [] : [STOPPED_FOLD, ...(stoppedOpen(state) ? stopped.map(rowKey) : [])]
+    return { reachable: [...all.map(rowKey), ...fold], resting: runs[0] ? rowKey(runs[0]) : null }
+  }
   if (!open.phases) return { reachable: ['back'], resting: 'back' }
   const filled = open.phases.filter((p) => p.total > 0)
   const first = (filled.find((p) => p.state === 'running' || p.red > 0) ?? filled[0])?.key

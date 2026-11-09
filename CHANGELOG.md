@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.4.15 - ultraguard
+
+- The ultraguard-eval list opens with "overall savings for this session": every workflow of the session pooled into one estimate per baseline, with the same context, 5-hour and weekly rows as a run's saved block. It says " so far" while a workflow runs, counts the workflows, and resets on /clear. The 5-hour and weekly rows count only the workflows of the current window, and a dim line says so when some ran in an earlier one. With several baselines the vs line reads "vs your session's model at each launch" and the low, middle and high ends are added.
+- The totals live in a session tally of their own, so they count every workflow, past the 20 the list keeps. The tally is mirrored to the plugin store under `tally:<session id>`; the store keeps the 3 newest other sessions' tallies for up to 30 days, and stops mirroring a tally over 512 KiB. The overall estimate always uses 1,000 draws: at 4,000 draws 300 pooled agents took about 480 ms.
+- The workflows sit under their own section, in a window of their own, so the overall section stays in view. Rows take 2 lines each, finished workflows sit under a thin "finished this session" rule, and "↑ N more" and "↓ N more" lines show hidden rows. The arrow keys move through every row and the window follows, keeping one row past the selection drawn.
+- A workflow stopped with TaskStop now ends as stopped instead of running for ever: it gets its final estimate, its record (status `killed`) and a toast "ultraguard: <title> stopped". Stopped workflows go into a folded "stopped this session" row at the end of the list. Their savings count toward the overall total.
+- Every main section starts with a double rule: `══ overall savings for this session ══`, `══ workflows ══`, and in a run's view `══ ultraguard saved ══`, `══ phases ══` and `══ checks ══`. A run's view shows the saved block first, then the phases, then the checks.
+- Every collapsible starts collapsed: the phases of a run and the stopped workflows.
+- Savings read as a low-to-high range instead of ±: `+30.1 (3.0 to 91.6)`, `$12.04 ($1.20 to $35.21) at API prices`, and `4.1% (1.8 to 6.4)` in the list. The note reads "range = 9 times in 10".
+- The heading's "vs every agent on ..." always takes its own line.
+- On a narrow pane the bars shrink down to 4 cells (it was 12) so every line of the saved block fits its 56 columns; below that a range moves to its own line. A figure just under zero prints as `$0.00`, never `-$0.00`.
+
 ## 0.4.14 - ultraguard
 
 - The "ultraguard saved" block in ultraguard-eval now draws bars. One thick-line bar per row: context, 5-hour and weekly (API key users get context and cost). The used part is in the theme's text color, the saving is colored, and the rest is a track. A mark shows 100 percent of the limit. When a row's use plus saving passes 100 percent, the mark moves into the bar on every row and the saving can spill past it. The bar's scale tops out at 150 percent of the limit, and a cap shows when use plus saving passes the end of the bar, a little over 150 percent. The exact total moves with the pane width. The block is at most 56 columns wide, the same compact layout at every pane width.

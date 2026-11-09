@@ -1,9 +1,11 @@
 import { modelColor, savedColor } from './palette.mjs'
-import { MAX_WIDTH, layoutOf, rowLine } from './bars.mjs'
+import { MAX_WIDTH, layoutOf, rowLines } from './bars.mjs'
 import { limitMessages, wrapText } from './limitText.mjs'
+import { STOPPED } from './eval.mjs'
 
 const FAMILY_STYLES = new Set(['opus', 'sonnet', 'haiku', 'fable'])
 const DASH = '—'
+const STOPPED_TOAST = (title) => `ultraguard: ${title} stopped`
 
 const seg = (text, style = 'plain') => ({ text, style })
 const dim = (text) => seg(text, 'dim')
@@ -16,7 +18,12 @@ const configText = (config) => config.replace(':', ' ')
 
 export const fmtPct = (x) => (Math.abs(x) < 0.1 ? '< 0.1%' : `${x.toFixed(1)}%`)
 
-export const fmtUsd = (x) => `${x < 0 ? '-' : ''}$${Math.abs(x).toFixed(2)}`
+export const fmtUsd = (x) => `${x <= -0.005 ? '-' : ''}$${Math.abs(x).toFixed(2)}`
+
+export const rangeText = (range, kind) => {
+  const f = kind === 'usd' ? fmtUsd : tenths
+  return ` (${f(range.lo)} to ${f(range.hi)})`
+}
 
 export function fmtTokens(n) {
   const abs = Math.abs(n)
@@ -31,6 +38,36 @@ const finite = (x) => typeof x === 'number' && Number.isFinite(x)
 const clampPct = (x) => Math.min(100, Math.max(0, x))
 const fmtWindow = (n) => (n % 1e6 === 0 ? `${n / 1e6}M` : fmtTokens(n))
 const signed = (x, fixed) => (Math.abs(x) < 0.05 ? 0 : x).toFixed(fixed)
+const tenths = (x) => (Math.round(x * 10) / 10).toFixed(1)
+const RANGE_NOTE = 'range = 9 times in 10'
+const RANGE_WIDE = 'so the range is wide'
+const MIXED_BASELINE = "vs your session's model at each launch"
+const RUN_NOTHING = 'this run may have saved nothing'
+const OVERALL_TITLE = 'overall savings for this session'
+const workflows = (n) => `${n} workflow${n === 1 ? '' : 's'}`
+const OVERALL_COUNT = workflows
+const OVERALL_NOTHING = 'these workflows may have saved nothing'
+const OVERALL_SCOPE = (label, n) => `${label} counts the ${workflows(n)} of this window`
+const NO_ESTIMATE = 'no estimate yet'
+
+export const PHASES_HEAD = 'phases'
+export const AGENTS_HEAD = 'agents'
+export const CHECKS_HEAD = 'checks'
+export const WORKFLOWS_HEAD = 'workflows'
+export const RUNNING_EXTRA = (n) => (n > 0 ? `${n} running` : 'none running')
+export const NO_RUNNING = 'No workflow is running.'
+export const FINISHED_TITLE = 'finished this session'
+export const STOPPED_TITLE = 'stopped this session'
+export const MORE_ABOVE = (n) => `  ↑ ${n} more`
+export const MORE_BELOW = (n) => `  ↓ ${n} more`
+export const LIST_HINT = '↑↓ choose  enter details  esc close'
+export const FOLD_HINT = (open) => `↑↓ choose  enter ${open ? 'folds' : 'opens'} the stopped ones  esc close`
+export const FOCUS_HINT = 'ctrl+x tab: focus this pane'
+
+export const RULE = '═'
+export const SUB_RULE = '─'
+const rule = (text) => ({ text, style: 'plain', color: 'subtle' })
+const cut = (s, n) => (s.length > n ? `${s.slice(0, Math.max(0, n - 1))}…` : s)
 const LIMIT_KEYS = [
   ['five_hour', '5-hour'],
   ['seven_day', 'weekly']
@@ -71,12 +108,22 @@ function modelSeg(baseline) {
   return color ? { text: capitalize(baseline.family), style: 'bold', color } : familySeg(baseline.family)
 }
 
-function headLines(saved, width) {
-  const head = bold(saved.running ? 'ultraguard saved so far' : 'ultraguard saved')
-  if (!saved.baseline) return [[head]]
-  const vs = [dim('vs every agent on '), modelSeg(saved.baseline), dim(` ${saved.baseline.effort}`)]
-  const oneLine = [head, dim('  '), ...vs]
-  return textOf(oneLine) <= width ? [oneLine] : [[head], vs]
+export function sectionHead(title, { extra = '', width }) {
+  const room = Math.max(1, width - 6)
+  const tail = extra && title.length + 2 + extra.length <= room ? `  ${extra}` : ''
+  const name = cut(title, room)
+  const fill = Math.max(2, width - 4 - name.length - tail.length)
+  return [rule(RULE.repeat(2)), seg(' '), bold(name), ...(tail ? [dim(tail)] : []), seg(' '), rule(RULE.repeat(fill))]
+}
+
+export function subHead(label, { width }) {
+  const name = cut(label, Math.max(1, width - 5))
+  return [rule(SUB_RULE), seg(' '), dim(name), seg(' '), rule(SUB_RULE.repeat(Math.max(2, width - 3 - name.length)))]
+}
+
+export function baselineLine(baseline) {
+  if (!baseline) return [dim(`  ${MIXED_BASELINE}`)]
+  return [dim('  vs every agent on '), modelSeg(baseline), dim(` ${baseline.effort}`)]
 }
 
 function contextRow(context) {
@@ -101,8 +148,8 @@ function limitRows(saved) {
     const range = saved.limits[key]
     if (!range) return { label, used, usedText, saved: 0, fig: [dim(`learning ${saved.limits.readings?.[key] ?? 0}/5`)], range: null }
     const gain = range.mid > 0 ? range.mid : 0
-    const amount = gain > 0 ? savedSeg(`+${range.mid < 0.1 ? '<0.1' : range.mid.toFixed(1)}`, range.mid) : seg(signed(range.mid, 1))
-    return { label, used, usedText, saved: gain, fig: [amount, dim(` ±${range.pm.toFixed(1)}`)], range }
+    const amount = gain > 0 ? savedSeg(`+${range.mid < 0.1 ? '<0.1' : tenths(range.mid)}`, range.mid) : seg(signed(range.mid, 1))
+    return { label, used, usedText, saved: gain, fig: [amount, dim(rangeText(range, 'points'))], range }
   })
 }
 
@@ -117,15 +164,16 @@ function costRow(saved) {
     used: Math.max(0, Math.min((100 * spent) / base, 100 - gain)),
     usedText: fmtUsd(spent),
     saved: gain,
-    fig: [amount, dim(` ±${fmtUsd(dollars.pm)}`)],
+    fig: [amount, dim(rangeText(dollars, 'usd'))],
     range: dollars
   }
 }
 
-function moneyLine(saved) {
+function moneyLines(saved, width) {
   const { dollars } = saved
-  if (!dollars) return null
-  return [seg('  '), bold(fmtUsd(dollars.mid)), dim(` ±${fmtUsd(dollars.pm)}`), seg(saved.subscription === false ? ' off your API bill' : ' at API prices')]
+  if (!dollars) return []
+  const parts = [bold(fmtUsd(dollars.mid)), dim(rangeText(dollars, 'usd')), seg(saved.subscription === false ? ' off your API bill' : ' at API prices')]
+  return 2 + textOf(parts) <= width ? [[seg('  '), ...parts]] : wrapLine(parts, width)
 }
 
 function tokenLines(saved, width) {
@@ -156,7 +204,7 @@ function coverageText({ coverage }) {
 
 function sourceLines({ sources }) {
   const adjusted = sources.chained.map((c) => `ratio measured at ${c.via} effort, adjusted with published figures for ${c.to.split(':')[1]}`)
-  const priors = sources.priors.map((p) => `no replay measured ${configText(p.from)} against ${configText(p.to)}; using published figures, so ± is wide`)
+  const priors = sources.priors.map((p) => `no replay measured ${configText(p.from)} against ${configText(p.to)}; using published figures, ${RANGE_WIDE}`)
   return {
     measured: sources.measuredPairs > 0 ? `ratio measured on ${sources.measuredPairs} replayed agents` : null,
     others: [...new Set([...adjusted, ...priors])]
@@ -172,9 +220,32 @@ function coverageLines(saved) {
   return [reasons.length ? `${base}: ${reasons.join('; ')}` : base, ...(measured ? [measured] : []), ...others]
 }
 
-export function savedBlock(saved, { width = MAX_WIDTH, context = null } = {}) {
+export function savedBody(saved, { width = MAX_WIDTH, context = null, nothing } = {}) {
+  const limits = limitRows(saved)
+  const cost = costRow(saved)
+  const rows = [contextRow(context), ...limits, cost].filter(Boolean)
+  const out = []
+  if (rows.length > 0) {
+    const layout = layoutOf(rows, width)
+    out.push(...rows.flatMap((r) => rowLines(r, layout)))
+  }
+  for (const message of limitMessages(limits)) out.push(...proseLines(message, width))
+
+  if (!cost) out.push(...moneyLines(saved, width))
+  out.push(...tokenLines(saved, width))
+
+  const firstRange = rows.find((r) => r.range)?.range ?? saved.dollars
+  if (firstRange) {
+    out.push(...proseLines(RANGE_NOTE, width, 'dim'))
+    if (firstRange.lo < 0 && nothing) out.push(...proseLines(nothing, width, 'dim'))
+  }
+  return out
+}
+
+export function savedBlock(saved, { width = MAX_WIDTH, headWidth = width, context = null } = {}) {
   const room = Math.min(width, MAX_WIDTH)
-  const head = headLines(saved, room)
+  const head = [sectionHead(saved.running ? 'ultraguard saved so far' : 'ultraguard saved', { width: headWidth })]
+  if (saved.baseline) head.push(baselineLine(saved.baseline))
   if (saved.status === 'none') return [...head, ...proseLines("every agent ran on your session's model and effort, so nothing was saved", room)]
   if (!saved.baseline) return [...head, ...proseLines("ultraguard could not read your session's model or effort, so it has no estimate", room)]
 
@@ -183,28 +254,23 @@ export function savedBlock(saved, { width = MAX_WIDTH, context = null } = {}) {
     return [...head, ...proseLines(`${base}${reasons.length ? `: ${reasons.join('; ')}` : ''}`, room, 'dim')]
   }
 
-  const limits = limitRows(saved)
-  const cost = costRow(saved)
-  const rows = [contextRow(context), ...limits, cost].filter(Boolean)
-  const out = [...head]
-  if (rows.length > 0) {
-    const layout = layoutOf(rows, room)
-    out.push(...rows.map((r) => rowLine(r, layout)))
-  }
-  for (const message of limitMessages(limits)) out.push(...proseLines(message, room))
-
-  if (!cost) {
-    const money = moneyLine(saved)
-    if (money) out.push(money)
-  }
-  out.push(...tokenLines(saved, room))
-
-  const firstRange = rows.find((r) => r.range)?.range ?? saved.dollars
-  if (firstRange) {
-    out.push(...proseLines('± = how far off, 9 times in 10', room, 'dim'))
-    if (firstRange.lo < 0) out.push(...proseLines('this run may have saved nothing', room, 'dim'))
-  }
+  const out = [...head, ...savedBody(saved, { width: room, context, nothing: RUN_NOTHING })]
   for (const line of coverageLines(saved)) out.push(...proseLines(line, room, 'dim'))
+  return out
+}
+
+export function overallBlock(overall, { width = MAX_WIDTH, context = null } = {}) {
+  if (!(overall?.count > 0)) return []
+  const room = Math.min(width, MAX_WIDTH)
+  const head = sectionHead(overall.running ? `${OVERALL_TITLE} so far` : OVERALL_TITLE, { extra: OVERALL_COUNT(overall.count), width })
+  if (overall.status !== 'estimated') return [head, ...proseLines(NO_ESTIMATE, room, 'dim')]
+  const out = [head, baselineLine(overall.baseline), ...savedBody(overall, { width: room, context, nothing: OVERALL_NOTHING })]
+  if (overall.subscription === true && overall.limits) {
+    for (const [key, label] of LIMIT_KEYS) {
+      const n = overall.counted?.[key]
+      if (finite(n) && n < overall.count) out.push(...proseLines(OVERALL_SCOPE(label, n), room, 'dim'))
+    }
+  }
   return out
 }
 
@@ -279,6 +345,14 @@ export function listHeader(views) {
   return [dim(limit ? '5h saves' : 'API saves')]
 }
 
+export function foldLine({ open, count, picked }) {
+  return [dim(open ? '▾' : '▸'), seg(' '), picked ? bold(STOPPED_TITLE) : seg(STOPPED_TITLE), dim(`  ${workflows(count)}`)]
+}
+
+export function endedText(view) {
+  return view.status === STOPPED ? `stopped ${view.stoppedClock ?? ''}`.trim() : `done ${view.endedClock ?? ''}`.trim()
+}
+
 export function listCell(view) {
   if (!view.ok) return []
   const saved = view.saved
@@ -289,18 +363,20 @@ export function listCell(view) {
   const amount = limit ? fmtPct(range.mid) : fmtUsd(range.mid)
   const figureSeg = limit ? savedSeg(amount, range.mid) : bold(amount)
   if (saved.running) return [figureSeg, dim(' so far')]
-  return [figureSeg, dim(` ± ${limit ? range.pm.toFixed(1) : fmtUsd(range.pm)}`)]
+  return [figureSeg, dim(rangeText(range, limit ? 'points' : 'usd'))]
 }
 
 export function toastText(view) {
-  const head = `ultraguard: ${view.title} finished`
+  const stopped = view.status === STOPPED
+  const head = stopped ? STOPPED_TOAST(view.title) : `ultraguard: ${view.title} finished`
   if (!view.ok) return `${head}, but ${view.reason}`
+  const approved = stopped ? head : `${head} as approved`
   const saved = view.saved
-  if (saved?.status === 'none') return `${head} as approved; every agent ran on your session's model and effort`
-  if (saved?.status !== 'estimated') return `${head} as approved`
+  if (saved?.status === 'none') return stopped ? head : `${approved}; every agent ran on your session's model and effort`
+  if (saved?.status !== 'estimated') return approved
   const limit = fiveHourOf(saved)
-  if (limit) return `${head} as approved and saved about ${fmtPct(limit.mid)} of your 5-hour limit`
-  if (!saved.dollars) return `${head} as approved`
+  if (limit) return `${approved} and saved about ${fmtPct(limit.mid)} of your 5-hour limit`
+  if (!saved.dollars) return approved
   const where = saved.subscription === false ? 'off your API bill' : 'at API prices'
-  return `${head} as approved and saved about ${fmtUsd(saved.dollars.mid)} ${where}`
+  return `${approved} and saved about ${fmtUsd(saved.dollars.mid)} ${where}`
 }

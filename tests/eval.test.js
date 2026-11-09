@@ -4,7 +4,8 @@ import { sha256Hex } from '../src/fingerprint.mjs'
 import { recordPath } from '../src/record.mjs'
 import { readFileSync } from 'node:fs'
 import { loadPrices } from '../src/prices.mjs'
-import { UNKNOWN_PHASE, noteFocus, phaseOpen, setFolds, agentPieces, finishedRuns, hideFinished, noteMainStep, noteMeterReading, noteSaved, noteStored, noteUsage } from '../src/eval.mjs'
+import { toastText } from '../src/savedText.mjs'
+import { STOPPED, TALLY_PREFIX, UNKNOWN_PHASE, noteFocus, phaseOpen, setFolds, agentPieces, finishedRuns, hideFinished, noteMainStep, noteMeterReading, noteSaved, noteStored, noteUsage, staleTallies, storedTally, settledTally, stoppedRuns, setStoppedOpen, stoppedOpen } from '../src/eval.mjs'
 import {
   activeRuns,
   bandText,
@@ -734,6 +735,64 @@ test('usage of an unpriced model reaches the meter under an unknown family', () 
   assert.deepEqual(Object.keys(s.meter.acc.five_hour), ['?'])
 })
 
+const withStopped = () => {
+  let s = twoEnded()
+  const add = (n, name) => {
+    s = noteLaunch(s, { toolUseId: `toolu_0${n}`, fingerprint: 'f', at: 100 * n })
+    s = noteLaunchResult(s, { toolUseId: `toolu_0${n}`, taskId: `w${n}`, runId: `wf_run${n}`, name, at: 100 * n })
+  }
+  add(4, 'four')
+  add(5, 'five')
+  add(6, 'six')
+  s = noteRunEnd(s, { toolUseId: null, taskId: 'w4', status: STOPPED, at: 13000 })
+  s = noteRunEnd(s, { toolUseId: null, taskId: 'w5', status: STOPPED, at: 15000 })
+  return s
+}
+
+test('a stopped run ends with the status the host notification uses', () => {
+  assert.equal(STOPPED, 'killed')
+  const s = withStopped()
+  assert.equal(s.runs.toolu_04.status, 'killed')
+  assert.equal(s.runs.toolu_04.endedAt, 13000)
+  assert.deepEqual(activeRuns(s).map((r) => r.name), ['six'])
+})
+
+test('stopped runs are listed apart from the finished ones, newest first', () => {
+  const s = withStopped()
+  assert.deepEqual(stoppedRuns(s).map((r) => r.name), ['five', 'four'])
+  assert.deepEqual(finishedRuns(s).map((r) => r.name), ['two', 'one'])
+  assert.deepEqual(stoppedRuns(twoEnded()), [])
+  assert.deepEqual(stoppedRuns(hideFinished(s)), [])
+})
+
+test('a stopped run keeps its status when a later notice ends it again', () => {
+  const s = withStopped()
+  assert.equal(noteRunEnd(s, { toolUseId: 'toolu_04', taskId: 'w4', status: 'completed', at: 20000 }), s)
+})
+
+test('runView gives the clock a run was stopped, and only for a stopped run', () => {
+  const s = withStopped()
+  const d = new Date(13000)
+  assert.equal(runView(s.runs.toolu_04).stoppedClock, `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`)
+  assert.equal(runView(s.runs.toolu_01).stoppedClock, null)
+  assert.equal(runView(s.runs.toolu_06).stoppedClock, null)
+})
+
+test('the toast of a stopped run says it stopped and what it saved', () => {
+  const s = noteRunEnd(compliant(), { toolUseId: null, taskId: 'w1', status: STOPPED, at: 3000 })
+  const limit = { mid: 1.43, lo: 0.6, hi: 2.2, pm: 0.8 }
+  const estimated = { status: 'estimated', running: false, subscription: true, dollars: { mid: 2.32, lo: 1, hi: 3, pm: 1 }, limits: { five_hour: limit, seven_day: null, readings: { five_hour: 6, seven_day: 6 } } }
+  const toast = (saved, from = s) => toastText(runView(noteSaved(from, TU, saved).runs[TU]))
+  assert.equal(toast(estimated), 'ultraguard: research stopped and saved about 1.4% of your 5-hour limit')
+  assert.equal(toast({ ...estimated, limits: null, subscription: false }), 'ultraguard: research stopped and saved about $2.32 off your API bill')
+  assert.equal(toast({ status: 'none' }), 'ultraguard: research stopped')
+  assert.equal(toast({ status: 'unknown' }), 'ultraguard: research stopped')
+  assert.equal(toastText(runView(s.runs[TU])), 'ultraguard: research stopped')
+  assert.equal(toastText(runView(withStopped().runs.toolu_04)), 'ultraguard: four stopped, but not approved by the gate')
+  const done = noteRunEnd(compliant(), { toolUseId: TU, status: 'completed', at: 3000 })
+  assert.equal(toast(estimated, done), 'ultraguard: research finished as approved and saved about 1.4% of your 5-hour limit')
+})
+
 test('a clear hides the finished runs too', () => {
   const s = hideFinished(twoEnded())
   assert.deepEqual(finishedRuns(s), [])
@@ -843,32 +902,34 @@ test('a red agent makes its phase red and counts it', () => {
   s = spawn(s, 3, 'investigate: map', OPUS)
   const phases = phasesOf(s)
   const bad = phases.find((p) => p.title === 'Investigate')
-  assert.deepEqual([bad.ok, bad.red, bad.open], [false, 1, true])
+  assert.deepEqual([bad.ok, bad.red, bad.open], [false, 1, false])
   assert.equal(phases[0].ok, true)
   assert.match(bad.agents[0].reason, /ran on opus, the gate approved sonnet/)
 })
 
-test('a finished green phase starts folded only on a run of more than 12 agents', () => {
+test('every phase starts collapsed, a red one and a running one included', () => {
   let few = phasedRun()
-  few = done(done(spawn(few, 3, 'investigate: map', SONNET), 1), 2)
-  assert.equal(phasesOf(few)[0].open, true)
+  few = done(done(spawn(few, 3, 'investigate: map', OPUS), 1), 2)
+  assert.deepEqual(phasesOf(few).map((p) => [p.state, p.red, p.open]), [['done', 0, false], ['running', 1, false], ['not started', 0, false]])
   let many = launched({ record: phasedGate() })
   for (let n = 1; n <= 13; n++) many = spawn(many, n, `grunt: facts ${n}`, HAIKU)
   for (let n = 1; n <= 13; n++) many = done(many, n)
   many = spawn(many, 14, 'investigate: map', SONNET)
-  const phases = phasesOf(many)
-  assert.deepEqual([phases[0].state, phases[0].open], ['done', false])
-  assert.deepEqual([phases[1].state, phases[1].open], ['running', true])
+  assert.deepEqual(phasesOf(many).map((p) => [p.state, p.open]), [['done', false], ['running', false], ['not started', false]])
+  const ended = noteRunEnd(many, { toolUseId: TU, taskId: 'w1', status: 'completed', at: 3000 })
+  assert.ok(runView(finishedRuns(ended)[0]).phases.every((p) => p.open === false))
 })
 
 test('a toggle beats the default and survives a redraw; opening another run resets it', () => {
   const s = done(done(phasedRun(), 1), 2)
   const first = phasesOf(s)[0]
-  assert.equal(phaseOpen(first, undefined), true)
-  assert.equal(phaseOpen(first, {}), true)
-  const folded = setFolds(openRun(s, TU), [first.key], true)
+  assert.equal(phaseOpen(first, undefined), false)
+  assert.equal(phaseOpen(first, {}), false)
+  const opened = setFolds(openRun(s, TU), [first.key], false)
+  assert.equal(phaseOpen(first, opened.ui.folds), true)
+  assert.equal(setFolds(opened, [first.key], false), opened)
+  const folded = setFolds(opened, [first.key], true)
   assert.equal(phaseOpen(first, folded.ui.folds), false)
-  assert.equal(setFolds(folded, [first.key], true), folded)
   const all = setFolds(folded, ['Investigate', 'Decide'], false)
   assert.deepEqual(all.ui.folds, { Collect: true, Investigate: false, Decide: false })
   assert.equal(phaseOpen(first, all.ui.folds), false)
@@ -920,4 +981,64 @@ test('the focused element is kept in the ui state, and the same one is not a cha
   assert.equal(noteFocus(focused, null).ui.focus, null)
   assert.equal(noteFocus(s, null), s)
   assert.equal(noteFocus(focused, 'run:abc').ui.run, focused.ui.run)
+})
+
+test('the stopped fold starts closed, opens and closes, and opening or closing a run leaves it alone', () => {
+  const s = compliant()
+  assert.deepEqual(createState().ui, { run: null, folds: {} })
+  assert.equal(stoppedOpen(s), false)
+  assert.equal(setStoppedOpen(s, false), s)
+  const open = setStoppedOpen(s, true)
+  assert.equal(open.ui.list.stoppedOpen, true)
+  assert.equal(stoppedOpen(open), true)
+  assert.equal(setStoppedOpen(open, true), open)
+  assert.equal(stoppedOpen(setStoppedOpen(open, false)), false)
+  assert.equal(stoppedOpen(openRun(open, TU)), true)
+  assert.equal(stoppedOpen(closeRun(openRun(open, TU))), true)
+  assert.equal(stoppedOpen({ ...s, ui: { run: null } }), false)
+})
+
+const DAY_MS = 24 * 3600 * 1000
+const tallyAt = (...ats) => ({ v: 1, runs: Object.fromEntries(ats.map((at, i) => [`r${i}`, { key: `r${i}`, status: 'completed', baseline: null, agents: [], windows: { five_hour: null, seven_day: null }, at }])) })
+
+test('a stored tally is used only when it is a version 1 tally with a runs map', () => {
+  const good = tallyAt(5)
+  assert.equal(storedTally(good), good)
+  assert.equal(storedTally({ v: 1, runs: {}, overall: { status: 'unknown', count: 0 } })?.v, 1)
+  for (const bad of [undefined, null, 7, 'x', [], { v: 2, runs: {} }, { v: 1 }, { v: 1, runs: null }, { v: 1, runs: [] }]) assert.equal(storedTally(bad), null)
+})
+
+test('the tally keys older than 30 days are stale, never the own key and never a key with a recent run', () => {
+  const now = 100 * DAY_MS
+  const own = `${TALLY_PREFIX}sess-1`
+  const stored = {
+    [own]: tallyAt(1000),
+    [`${TALLY_PREFIX}ancient`]: tallyAt(1000, now - 31 * DAY_MS),
+    [`${TALLY_PREFIX}recent`]: tallyAt(1000, now - 29 * DAY_MS),
+    [`${TALLY_PREFIX}empty`]: tallyAt(),
+    [`${TALLY_PREFIX}broken`]: { v: 1, runs: 'x' },
+    'meter:old': { v: 1, five_hour: [], seven_day: [] }
+  }
+  assert.deepEqual(staleTallies(stored, own, now).sort(), [`${TALLY_PREFIX}ancient`, `${TALLY_PREFIX}broken`, `${TALLY_PREFIX}empty`])
+  assert.deepEqual(staleTallies(undefined, own, now), [])
+  assert.equal(TALLY_PREFIX, 'tally:')
+})
+
+test('the store keeps the tallies of the 3 newest other sessions, never the own key', () => {
+  const now = 100 * DAY_MS
+  const own = `${TALLY_PREFIX}sess-1`
+  const stored = { [own]: tallyAt(1000, now - 9 * DAY_MS) }
+  for (let i = 1; i <= 5; i++) stored[`${TALLY_PREFIX}s${i}`] = tallyAt(1000, now - i * DAY_MS)
+  assert.deepEqual(staleTallies(stored, own, now).sort(), [`${TALLY_PREFIX}s4`, `${TALLY_PREFIX}s5`])
+})
+
+test('a tally loaded from the store has no running runs left, and its overall is not so far', () => {
+  const t = tallyAt(5, 6)
+  t.runs.r1.status = 'running'
+  t.overall = { status: 'unknown', count: 2, running: true }
+  const settled = settledTally(t)
+  assert.deepEqual(Object.values(settled.runs).map((r) => r.status), ['completed', 'cleared'])
+  assert.equal(settled.overall.running, false)
+  assert.equal(t.runs.r1.status, 'running')
+  assert.equal(settledTally(null), null)
 })

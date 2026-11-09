@@ -1,13 +1,13 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { MAX_WIDTH, barCells, layoutOf, lineLength, rowLine } from '../src/bars.mjs'
+import { MAX_WIDTH, barCells, layoutOf, lineLength, rowLine, rowLines } from '../src/bars.mjs'
 import { savedColor } from '../src/palette.mjs'
 
 const EPS = 1e-3
 const USEDS = Array.from({ length: 41 }, (_, i) => i * 2.5)
 const SAVEDS = [0.1, 0.4, 1.9, 2, 5, 12, 20, 40, 80]
-const TS = [12, 20, 30, 48]
-const lsOf = (T) => [T, T - 4, T - 12]
+const TS = [4, 6, 11, 12, 20, 30, 48]
+const lsOf = (T) => [...new Set([T, T - Math.ceil(T / 3), T - 4, T - 12])].filter((L) => L >= 0)
 
 const luminance = (hex) => {
   const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4))
@@ -136,7 +136,7 @@ test('layoutOf matches the mock numbers for the base rows', () => {
   const expected = { 44: 13, 56: 25, 72: 25, 110: 25 }
   for (const [width, T] of Object.entries(expected)) {
     const layout = layoutOf(BASE_ROWS, Math.min(Number(width), MAX_WIDTH))
-    assert.deepEqual(layout, { T, L: T, usedW: 4 }, `width ${width}`)
+    assert.deepEqual(layout, { T, L: T, usedW: 4, split: false }, `width ${width}`)
     for (const row of BASE_ROWS) {
       const total = lineLength(rowLine(row, layout))
       assert.ok(total <= Math.min(Number(width), MAX_WIDTH), `width ${width} ${row.label}: ${total}`)
@@ -147,7 +147,7 @@ test('layoutOf matches the mock numbers for the base rows', () => {
 test('layoutOf places the limit marker when the total passes 100', () => {
   const rows = [{ label: '5-hour', used: 85, usedText: '85%', saved: 30, fig: [{ text: '+30.0 ±12.0', style: 'plain' }] }]
   const layout = layoutOf(rows, 56)
-  assert.deepEqual(layout, { T: 25, L: 25 - Math.ceil((25 * 15) / 115), usedW: 4 })
+  assert.deepEqual(layout, { T: 25, L: 25 - Math.ceil((25 * 15) / 115), usedW: 4, split: false })
   const capped = layoutOf([{ ...rows[0], saved: 200 }], 56)
   assert.equal(capped.L, 25 - Math.ceil((25 * 50) / 150))
 })
@@ -160,11 +160,34 @@ test('layoutOf clamps used and ignores null-used rows for the scale', () => {
   assert.equal(withNull.L, withNull.T)
 })
 
-test('layoutOf widens usedW and figW from the rows and keeps T within 12 and 48', () => {
+test('layoutOf widens usedW and figW from the rows and keeps T within 4 and 48', () => {
   const wide = [{ label: 'cost', used: 10, usedText: '$100.00', saved: 5, fig: [{ text: '+$5.00 ±$1.00 and more text', style: 'plain' }] }]
   assert.equal(layoutOf(wide, 56).usedW, 7)
-  assert.equal(layoutOf(wide, 20).T, 12)
+  assert.equal(layoutOf(wide, 20).T, 4)
   assert.equal(layoutOf(BASE_ROWS, 200).T, 48)
+})
+
+const COST_ROW = { label: 'cost', used: 31.4, usedText: '$5.50', saved: 68.6, fig: [{ text: '+$12.04', style: 'saved', pct: 68.6 }, { text: ' ($1.20 to $35.21)', style: 'dim' }] }
+const CONTEXT_ROW = { label: 'context', used: 12.5, usedText: '12%', saved: 0, fig: [{ text: '125k of 1M', style: 'dim' }] }
+
+test('a figure too wide for a 12-cell bar shrinks the bar so the row keeps to the width', () => {
+  const layout = layoutOf([CONTEXT_ROW, COST_ROW], 56)
+  assert.equal(layout.T, 11)
+  assert.equal(layout.split, false)
+  assert.deepEqual(rowLines(COST_ROW, layout), [rowLine(COST_ROW, layout)])
+  assert.equal(lineLength(rowLine(COST_ROW, layout)), 56)
+})
+
+test('when a 4-cell bar still does not fit, every range moves to its own line under the bar', () => {
+  const layout = layoutOf([CONTEXT_ROW, COST_ROW], 44)
+  assert.equal(layout.split, true)
+  assert.equal(layout.T, 12)
+  const [first, second, ...rest] = rowLines(COST_ROW, layout)
+  assert.equal(rest.length, 0)
+  assert.ok(lineLength(first) <= 44)
+  assert.deepEqual(first.at(-1), COST_ROW.fig[0])
+  assert.deepEqual(second, [{ text: ' '.repeat(10), style: 'plain' }, { text: '($1.20 to $35.21)', style: 'dim' }])
+  assert.deepEqual(rowLines(CONTEXT_ROW, layout), [rowLine(CONTEXT_ROW, layout)])
 })
 
 test('rowLine puts label, bar, used text and figure together', () => {
