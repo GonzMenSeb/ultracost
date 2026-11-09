@@ -4,7 +4,8 @@ import { sha256Hex } from '../src/fingerprint.mjs'
 import { recordPath } from '../src/record.mjs'
 import { readFileSync } from 'node:fs'
 import { loadPrices } from '../src/prices.mjs'
-import { UNKNOWN_PHASE, noteFocus, phaseOpen, setFolds, agentPieces, finishedRuns, hideFinished, noteMainStep, noteMeterReading, noteSaved, noteStored, noteUsage } from '../src/eval.mjs'
+import { toastText } from '../src/savedText.mjs'
+import { STOPPED, UNKNOWN_PHASE, noteFocus, phaseOpen, setFolds, agentPieces, finishedRuns, hideFinished, noteMainStep, noteMeterReading, noteSaved, noteStored, noteUsage, stoppedRuns } from '../src/eval.mjs'
 import {
   activeRuns,
   bandText,
@@ -732,6 +733,64 @@ test('stored meter values are merged into the eval state', () => {
 test('usage of an unpriced model reaches the meter under an unknown family', () => {
   const s = noteUsage(compliant(), { effort: 'high', usage: use('claude-mythos-5-1', 1, 2, 3, 4) })
   assert.deepEqual(Object.keys(s.meter.acc.five_hour), ['?'])
+})
+
+const withStopped = () => {
+  let s = twoEnded()
+  const add = (n, name) => {
+    s = noteLaunch(s, { toolUseId: `toolu_0${n}`, fingerprint: 'f', at: 100 * n })
+    s = noteLaunchResult(s, { toolUseId: `toolu_0${n}`, taskId: `w${n}`, runId: `wf_run${n}`, name, at: 100 * n })
+  }
+  add(4, 'four')
+  add(5, 'five')
+  add(6, 'six')
+  s = noteRunEnd(s, { toolUseId: null, taskId: 'w4', status: STOPPED, at: 13000 })
+  s = noteRunEnd(s, { toolUseId: null, taskId: 'w5', status: STOPPED, at: 15000 })
+  return s
+}
+
+test('a stopped run ends with the status the host notification uses', () => {
+  assert.equal(STOPPED, 'killed')
+  const s = withStopped()
+  assert.equal(s.runs.toolu_04.status, 'killed')
+  assert.equal(s.runs.toolu_04.endedAt, 13000)
+  assert.deepEqual(activeRuns(s).map((r) => r.name), ['six'])
+})
+
+test('stopped runs are listed apart from the finished ones, newest first', () => {
+  const s = withStopped()
+  assert.deepEqual(stoppedRuns(s).map((r) => r.name), ['five', 'four'])
+  assert.deepEqual(finishedRuns(s).map((r) => r.name), ['two', 'one'])
+  assert.deepEqual(stoppedRuns(twoEnded()), [])
+  assert.deepEqual(stoppedRuns(hideFinished(s)), [])
+})
+
+test('a stopped run keeps its status when a later notice ends it again', () => {
+  const s = withStopped()
+  assert.equal(noteRunEnd(s, { toolUseId: 'toolu_04', taskId: 'w4', status: 'completed', at: 20000 }), s)
+})
+
+test('runView gives the clock a run was stopped, and only for a stopped run', () => {
+  const s = withStopped()
+  const d = new Date(13000)
+  assert.equal(runView(s.runs.toolu_04).stoppedClock, `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`)
+  assert.equal(runView(s.runs.toolu_01).stoppedClock, null)
+  assert.equal(runView(s.runs.toolu_06).stoppedClock, null)
+})
+
+test('the toast of a stopped run says it stopped and what it saved', () => {
+  const s = noteRunEnd(compliant(), { toolUseId: null, taskId: 'w1', status: STOPPED, at: 3000 })
+  const limit = { mid: 1.43, lo: 0.6, hi: 2.2, pm: 0.8 }
+  const estimated = { status: 'estimated', running: false, subscription: true, dollars: { mid: 2.32, lo: 1, hi: 3, pm: 1 }, limits: { five_hour: limit, seven_day: null, readings: { five_hour: 6, seven_day: 6 } } }
+  const toast = (saved, from = s) => toastText(runView(noteSaved(from, TU, saved).runs[TU]))
+  assert.equal(toast(estimated), 'ultraguard: research stopped and saved about 1.4% of your 5-hour limit')
+  assert.equal(toast({ ...estimated, limits: null, subscription: false }), 'ultraguard: research stopped and saved about $2.32 off your API bill')
+  assert.equal(toast({ status: 'none' }), 'ultraguard: research stopped')
+  assert.equal(toast({ status: 'unknown' }), 'ultraguard: research stopped')
+  assert.equal(toastText(runView(s.runs[TU])), 'ultraguard: research stopped')
+  assert.equal(toastText(runView(withStopped().runs.toolu_04)), 'ultraguard: four stopped, but not approved by the gate')
+  const done = noteRunEnd(compliant(), { toolUseId: TU, status: 'completed', at: 3000 })
+  assert.equal(toast(estimated, done), 'ultraguard: research finished as approved and saved about 1.4% of your 5-hour limit')
 })
 
 test('a clear hides the finished runs too', () => {

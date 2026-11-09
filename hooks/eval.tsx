@@ -35,7 +35,9 @@ import {
   phaseOpen,
   runOfAgent,
   runView,
-  setFolds
+  setFolds,
+  STOPPED,
+  stoppedRuns
 } from '../src/eval.mjs'
 import { contextFill, createContext, forgetCompactRead, noteBreakdown, noteContext } from '../src/context.mjs'
 import { intervalsOf, staleKeys, storedValue, usedOf } from '../src/meter.mjs'
@@ -365,6 +367,16 @@ export const register: Register = on => {
     return ran
   })
 
+  on('tool.call', { tool: 'TaskStop' }, async ($, e, next) => {
+    const ran = await next(e)
+    await guard($, 'stop', async () => {
+      const taskId = e.task_id ?? e.shell_id
+      if (ran.deny !== undefined || ran.isError === true || typeof taskId !== 'string') return
+      await endRuns($, [{ toolUseId: null, taskId, status: STOPPED }])
+    })
+    return ran
+  })
+
   on('agent.spawn', async ($, e, next) => {
     const workflow = e.workflow
     if (!workflow) return next(e)
@@ -451,7 +463,7 @@ export const register: Register = on => {
     const state = await read($, ev)
     if (state.ui.run !== null) {
       await update($, ev, closeRun)
-      if (e.origin.kind === 'person' && [...activeRuns(state), ...finishedRuns(state)].some(r => r.key === state.ui.run)) return { value: undefined }
+      if (e.origin.kind === 'person' && [...activeRuns(state), ...finishedRuns(state), ...stoppedRuns(state)].some(r => r.key === state.ui.run)) return { value: undefined }
     }
     return next(e)
   })
@@ -501,7 +513,7 @@ export const register: Register = on => {
     const state = await read($, ev)
     const runs = activeRuns(state).map(r => runView(r))
     const finished = finishedRuns(state).map(r => runView(r))
-    const open = [...runs, ...finished].find(v => v.key === state.ui.run)
+    const open = [...runs, ...finished, ...stoppedRuns(state).map(r => runView(r))].find(v => v.key === state.ui.run)
     const { reachable, resting } = paneNav(state)
     const picked = (key: string) => e.props.isFocused && (reachable.includes(state.ui.focus ?? '') ? state.ui.focus : resting) === key
 

@@ -38,9 +38,13 @@ const gateRecord = (toolUseId: string, over: Record<string, unknown> = {}) =>
     ...over,
   })
 
-async function world($: any, on: any, options: { gate: boolean; launch?: Record<string, unknown>; record?: Record<string, unknown> }) {
+const PRICES = { v: 1, families: { opus: { input: 4, output: 20, cacheRead: 0.2, cacheWrite: 5 }, sonnet: { input: 2, output: 10, cacheRead: 0.1, cacheWrite: 2.5 } } }
+const RATIOS = { v: 1, tau: 0.3, pooledAgentSd: { output: 0.4, fresh: 0.2, read: 0.6 }, measured: {}, steps: {}, priors: {} }
+
+async function world($: any, on: any, options: { gate: boolean; launch?: Record<string, unknown>; record?: Record<string, unknown>; stop?: (e: any) => unknown; data?: boolean }) {
   const writes: Record<string, string> = {}
   const logs: string[] = []
+  const toasts: string[] = []
   const notices: unknown[] = []
   let toolUseId = ''
   mock.env(on, { CLAUDE_CONFIG_DIR: CONFIG })
@@ -50,15 +54,21 @@ async function world($: any, on: any, options: { gate: boolean; launch?: Record<
   on('turn.complete', () => ({ text: '' }))
   on('session.messages', () => ({ value: notices }))
   on('ui.log', (_: any, e: any) => (logs.push(String(e.text)), { value: undefined }))
+  on('ui.toast', (_: any, e: any) => (toasts.push(String(e.text)), { value: undefined }))
   on('fs.write', (_: any, e: any) => ((writes[e.path] = e.text), { value: undefined }))
   on('fs.read', (_: any, e: any) =>
     options.gate && e.path === `${CONFIG}/ultraguard/sessions/${SESSION}/${toolUseId}.gate.json`
       ? { value: gateRecord(toolUseId, options.record) }
       : String(e.path).endsWith('/saved/map.js')
         ? { value: SCRIPT }
-        : { deny: `ENOENT ${e.path}` },
+        : options.data && String(e.path).endsWith('/data/prices.json')
+          ? { value: JSON.stringify(PRICES) }
+          : options.data && String(e.path).endsWith('/data/ratios.json')
+            ? { value: JSON.stringify(RATIOS) }
+            : { deny: `ENOENT ${e.path}` },
   )
   on('tool.call', (_: any, e: any) => {
+    if (e.tool === 'TaskStop') return options.stop ? options.stop(e) : { result: { message: 'stopped', task_id: e.task_id, task_type: 'local_workflow' } }
     toolUseId = e.tool_use_id
     return { result: { status: 'async_launched', taskId: 'w1', runId: 'wf_run001', workflowName: 'map' } }
   })
@@ -96,7 +106,7 @@ async function world($: any, on: any, options: { gate: boolean; launch?: Record<
       fork: false,
       workflow: { runId: 'wf_run001', agentIndex },
     })
-  return { writes, logs, notices, id: () => toolUseId, spawn }
+  return { writes, logs, notices, toasts, id: () => toolUseId, spawn }
 }
 
 const focus = ($: any, element: string) => $.ui.focus({ component: 'Pane', requestId: 'ultraguard', element, origin: { kind: 'person' } })
@@ -289,6 +299,78 @@ test('a completion notice the append hook never saw still ends the run at the ne
   await ui.unmount()
   const record = JSON.parse(w.writes[`${CONFIG}/ultraguard/sessions/${SESSION}/${w.id()}.eval.json`] ?? '{}')
   expect(record.status).toBe('killed')
+})
+
+const stopRun = ($: any, input: Record<string, unknown>) => $.tool.call({ tool: 'TaskStop', ...input })
+const evalRecordOf = (w: { writes: Record<string, string>; id: () => string }) => JSON.parse(w.writes[`${CONFIG}/ultraguard/sessions/${SESSION}/${w.id()}.eval.json`] ?? '{}')
+const bandRunning = async ($: any) => {
+  const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  const text = (await ui.find({ type: 'Button' }))?.text ?? null
+  await ui.unmount()
+  return text
+}
+
+test('a workflow stopped with TaskStop ends as stopped, gets its estimate, record and toast', async ($, on) => {
+  on('session.start', (_: any, e: any) => ({ cwd: e.cwd }))
+  const w = await world($, on, { gate: true, data: true })
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  expect(evalRecordOf(w).savings.saved).toBe(null)
+
+  const ran = await stopRun($, { task_id: 'w1' })
+  expect(ran.result).toMatchObject({ message: 'stopped', task_id: 'w1' })
+  expect(await bandRunning($)).toBe(null)
+  const record = evalRecordOf(w)
+  expect(record.status).toBe('killed')
+  expect(record.savings.saved).toMatchObject({ running: false })
+  expect(w.toasts).toEqual(['ultraguard: map stopped'])
+})
+
+test('a TaskStop by the deprecated shell_id stops the workflow too', async ($, on) => {
+  const w = await world($, on, { gate: true })
+  await stopRun($, { shell_id: 'w1' })
+  expect(evalRecordOf(w).status).toBe('killed')
+})
+
+test('a TaskStop of another task, a denied one or a failed one leaves the workflow running', async ($, on) => {
+  let answer: (e: any) => unknown = (e: any) => ({ result: { message: 'stopped', task_id: e.task_id, task_type: 'local_bash' } })
+  const w = await world($, on, { gate: true, stop: e => answer(e) })
+  await stopRun($, { task_id: 'b7' })
+  answer = () => ({ deny: 'not allowed' })
+  expect((await stopRun($, { task_id: 'w1' })).deny).toBe('not allowed')
+  answer = () => ({ result: 'No task found with ID: w1', isError: true })
+  await stopRun($, { task_id: 'w1' })
+  expect(await bandRunning($)).toContain('1 running')
+  expect(evalRecordOf(w).status).toBe('running')
+  expect(w.toasts).toEqual([])
+})
+
+test('a notice after the TaskStop leaves the run stopped and toasts once', async ($, on) => {
+  const w = await world($, on, { gate: true })
+  await stopRun($, { task_id: 'w1' })
+  await $.session.append({
+    message: {
+      type: 'user',
+      content: [{ type: 'text', text: `<task-notification>\n<task-id>w1</task-id>\n<tool-use-id>${w.id()}</tool-use-id>\n<status>completed</status>\n</task-notification>` }],
+    },
+    door: 'queue',
+    origin: { kind: 'task-notification' },
+    uuid: 'u1',
+  })
+  expect(evalRecordOf(w).status).toBe('killed')
+  expect(w.toasts).toEqual(['ultraguard: map stopped'])
+})
+
+test('a run open in the pane stays open when it is stopped', async ($, on) => {
+  const w = await world($, on, { gate: true })
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  await ui.press({ key: `run:${w.id()}` })
+  await stopRun($, { task_id: 'w1' })
+  expect(evalRecordOf(w).status).toBe('killed')
+  expect(await ui.find({ type: 'Text', text: /^ultraguard-eval › map/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /Approved by the gate/ })).toBeDefined()
+  await ui.press({ key: 'back' })
+  expect(await ui.find({ type: 'Text', text: /^ultraguard-eval › map/ })).toBeUndefined()
+  await ui.unmount()
 })
 
 const PHASED = {

@@ -5,8 +5,10 @@ import { seedOf } from './stats.mjs'
 export const EVAL_VERSION = 1
 export const DEFAULT_MAX_OPUS = 3
 
+export const STOPPED = 'killed'
+
 const FAMILIES = ['opus', 'sonnet', 'haiku']
-const ENDING = new Set(['completed', 'failed', 'killed'])
+const ENDING = new Set(['completed', 'failed', STOPPED])
 const MAX_ENDED = 20
 const MAX_LAUNCHES = 100
 const MAX_EARLY = 32
@@ -482,10 +484,18 @@ export function activeRuns(state) {
     .sort((a, b) => a.at - b.at || (a.key < b.key ? -1 : 1))
 }
 
+const newestEnded = (a, b) => (b.endedAt || 0) - (a.endedAt || 0) || (a.key < b.key ? -1 : 1)
+
 export function finishedRuns(state) {
   return runsOf(state)
-    .filter((r) => r.status !== 'running' && r.status !== 'cleared' && !r.hidden)
-    .sort((a, b) => (b.endedAt || 0) - (a.endedAt || 0) || (a.key < b.key ? -1 : 1))
+    .filter((r) => r.status !== 'running' && r.status !== 'cleared' && r.status !== STOPPED && !r.hidden)
+    .sort(newestEnded)
+}
+
+export function stoppedRuns(state) {
+  return runsOf(state)
+    .filter((r) => r.status === STOPPED && !r.hidden)
+    .sort(newestEnded)
 }
 
 export function agentPieces(run) {
@@ -625,6 +635,7 @@ export function runView(run) {
     counts,
     saved: run.saved || null,
     endedClock: run.endedAt ? hhmm(run.endedAt) : null,
+    stoppedClock: run.status === STOPPED && run.endedAt ? hhmm(run.endedAt) : null,
     countsText: [`${counts.opus} opus`, `${counts.sonnet} sonnet`, ...(counts.haiku > 0 ? [`${counts.haiku} haiku`] : [])].join('  '),
     checks: checks.map((c) => ({ ...c, title: CHECK_TITLES[c.id](run), detail: c.ok ? CHECK_DETAILS[c.id](run) : null })),
     agents,

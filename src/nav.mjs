@@ -1,9 +1,9 @@
-import { activeRuns, finishedRuns, runView } from './eval.mjs'
+import { activeRuns, finishedRuns, runView, stoppedRuns } from './eval.mjs'
 
 export function paneNav(state) {
   const runs = activeRuns(state).map((r) => runView(r))
   const all = [...runs, ...finishedRuns(state).map((r) => runView(r))]
-  const open = all.find((v) => v.key === state.ui.run)
+  const open = [...all, ...stoppedRuns(state).map((r) => runView(r))].find((v) => v.key === state.ui.run)
   if (!open) return { reachable: all.map((v) => `run:${v.key}`), resting: runs[0] ? `run:${runs[0].key}` : null }
   if (!open.phases) return { reachable: ['back'], resting: 'back' }
   const filled = open.phases.filter((p) => p.total > 0)

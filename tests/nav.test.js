@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { sha256Hex } from '../src/fingerprint.mjs'
-import { createState, noteLaunch, noteLaunchResult, noteRunEnd, openRun } from '../src/eval.mjs'
+import { STOPPED, closeRun, createState, noteLaunch, noteLaunchResult, noteRunEnd, openRun } from '../src/eval.mjs'
 import { arrowOf, boxKeyOf, paneNav, stepFocus } from '../src/nav.mjs'
 
 const SCRIPT = "await agent('x', { label: 'investigate: map', model: 'sonnet', effort: 'high' })\n"
@@ -21,6 +21,15 @@ test('the list reaches every run, running ones first, and rests on the first run
   const nav = paneNav(s)
   assert.deepEqual(nav.reachable, ['run:toolu_b', 'run:toolu_c', 'run:toolu_a'])
   assert.equal(nav.resting, 'run:toolu_b')
+})
+
+test('a stopped run stays open, and the list stops are not changed by it', () => {
+  let s = run(createState(), 'toolu_a', 1000)
+  s = run(s, 'toolu_b', 2000)
+  s = openRun(s, 'toolu_a')
+  s = noteRunEnd(s, { toolUseId: null, taskId: 't-toolu_a', status: STOPPED, at: 3000 })
+  assert.deepEqual(paneNav(s), { reachable: ['back'], resting: 'back' })
+  assert.deepEqual(paneNav(closeRun(s)), { reachable: ['run:toolu_b'], resting: 'run:toolu_b' })
 })
 
 test('an empty list reaches nothing and rests on nothing', () => {
