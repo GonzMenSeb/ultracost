@@ -21,6 +21,47 @@ test('priceFamily maps model ids and refuses unknowns', () => {
   assert.equal(priceFamily('opus-sonnet'), null)
 })
 
+test('priceFamily gives Opus 5, Sonnet 5 and Fable 5.2 their own rows and keeps the 5.5 and 5.1 rows', () => {
+  const rows = {
+    'claude-opus-5': 'opus-5',
+    'claude-opus-5-20260801': 'opus-5',
+    'claude-opus-5[1m]': 'opus-5',
+    'claude-opus-5-5': 'opus',
+    'claude-opus-5.5': 'opus',
+    'claude-opus-5-5-20261001': 'opus',
+    'claude-sonnet-5': 'sonnet-5',
+    'claude-sonnet-5-20260801': 'sonnet-5',
+    'claude-sonnet-5[1m]': 'sonnet-5',
+    'claude-sonnet-5-5': 'sonnet',
+    'claude-sonnet-5-5-20261001': 'sonnet',
+    'claude-haiku-5-5': 'haiku',
+    'claude-haiku-5-5-20261001': 'haiku',
+    'claude-fable-5-1': 'fable',
+    'claude-fable-5-1[1m]': 'fable',
+    'claude-fable-5-2': 'fable-5-2',
+    'claude-fable-5.2': 'fable-5-2',
+    'claude-fable-5-2-20261101': 'fable-5-2',
+    'claude-fable-5-2[1m]': 'fable-5-2',
+  }
+  for (const [id, row] of Object.entries(rows)) {
+    assert.equal(priceFamily(id), row, id)
+    assert.ok(prices.families[row], `${id} has no price row ${row}`)
+  }
+  for (const id of ['claude-opus-4-8', 'claude-mythos-5-2', 'claude-sonnet-4-6', 'claude-opus-6', 'claude-fable-4']) {
+    assert.equal(priceFamily(id), null, id)
+  }
+})
+
+test('the version rows hold the list prices of their models', () => {
+  near(requestCost(prices, 'opus-5', each), 5 + 25 + 0.5 + 6.25)
+  near(requestCost(prices, 'sonnet-5', each), 2 + 10 + 0.2 + 2.5)
+  near(requestCost(prices, 'fable-5-2', each), 8 + 40 + 0.2 + 10)
+  near(requestCost(prices, 'sonnet', each), 2 + 10 + 0.1 + 2.5)
+  near(requestCost(prices, 'fable', each), 10 + 50 + 0.25 + 12.5)
+  assert.equal(inputPrice(prices, 'opus-5'), 5)
+  assert.equal(inputPrice(prices, 'opus'), 4)
+})
+
 test('request cost prices each bucket', () => {
   near(requestCost(prices, 'opus', each), 29.2)
 })

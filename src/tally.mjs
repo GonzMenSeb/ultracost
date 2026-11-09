@@ -11,15 +11,16 @@ const both = (make) => Object.fromEntries(KINDS.map((k) => [k, make(k)]))
 const byTime = (a, b) => a.at - b.at || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0)
 const runsOf = (tally) => Object.values(tally.runs).sort(byTime)
 const stamp = (x) => (typeof x === 'string' ? x : null)
+const factor = (x) => (typeof x === 'number' && Number.isFinite(x) && x > 0 && x < 1 ? x : null)
 
 export function createTally() {
   return { v: 1, runs: {} }
 }
 
-export function noteTallyRun(tally, { key, status, baseline, agents, windows, at }, { log, ifAbsent = false } = {}) {
+export function noteTallyRun(tally, { key, status, baseline, agents, windows, clamp, at }, { log, ifAbsent = false } = {}) {
   const held = tally.runs[key]
   if (held && (ifAbsent || (held.status !== 'running' && status === 'running'))) return tally
-  const runs = { ...tally.runs, [key]: { key, status, baseline: baseline ?? null, agents, windows: both((k) => stamp(windows?.[k])), at } }
+  const runs = { ...tally.runs, [key]: { key, status, baseline: baseline ?? null, agents, windows: both((k) => stamp(windows?.[k])), clamp: both((k) => factor(clamp?.[k])), at } }
   const all = Object.values(runs)
   if (all.length <= MAX_RUNS) return { ...tally, runs }
   const drop = all.sort(byTime).slice(0, all.length - MAX_RUNS)
@@ -28,18 +29,21 @@ export function noteTallyRun(tally, { key, status, baseline, agents, windows, at
   return { ...tally, runs }
 }
 
+const inWindow = (r, kind, current, now) => {
+  const own = r.windows?.[kind] ?? null
+  if (own === null || current === null || current === undefined) return now - r.at < SPAN_MS[kind]
+  return own === current
+}
+
 export function countedRuns(tally, kind, current, now) {
   const runs = runsOf(tally)
   if (kind === 'all') return runs
-  return runs.filter((r) => {
-    const own = r.windows?.[kind] ?? null
-    if (own === null || current === null || current === undefined) return now - r.at < SPAN_MS[kind]
-    return own === current
-  })
+  return runs.filter((r) => inWindow(r, kind, current, now))
 }
 
-const baselineKey = (b) => (b ? configOf(b.family, b.effort) : null)
-const piecesOf = (runs) => runs.flatMap((r) => r.agents)
+const baselineKey = (b) => (b && configOf(b.family, b.effort) ? `${b.family}:${b.effort}` : null)
+const scaled = (r) => (factor(r.clamp?.five_hour) || factor(r.clamp?.seven_day) ? r.agents.map((a) => ({ ...a, scale: r.clamp })) : r.agents)
+const piecesOf = (runs) => runs.flatMap(scaled)
 
 export function overallInput(tally, current, now) {
   const keys = [...new Set(runsOf(tally).map((r) => baselineKey(r.baseline)).filter(Boolean))].sort()

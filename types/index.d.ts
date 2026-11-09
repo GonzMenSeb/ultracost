@@ -26,6 +26,7 @@ export type EvalLaunch = {
   gate: EvalGate | null
   gateTries: number
   baseline: EvalBaseline
+  launchReadings?: MeterReadings | null
 }
 
 export type EvalSent = { model: string; effort: string | null }
@@ -73,6 +74,7 @@ export type Saved = {
     five_hour: SavedRange | null
     seven_day: SavedRange | null
     readings: { five_hour: number; seven_day: number }
+    clamp?: Record<MeterWindow, number | null>
   } | null
   used?: { five_hour: number | null; seven_day: number | null }
   agents: { agentId: string; dollars: number | null; five_hour: number | null }[]
@@ -92,10 +94,14 @@ export type MeterInterval = { d: number; u: number; c: number; at: number }
 
 export type MeterTokens = Record<string, { input: number; output: number; cacheRead: number; cacheWrite: number }>
 
+export type MeterReading = { pct: number; resetsAt: string | null }
+
+export type MeterReadings = Record<MeterWindow, MeterReading | null>
+
 export type EvalMeter = {
   subscription: boolean | null
   acc: Record<MeterWindow, MeterTokens>
-  last: Record<MeterWindow, { pct: number; resetsAt: string | null } | null>
+  last: MeterReadings
   mine: Record<MeterWindow, MeterInterval[]>
   others: Record<MeterWindow, MeterInterval[]>
 }
@@ -127,6 +133,7 @@ export type EvalRun = {
   peakOpus: number
   limit: number
   baseline: EvalBaseline
+  launchReadings?: MeterReadings | null
   saved: Saved | null
   hidden?: boolean
 }
@@ -177,6 +184,7 @@ export type TallyRun = {
   baseline: { family: string; effort: string } | null
   agents: { agentId: string; pieces: Omit<EvalUsage, 'requests'>[] }[]
   windows: Record<MeterWindow, string | null>
+  clamp?: Record<MeterWindow, number | null>
   at: number
 }
 

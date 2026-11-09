@@ -152,6 +152,8 @@ test('a subgroup head is a thin rule with a dim label', () => {
 
 test('the baseline line names the model and effort, or says the model changed with each launch', () => {
   assert.equal(text(baselineLine({ family: 'sonnet', effort: 'xhigh' })), '  vs every agent on Sonnet xhigh')
+  assert.equal(text(baselineLine({ family: 'opus-5', effort: 'high' })), '  vs every agent on Opus high')
+  assert.equal(baselineLine({ family: 'opus-5', effort: 'high' }).find((s) => s.text === 'Opus').color, modelColor('opus', 'high'))
   assert.equal(text(baselineLine(null)), "  vs your session's model at each launch")
 })
 

@@ -2,6 +2,7 @@ import { modelColor, savedColor } from './palette.mjs'
 import { MAX_WIDTH, layoutOf, rowLines } from './bars.mjs'
 import { limitMessages, wrapText } from './limitText.mjs'
 import { STOPPED } from './eval.mjs'
+import { familyOfRow } from './prices.mjs'
 
 const FAMILY_STYLES = new Set(['opus', 'sonnet', 'haiku', 'fable'])
 const DASH = '—'
@@ -106,8 +107,9 @@ function wrapLine(line, width) {
 const proseLines = (text, width, style = 'plain') => wrapText(text, Math.max(width - 2, 10)).map((l) => [seg(`  ${l}`, style)])
 
 function modelSeg(baseline) {
-  const color = modelColor(baseline.family, baseline.effort)
-  return color ? { text: capitalize(baseline.family), style: 'bold', color } : familySeg(baseline.family)
+  const family = familyOfRow(baseline.family)
+  const color = modelColor(family, baseline.effort)
+  return color ? { text: capitalize(family), style: 'bold', color } : familySeg(family)
 }
 
 export function sectionHead(title, { extra = '', width }) {

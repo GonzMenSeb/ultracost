@@ -5,7 +5,7 @@ import { recordPath } from '../src/record.mjs'
 import { readFileSync } from 'node:fs'
 import { loadPrices } from '../src/prices.mjs'
 import { toastText } from '../src/savedText.mjs'
-import { STOPPED, TALLY_PREFIX, UNKNOWN_PHASE, noteFocus, phaseOpen, setFolds, agentPieces, finishedRuns, hideFinished, noteMainStep, noteMeterReading, noteSaved, noteStored, noteUsage, staleTallies, storedTally, settledTally, endTallyRun, endedRecord, stoppedRuns, setStoppedOpen, stoppedOpen, tallyFor } from '../src/eval.mjs'
+import { STOPPED, TALLY_PREFIX, UNKNOWN_PHASE, noteFocus, phaseOpen, setFolds, agentPieces, finishedRuns, hideFinished, noteCompaction, noteMainStep, noteMeterReading, noteSaved, noteStored, noteUsage, staleTallies, storedTally, settledTally, endTallyRun, endedRecord, stoppedRuns, setStoppedOpen, stoppedOpen, tallyFor } from '../src/eval.mjs'
 import {
   activeRuns,
   bandText,
@@ -1113,4 +1113,72 @@ test('a running estimate never replaces the saved of a run that has ended', () =
   assert.equal(ended.runs[TU].saved.n, 3)
   assert.equal(noteSaved(ended, TU, { status: 'estimated', running: true, n: 4 }), ended)
   assert.equal(noteSaved(s, TU, { status: 'estimated', running: true, n: 4 }), s)
+})
+
+const reading = (five, week = 3, resetsAt = 'r1') => [
+  { kind: 'five_hour', percentUsed: five, resetsAt },
+  { kind: 'seven_day', percentUsed: week, resetsAt: 'w1' },
+]
+const metered = (five, week, resetsAt) => noteMeterReading(createState(), reading(five, week, resetsAt), 1, PRICES)
+
+test('a launch carries the window readings of the moment it was seen, and the run after it', () => {
+  let s = noteLaunch(metered(10, 3), { toolUseId: TU, fingerprint: sha256Hex(SCRIPT), at: 1000 })
+  const snap = { five_hour: { pct: 10, resetsAt: 'r1' }, seven_day: { pct: 3, resetsAt: 'w1' } }
+  assert.deepEqual(s.launches[TU].launchReadings, snap)
+  s = noteMeterReading(s, reading(14, 4), 2, PRICES)
+  s = noteLaunchResult(s, { toolUseId: TU, isError: false, taskId: 'w1', runId: RUN, name: 'research', at: 1001 })
+  assert.deepEqual(s.runs[TU].launchReadings, snap)
+  assert.equal(s.meter.last.five_hour.pct, 14)
+})
+
+test('a launch first met at its result takes the readings of that moment', () => {
+  const s = noteLaunchResult(metered(12, 5), { toolUseId: TU, isError: false, taskId: 'w1', runId: RUN, name: 'research', at: 1001 })
+  assert.deepEqual(s.runs[TU].launchReadings, { five_hour: { pct: 12, resetsAt: 'r1' }, seven_day: { pct: 5, resetsAt: 'w1' } })
+})
+
+test('a launch seen before any reading has none, and so has its run', () => {
+  const s = launched()
+  assert.deepEqual(s.launches[TU].launchReadings, { five_hour: null, seven_day: null })
+  assert.deepEqual(s.runs[TU].launchReadings, { five_hour: null, seven_day: null })
+})
+
+test('a run made from a spawn alone takes the readings of the moment it was first seen', () => {
+  const s = noteSpawn(metered(8, 2), { toolUseId: '', runId: 'wf_9zz', agentId: 'a1', label: 'grunt: x', askedModel: 'haiku', resolvedModel: 'claude-haiku-4-5', at: 5 })
+  const [run] = Object.values(s.runs)
+  assert.deepEqual(run.launchReadings, { five_hour: { pct: 8, resetsAt: 'r1' }, seven_day: { pct: 2, resetsAt: 'w1' } })
+})
+
+test('a launch kept from an older state without readings gives its run none', () => {
+  let s = noteLaunch(metered(10, 3), { toolUseId: TU, fingerprint: 'f', at: 1000 })
+  const { launchReadings, ...old } = s.launches[TU]
+  s = noteLaunchResult({ ...s, launches: { [TU]: old } }, { toolUseId: TU, isError: false, taskId: 'w1', runId: RUN, name: 'research', at: 1001 })
+  assert.equal(s.runs[TU].launchReadings, null)
+})
+
+test('the readings of a launch do not move with the meter', () => {
+  const s = noteLaunch(metered(10, 3), { toolUseId: TU, fingerprint: 'f', at: 1000 })
+  const later = noteMeterReading(s, reading(20, 6), 2, PRICES)
+  assert.equal(later.launches[TU].launchReadings.five_hour.pct, 10)
+  assert.equal(noteLaunch(later, { toolUseId: TU, fingerprint: 'g', at: 3 }).launches[TU].launchReadings.five_hour.pct, 10)
+})
+
+test('a compaction of the main conversation that stands cuts the meter intervals', () => {
+  let s = noteMeterReading(createState(), reading(10, 3), 1, PRICES)
+  s = noteUsage(s, { agentId: undefined, effort: 'high', usage: { model: SONNET, input_tokens: 1000, output_tokens: 10, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 }, prices: PRICES })
+  assert.notDeepEqual(s.meter.acc.five_hour, {})
+  const cut = noteCompaction(s, { agentId: undefined, trigger: 'manual', skip: undefined })
+  assert.deepEqual(cut.meter.acc, { five_hour: {}, seven_day: {} })
+  assert.deepEqual(cut.meter.last, { five_hour: null, seven_day: null })
+  assert.equal(cut.meter.subscription, true)
+  assert.equal(noteCompaction(s, { agentId: undefined, trigger: 'auto', skip: undefined }).meter.last.five_hour, null)
+  assert.equal(noteCompaction(s, { agentId: undefined, trigger: 'plugin', skip: undefined }).meter.last.five_hour, null)
+})
+
+test('a compaction that is skipped, runs in a subagent or only precomputes leaves the meter as it is', () => {
+  let s = noteMeterReading(createState(), reading(10, 3), 1, PRICES)
+  s = noteUsage(s, { agentId: undefined, effort: 'high', usage: { model: SONNET, input_tokens: 1000, output_tokens: 10, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 }, prices: PRICES })
+  assert.equal(noteCompaction(s, { agentId: undefined, trigger: 'manual', skip: 'blocked by a hook' }), s)
+  assert.equal(noteCompaction(s, { agentId: 'a1', trigger: 'auto', skip: undefined }), s)
+  assert.equal(noteCompaction(s, { agentId: undefined, trigger: 'precompute', skip: undefined }), s)
+  assert.equal(s.meter.last.five_hour.pct, 10)
 })

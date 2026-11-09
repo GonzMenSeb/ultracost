@@ -19,6 +19,7 @@ import {
   gateWanted,
   hideFinished,
   noteAgentDone,
+  noteCompaction,
   noteGateRecord,
   noteLaunch,
   noteLaunchResult,
@@ -49,7 +50,7 @@ import {
 } from '../src/eval.mjs'
 import { contextFill, createContext, forgetCompactRead, noteBreakdown, noteContext } from '../src/context.mjs'
 import { listLayout } from '../src/listWindow.mjs'
-import { intervalsOf, staleKeys, storedValue, usedOf } from '../src/meter.mjs'
+import { intervalsOf, riseOf, staleKeys, storedValue, usedOf } from '../src/meter.mjs'
 import { STOPPED_FOLD, arrowOf, boxKeyOf, listShown, paneNav, stepFocus } from '../src/nav.mjs'
 import { familyColor, modelColor, savedColor } from '../src/palette.mjs'
 import { loadPrices, priceFamily } from '../src/prices.mjs'
@@ -100,6 +101,7 @@ const ctx = atom({ plugin: 'ultraguard', key: 'context' } as const, createContex
 const tally = atom({ plugin: 'ultraguard', key: 'tally' } as const, createTally() as TallyState, { shape: 'tally-1' })
 
 const windowFrom = new Map<string, number>()
+const estimatedAt = new Map<string, number>()
 let ringHeld = true
 
 type Ids = { toolUseId: string; runId: string }
@@ -240,7 +242,7 @@ async function estimate($: EngineInterface, key: string) {
   if (!run) return
   const running = run.status === 'running'
   const baseline = baselineOf(run)
-  const meter = meterOf(s.meter, at)
+  const meter = { ...meterOf(s.meter, at), rise: riseOf(run.launchReadings, s.meter.last, at) }
   const agents = agentPieces(run)
   const saved = estimateRun({
     agents,
@@ -257,7 +259,7 @@ async function estimate($: EngineInterface, key: string) {
   const after = await update($, ev, st => noteSaved(st, key, { ...saved, used }))
   const current = after.runs[key]
   if (!current || current.hidden || (running && current.status !== 'running')) return
-  await guard($, 'tally', () => noteTally($, sid, { key, status: run.status, baseline, agents, windows: stampsOf(s.meter), at }, running ? 'due' : 'always'))
+  await guard($, 'tally', () => noteTally($, sid, { key, status: run.status, baseline, agents, windows: stampsOf(s.meter), clamp: saved.limits?.clamp ?? null, at }, running ? 'due' : 'always'))
 }
 
 type Pooled = { baseline: TallyRun['baseline'] } & Record<'all' | 'five_hour' | 'seven_day', TallyRun['agents']>
@@ -478,6 +480,12 @@ export const register: Register = on => {
     return next(e)
   })
 
+  on('session.compact', async ($, e, next) => {
+    const done = await next(e)
+    await guard($, 'compact', () => update($, ev, s => noteCompaction(s, { agentId: e.agentId, trigger: e.trigger, skip: done.skip })))
+    return done
+  })
+
   on('session.measure', async ($, e, next) => {
     if (e.changed.includes('rateLimits')) await guard($, 'measure', () => recordReading($, e.rateLimits))
     await guard($, 'tally', async () => noteTally($, await $.session.id(), null, 'missing'))
@@ -595,7 +603,17 @@ export const register: Register = on => {
       if (!result.usage) return
       const data = await getData($)
       const own = agentId !== undefined && (runOfAgent(await read($, ev), agentId) !== null || inflight > 0)
-      await update($, ev, s => noteUsage(s, { agentId: own ? agentId : undefined, effort: e.effort, usage: result.usage, prices: data?.prices }))
+      const out = await update($, ev, s => noteUsage(s, { agentId: own ? agentId : undefined, effort: e.effort, usage: result.usage, prices: data?.prices }))
+      const key = own ? runOfAgent(out, agentId as string) : null
+      const now = await $.clock.now()
+      if (key && out.runs[key]?.status === 'running' && !(now - (estimatedAt.get(key) ?? -Infinity) < OVERALL_EVERY_MS)) {
+        estimatedAt.set(key, now)
+        cap(estimatedAt)
+        void guard($, 'savings so far', async () => {
+          await estimate($, key)
+          await persist($, key)
+        })
+      }
     })
     return result
   })

@@ -968,3 +968,177 @@ test('in a windowed list no scroll takes the window past the top, and a run view
   expect(offsets.at(-1)).toBe(9)
   await ui.unmount()
 })
+
+const KEPT = { role: 'user' as const, text: 'summary', toolUses: [] }
+const OPUS5 = 'claude-opus-5-5'
+const SONNET5 = 'claude-sonnet-5-5'
+const MEASURED = (r: number) => ({ r, lo: r * 0.8, hi: r * 1.25, mu: Math.log(r), sigma: 0.12, agentSd: 0.3 })
+const RATIOS_MEASURED = {
+  ...RATIOS,
+  measured: { 'sonnet:high>opus:high': { pairs: 4, workflows: 1, output: MEASURED(1.07), fresh: MEASURED(1.15), read: MEASURED(2.29), dollars: { r: 2.6, lo: 2.2, hi: 2.9 } } },
+}
+const FIVE_RESET = '2026-11-08T12:00:00Z'
+const fiveHour = (percent: number) => [{ kind: 'five_hour', percentUsed: percent, resetsAt: FIVE_RESET }]
+const TICKS = Array.from({ length: 10 }, (_, i) => ({ d: 1, u: 0.01, c: 0, at: i + 1 }))
+
+const drain = async (stream: AsyncGenerator<unknown, unknown>) => {
+  let r = await stream.next()
+  while (!r.done) r = await stream.next()
+  return r.value
+}
+
+async function metered($: any, on: any, options: { preload?: Record<string, unknown>; compact?: unknown } = {}) {
+  const store: Record<string, unknown> = { ...(options.preload ?? {}) }
+  const writes: Record<string, string> = {}
+  let percent = 10
+  let answer: unknown = options.compact ?? { messages: [KEPT] }
+  let toolUseId = ''
+  let index = 0
+  mock.env(on, { CLAUDE_CONFIG_DIR: CONFIG })
+  const clock = mock.clock(on, { now: 5000 })
+  on('session.id', () => ({ value: SESSION }))
+  on('session.start', (_: any, e: any) => ({ cwd: e.cwd }))
+  on('session.messages', () => ({ value: [] }))
+  on('session.usage', () => ({ value: { startedAt: 0, context: { window: 200000 }, rateLimits: fiveHour(percent) } }))
+  on('session.measure', (_: any, e: any) => ({ changed: e.changed }))
+  on('session.compact', () => answer)
+  on('command.register', () => ({ value: { command: 'ultraguard' } }))
+  on('turn.complete', () => ({ text: '' }))
+  on('ui.log', () => ({ value: undefined }))
+  on('fs.write', (_: any, e: any) => ((writes[e.path] = e.text), { value: undefined }))
+  on('store.keys', () => ({ value: Object.keys(store) }))
+  on('store.get', (_: any, e: any) => ({ value: store[e.key] }))
+  on('store.delete', (_: any, e: any) => (delete store[e.key], { value: undefined }))
+  on('store.set', (_: any, e: any) => ((store[e.key] = e.value), { value: undefined }))
+  on('fs.read', (_: any, e: any) => {
+    const path = String(e.path)
+    if (path.endsWith('/data/prices.json')) return { value: JSON.stringify(PRICES) }
+    if (path.endsWith('/data/ratios.json')) return { value: JSON.stringify(RATIOS_MEASURED) }
+    if (path === `${CONFIG}/ultraguard/sessions/${SESSION}/${toolUseId}.gate.json`) return { value: gateRecord(toolUseId) }
+    return { deny: `ENOENT ${path}` }
+  })
+  on('tool.call', (_: any, e: any) => {
+    toolUseId = e.tool_use_id
+    return { result: { status: 'async_launched', taskId: 'w1', runId: 'wf_run001', workflowName: 'map' } }
+  })
+  on('agent.spawn', () => ({ model: SONNET5, agentId: 'a1' }))
+  on('turn.step', async function* (_: any, e: any) {
+    const agent = e.agentId !== undefined
+    return {
+      turnId: e.turnId,
+      index: e.index,
+      answer: '',
+      toolUses: [],
+      stopReason: 'end_turn',
+      usage: { input_tokens: agent ? 1000 : 300, output_tokens: agent ? 2000 : 100, cache_read_input_tokens: agent ? 50000 : 9000, cache_creation_input_tokens: agent ? 5000 : 500, model: e.model },
+    }
+  })
+  on('ui.render', ($: any, e: any) => {
+    const { Text } = $.ui.resolve(e)
+    return <Text>engine</Text>
+  })
+
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  const step = (over: Record<string, unknown> = {}) => drain($.turn.step({ turnId: 't1', index: (index += 1), model: SONNET5, messageCount: 1, ...over }))
+  const measure = async (to: number) => {
+    percent = to
+    await clock.advance(60000)
+    await $.session.measure({ context: { window: 200000 }, rateLimits: fiveHour(percent), changed: ['rateLimits'] })
+  }
+  const intervals = () => ((store[`meter:${SESSION}`] as { five_hour?: { d: number; u: number }[] } | undefined)?.five_hour ?? []).map(i => ({ d: i.d, u: i.u }))
+  const workflow = async (readings: number) => {
+    await step({ model: OPUS5, effort: 'high' })
+    await $.tool.call({ tool: 'Workflow', script: SCRIPT })
+    await $.agent.spawn({
+      tool_use_id: toolUseId,
+      prompt: 'p',
+      description: 'investigate: map',
+      subagentType: 'general-purpose',
+      provider: { plugin: 'engine', tier: 'core' },
+      model: 'sonnet',
+      parentModel: OPUS5,
+      background: true,
+      fork: false,
+      workflow: { runId: 'wf_run001', agentIndex: 1 },
+    })
+    for (let i = 1; i <= readings; i++) {
+      await step({ agentId: 'a1', model: SONNET5, effort: 'high' })
+      await measure(10 + i * 0.5)
+    }
+    await $.turn.complete({ answer: '', durationMs: 1, isAborted: false, turnId: 't1', reason: 'answer', agentId: 'a1' })
+    return JSON.parse(writes[`${CONFIG}/ultraguard/sessions/${SESSION}/${toolUseId}.eval.json`] ?? '{}').savings.saved
+  }
+  return { store, id: () => toolUseId, step, measure, intervals, workflow, compact: (over: Record<string, unknown> = {}) => $.session.compact({ trigger: 'manual', messages: [KEPT], ...over }), answerWith: (next: unknown) => (answer = next) }
+}
+
+const STEP_UNITS = (300 + 500) * 2e-6 + 100 * 10e-6
+const near = (x: number, y: number) => Math.abs(x - y) < 1e-9
+
+test('a compaction that stands cuts the meter, so no interval spans it', async ($, on) => {
+  const w = await metered($, on)
+  await w.step()
+  expect(await w.compact()).toEqual({ messages: [KEPT] })
+  await w.measure(11)
+  expect(w.intervals()).toEqual([])
+  await w.step()
+  await w.measure(12)
+  const [only, ...rest] = w.intervals()
+  expect(rest).toEqual([])
+  expect(only.d).toBe(1)
+  expect(near(only.u, STEP_UNITS)).toBe(true)
+})
+
+test('a compaction that is skipped leaves the meter as it was', async ($, on) => {
+  const w = await metered($, on, { compact: { skip: 'blocked by a hook' } })
+  await w.step()
+  expect(await w.compact()).toEqual({ skip: 'blocked by a hook' })
+  await w.measure(11)
+  const [only, ...rest] = w.intervals()
+  expect(rest).toEqual([])
+  expect(only.d).toBe(1)
+  expect(near(only.u, STEP_UNITS)).toBe(true)
+})
+
+test('a compaction in a subagent or one that only precomputes leaves the meter as it was', async ($, on) => {
+  const w = await metered($, on)
+  await w.step()
+  await w.compact({ agentId: 'a1' })
+  await w.compact({ trigger: 'precompute' })
+  await w.measure(11)
+  const [only, ...rest] = w.intervals()
+  expect(rest).toEqual([])
+  expect(near(only.u, STEP_UNITS)).toBe(true)
+})
+
+test('the compaction hook hands the engine its answer untouched', async ($, on) => {
+  const answer = { messages: [KEPT], tokensBefore: 90000, tokensAfter: 4000 }
+  const w = await metered($, on, { compact: answer })
+  expect(await w.compact()).toEqual(answer)
+})
+
+test('a run whose spend at the pooled rate is more than the account rose is scaled down to the rise, in the run and in the overall', async ($, on) => {
+  const w = await metered($, on, { preload: { 'meter:other': { v: 1, five_hour: TICKS, seven_day: [] } } })
+  const saved = await w.workflow(6)
+  expect(saved.limits.readings.five_hour).toBeGreaterThanOrEqual(5)
+  const f = saved.limits.clamp.five_hour
+  expect(f).toBeGreaterThan(0)
+  expect(f).toBeLessThan(1)
+  expect(saved.limits.five_hour.mid).toBeGreaterThan(0)
+  expect(saved.agents[0].five_hour).not.toBeNull()
+  expect(saved.dollars.mid).toBeGreaterThan(0)
+  const tally = w.store[`tally:${SESSION}`] as any
+  expect(tally.runs[w.id()].clamp.five_hour).toBe(f)
+  expect(tally.overall.limits.five_hour.mid).toBeGreaterThan(0)
+  expect(tally.overall.dollars.mid).toBeGreaterThan(0)
+})
+
+test('a run whose spend fits the rise of the account keeps its figure', async ($, on) => {
+  const w = await metered($, on)
+  const saved = await w.workflow(6)
+  expect(saved.limits.five_hour.mid).toBeGreaterThan(0)
+  expect(saved.limits.clamp).toEqual({ five_hour: null, seven_day: null })
+  expect(saved.agents[0].five_hour).not.toBeNull()
+  const tally = w.store[`tally:${SESSION}`] as any
+  expect(tally.runs[w.id()].clamp).toEqual({ five_hour: null, seven_day: null })
+  expect(tally.overall.limits.five_hour).not.toBeNull()
+})
