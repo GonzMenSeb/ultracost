@@ -6,7 +6,7 @@
 - The overall totals stay current: a `none` baseline counts as a known zero, the vs line follows the baselines of the workflows counted, and the totals rebuild when the 5-hour or weekly window rolls over, on load and at launch. A launched workflow counts from the start, an ended run never reverts to running, and a stored run that was still running when the session ended counts as ended. The overall estimate rebuilds at most every 30 seconds while workflows run.
 - The tally belongs to its session: /clear and /resume swap to the tally of the new session, so a cleared session reads "1 workflow" after its first launch, not 9.
 - A run whose agents all ran on the session's own model and effort shows a dim `same model` in the list instead of a figure. When every workflow of the session did, the overall section says so in the same words as a run's view.
-- A resume that reports a workflow as `stopped` ends the run as stopped, with its final estimate and its record, like a TaskStop.
+- A resume that reports a workflow as `stopped` ends the run as stopped, like a TaskStop. When the process restarted (`claude --continue` or `--resume`), the list no longer holds the run, so its record and its entry in the session tally are ended as stopped instead; before, the record said `running` for ever and the tally said `cleared`.
 - The list's name column shrinks to leave room for the saved cell on a narrow pane, and the agents column counts the stopped rows only while the stopped fold is open.
 
 ## 0.4.15 - ultraguard
