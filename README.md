@@ -14,6 +14,10 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-a1a1aa" alt="MIT license"></a>
 </p>
 
+<p align="center">
+  <a href="assets/demo.mp4"><img src="assets/demo.gif" width="896" alt="15-second demo. A workflow fans out to 10 agents that all inherit Opus. Before launch the ultraguard gate reads the script and blocks it: line 3, LABEL+FANOUT, the synth: research label reads like investigation and up to 10 Opus agents can run at once where the limit is 3. Claude fixes it: the 10 research agents run as investigate: on Sonnet and one synth: stage on Opus merges them, and the script passes the gate. During the run the ultraguard-eval row shows green. Ends with the two install commands."></a>
+</p>
+
 ## The problem
 
 With ultracode on, your session runs a top-tier model such as Opus or Fable. A workflow fans out to many subagents, and each one inherits the session's model and effort unless its stage pins them. So a single multi-step task can start a dozen top-tier agents, most of them doing work a cheaper model handles just as well.
@@ -204,6 +208,8 @@ npm test
 ```
 
 Tests run on Node 18 with `node:test`, which is also the CI runtime. There are no dependencies; acorn is vendored in `vendor/acorn.mjs`. The ultraguard-eval module is checked with `claude plugin validate .` and `claude plugin test .`. To try a working copy, start Claude Code with `claude --plugin-dir <path-to-this-repo>`.
+
+The demo at the top is a [Remotion](https://www.remotion.dev) project in [`video/`](video), separate from the plugin and its zero-dependency rule. It needs Node 20.19 or later: `cd video && npm install && npm run render` writes `assets/demo.mp4` and `assets/demo.gif`, and `npm run studio` previews it.
 
 ## Credits and license
 

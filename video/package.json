@@ -1,0 +1,20 @@
+{
+  "name": "ultraguard-video",
+  "private": true,
+  "description": "Source of the README demo video (Remotion). Not part of the plugin.",
+  "type": "module",
+  "engines": {
+    "node": ">=20.19"
+  },
+  "scripts": {
+    "studio": "remotion studio src/index.jsx",
+    "render": "remotion render src/index.jsx Demo ../assets/demo.mp4 --crf=20 && remotion render src/index.jsx Demo ../assets/demo.gif --codec=gif --every-nth-frame=2 --scale=0.7"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.542",
+    "@remotion/google-fonts": "4.0.542",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "remotion": "4.0.542"
+  }
+}
