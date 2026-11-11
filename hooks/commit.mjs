@@ -5,9 +5,10 @@ import { fileURLToPath } from 'node:url';
 import { ID_RE } from '../src/record.mjs';
 
 export const REMINDER =
-  'ultraguard: this session ran Haiku code: stages, which can leave scratch files. Check the commit\'s file list (git show --stat HEAD) and git status for files no stage meant to change, and remove them in a follow-up commit.';
+  'ultraguard: this session ran Haiku code: stages, which can leave scratch files. Check the commit\'s file list (git show --stat HEAD) and git status for files no stage meant to change. If there are any, remove them in a follow-up commit.';
 
 const ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*=/;
+const WRAPPERS = new Set(['rtk', 'env', 'command', 'time']);
 const VALUE_OPTIONS = new Set(['-C', '-c', '--git-dir', '--work-tree', '--namespace', '--super-prefix', '--config-env']);
 
 function tokenize(segment) {
@@ -16,9 +17,9 @@ function tokenize(segment) {
 
 function segmentCommits(segment) {
   const tokens = tokenize(segment);
+  if (tokens.length && tokens[0].startsWith('(')) tokens[0] = tokens[0].slice(1);
   let i = 0;
-  while (i < tokens.length && ASSIGNMENT.test(tokens[i])) i++;
-  if (tokens[i] === 'rtk') i++;
+  while (i < tokens.length && (ASSIGNMENT.test(tokens[i]) || WRAPPERS.has(tokens[i]))) i++;
   const bin = tokens[i];
   if (bin !== 'git' && !(typeof bin === 'string' && bin.endsWith('/git'))) return false;
   i++;

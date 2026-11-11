@@ -92,7 +92,7 @@ A clean script produces no output and exit code 0, plus a gate record on disk.
 Haiku stages are the only ones that left scratch files in the repo in the replays, so ultraguard checks after a commit. The PostToolUse hook runs after a successful `Bash` call. It does nothing unless the command was a `git commit` and the session's gate records (`*.gate.json`, see [Records](#records)) include a launch that passed with a `code:` stage on `haiku`. Then it adds this to Claude's context:
 
 ```
-ultraguard: this session ran Haiku code: stages, which can leave scratch files. Check the commit's file list (git show --stat HEAD) and git status for files no stage meant to change, and remove them in a follow-up commit.
+ultraguard: this session ran Haiku code: stages, which can leave scratch files. Check the commit's file list (git show --stat HEAD) and git status for files no stage meant to change. If there are any, remove them in a follow-up commit.
 ```
 
 The hook only adds context. It never denies, blocks or changes the command, and a missing or unreadable record means no reminder.
@@ -103,7 +103,7 @@ The policy is in `policy/default.json`, and it is the only policy. The guidance 
 
 ### Classes
 
-Every `agent()` label starts with a class prefix such as `build:`. The class says who owns the decision, and it decides which (model, effort) pairs are allowed. The table shows the pairs on an Opus session. Every listed model allows the efforts `medium`, `high` and `xhigh`.
+Every `agent()` label starts with a class prefix such as `build:`. The class says who owns the decision, and it decides which (model, effort) pairs are allowed. The table shows the pairs on an Opus session. Every listed Sonnet and Opus pair allows `medium`, `high` and `xhigh`; Haiku allows only the efforts shown.
 
 | Class | Owns | Opus session allows |
 |---|---|---|
@@ -192,7 +192,7 @@ The second replay re-ran 14 past Sonnet coding tasks on Haiku. It decided how `c
 | Scratch files left in the repo | Only Haiku did. See [Commit reminder](#commit-reminder). |
 | `blocked_on` set | Haiku set it in 16 of 55 runs. Every one of those runs had finished its work. |
 
-So `code:` is Haiku `medium` only and is limited to fully specified implementation. Work that leaves names, ownership or state rules open is `build:`. The 14 tasks are a small sample, and the replays ran through the Agent tool, not through the gate.
+So `code:` is Haiku `medium` only and is limited to fully specified implementation. Work that leaves names, ownership or state rules open is `build:`. The 14 tasks are a small sample, and each side of the result rests on essentially one prompt family.
 
 ### Label check
 

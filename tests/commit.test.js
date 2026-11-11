@@ -10,7 +10,7 @@ import { isGitCommit, hasHaikuCodeStage, readGateRecords, REMINDER } from '../ho
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const HOOK = join(ROOT, 'hooks', 'commit.mjs');
 const EXPECTED_REMINDER =
-  "ultraguard: this session ran Haiku code: stages, which can leave scratch files. Check the commit's file list (git show --stat HEAD) and git status for files no stage meant to change, and remove them in a follow-up commit.";
+  "ultraguard: this session ran Haiku code: stages, which can leave scratch files. Check the commit's file list (git show --stat HEAD) and git status for files no stage meant to change. If there are any, remove them in a follow-up commit.";
 
 const MATCH = [
   'git commit -m x',
@@ -25,6 +25,10 @@ const MATCH = [
   'git --git-dir=/p/.git commit -m x',
   'git status\ngit commit -m x',
   'false || git commit -m x',
+  'cd /p && (git commit -m x)',
+  'env A=1 git commit -m x',
+  'command git commit -m x',
+  'time git commit -m x',
 ];
 const NO_MATCH = [
   'git commit-tree abc',
