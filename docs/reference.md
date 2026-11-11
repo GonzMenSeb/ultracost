@@ -1,6 +1,6 @@
 # ultraguard reference
 
-This is the complete reference for ultraguard 0.4.19. The [README](../README.md) explains what ultraguard is for and why the rules exist. This page lists every rule, code, file and limit, and it is written to match the code in `src/`, `hooks/` and `policy/`.
+This is the complete reference for ultraguard 0.4.20. The [README](../README.md) explains what ultraguard is for and why the rules exist. This page lists every rule, code, file and limit, and it is written to match the code in `src/`, `hooks/` and `policy/`.
 
 ## Contents
 
