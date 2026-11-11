@@ -132,7 +132,7 @@
 <text xml:space="preserve" x="34.80" y="965.04" fill="#e4e4e7" font-weight="700" textLength="33.60">1.2M</text>
 <text xml:space="preserve" x="76.80" y="965.04" fill="#e4e4e7" textLength="100.80">fewer tokens</text>
 <text xml:space="preserve" x="34.80" y="987.04" fill="#949494" textLength="176.40">range = 9 times in 10</text>
-<text xml:space="preserve" x="34.80" y="1009.04" fill="#949494" textLength="411.60">no replay measured haiku xhigh against opus high;</text>
+<text xml:space="preserve" x="34.80" y="1009.04" fill="#949494" textLength="403.20">no replay measured haiku high against opus high;</text>
 <text xml:space="preserve" x="34.80" y="1031.04" fill="#949494" textLength="378.00">using published figures, so the range is wide</text>
 <rect x="18.00" y="1069.84" width="16.80" height="1.10" fill="#505050"/><rect x="18.00" y="1073.04" width="16.80" height="1.10" fill="#505050"/>
 <text xml:space="preserve" x="43.20" y="1075.04" fill="#e4e4e7" font-weight="700" textLength="50.40">phases</text>
