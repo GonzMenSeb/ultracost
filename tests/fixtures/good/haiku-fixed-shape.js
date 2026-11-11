@@ -1,6 +1,6 @@
 export const meta = {
   name: 'tabulate-and-check',
-  description: 'Tabulate the open issues per label on haiku medium, check the links on haiku high, then build the report on sonnet',
+  description: 'Tabulate the open issues per label on haiku medium, check the links on haiku medium, then build the report on sonnet',
   phases: [
     { title: 'Collect', detail: 'two fixed-shape stages on haiku' },
     { title: 'Report', detail: 'one build agent' }
@@ -29,7 +29,7 @@ const [counts, links] = await parallel([
       label: 'code: check links',
       phase: 'Collect',
       model: 'haiku',
-      effort: 'high',
+      effort: 'medium',
       schema: {
         type: 'object',
         properties: {

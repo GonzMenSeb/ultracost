@@ -67,9 +67,10 @@ test('build, fix, combine, code and grunt have no conditional pairs', () => {
   }
 })
 
-test('code and grunt allow haiku and sonnet at every effort', () => {
+test('code allows haiku at medium only and grunt at medium and high, sonnet at every effort', () => {
   const { classes } = loadPolicy()
-  for (const cls of ['code', 'grunt']) assert.deepEqual(classes[cls].pairs, { haiku: ALL, sonnet: ALL }, cls)
+  assert.deepEqual(classes.code.pairs, { haiku: ['medium'], sonnet: ALL })
+  assert.deepEqual(classes.grunt.pairs, { haiku: ['medium', 'high'], sonnet: ALL })
 })
 
 test('shipped limits cap opus at 3 at once and call a fan-out big above 3', () => {

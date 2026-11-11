@@ -33,11 +33,11 @@
       "fanoutPairs": { "sonnet": ["medium", "high", "xhigh"] }
     },
     "build": {
-      "owns": "Decided implementation: well-defined modules, scoped UI implementation, \"like this\" examples, long build-test-debug loops",
+      "owns": "Decided implementation that leaves details open: modules or ports from a plan or prototype, scoped UI implementation, \"like this\" examples, long build-test-debug loops",
       "pairs": { "sonnet": ["medium", "high", "xhigh"], "opus": ["medium", "high", "xhigh"] }
     },
     "fix": {
-      "owns": "Fixes whose cause or repro is known",
+      "owns": "Fixes whose cause or repro is known; a fix spelled out file by file is code:",
       "pairs": { "sonnet": ["medium", "high", "xhigh"], "opus": ["medium", "high", "xhigh"] }
     },
     "combine": {
@@ -45,12 +45,12 @@
       "pairs": { "sonnet": ["medium", "high", "xhigh"], "opus": ["medium", "high", "xhigh"] }
     },
     "code": {
-      "owns": "Very simple, fully specified, mechanically checkable code; blind, well-specified UI implementation",
-      "pairs": { "haiku": ["medium", "high", "xhigh"], "sonnet": ["medium", "high", "xhigh"] }
+      "owns": "Fully specified implementation: the prompt names the files, the functions or interfaces and the test commands, and leaves nothing to decide; blind, well-specified UI implementation",
+      "pairs": { "haiku": ["medium"], "sonnet": ["medium", "high", "xhigh"] }
     },
     "grunt": {
       "owns": "Fixed-shape, zero-decision work: tabulate, count or extract named fields from named inputs, run a given command, checks, summaries, compaction",
-      "pairs": { "haiku": ["medium", "high", "xhigh"], "sonnet": ["medium", "high", "xhigh"] }
+      "pairs": { "haiku": ["medium", "high"], "sonnet": ["medium", "high", "xhigh"] }
     }
   }
 }

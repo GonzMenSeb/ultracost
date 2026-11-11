@@ -186,8 +186,12 @@ const pairAllowed = (pairs, model, effort) => {
   return has(pairs, model) && pairs[model].includes(effort)
 }
 
-function lowerAtXhigh(pairs, model) {
-  for (let i = rank(model) - 1; i >= 0; i--) if (has(pairs, MODELS[i]) && pairs[MODELS[i]].includes('xhigh')) return MODELS[i]
+function relaunchTarget(pairs, model) {
+  for (let i = rank(model) - 1; i >= 0; i--) {
+    if (!has(pairs, MODELS[i])) continue
+    const listed = EFFORTS.filter((e) => pairs[MODELS[i]].includes(e))
+    if (listed.length > 0) return { model: MODELS[i], effort: listed.includes('xhigh') ? 'xhigh' : listed[listed.length - 1] }
+  }
   return null
 }
 
@@ -265,8 +269,8 @@ export function rules(stages, policy, ctx) {
           : `model "${stage.model}" with effort "${stage.effort}"`
       const movesOffOpus = !has(pairs, 'opus') && stage.model !== 'sonnet' && stage.model !== 'haiku' && stage.hasBlockedOn !== true
       const hint = conditionHint(policy, stage, sessionModel, cond)
-      const lower = noModel || has(pairs, stage.model) ? null : lowerAtXhigh(pairs, stage.model)
-      const relaunch = lower ? ` Relaunch on ${lower} with effort "xhigh".` : ''
+      const lower = noModel || has(pairs, stage.model) ? null : relaunchTarget(pairs, stage.model)
+      const relaunch = lower ? ` Relaunch on ${lower.model} with effort "${lower.effort}".` : ''
       errors.push({
         code: 'PAIR',
         ...base,
