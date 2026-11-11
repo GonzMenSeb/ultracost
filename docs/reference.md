@@ -97,6 +97,8 @@ ultraguard: this session ran Haiku code: stages, which can leave scratch files. 
 
 The hook only adds context. It never denies, blocks or changes the command, and a missing or unreadable record means no reminder.
 
+It also fires for a commit that a workflow agent makes itself, because Claude Code runs plugin hooks inside subagents with the parent session's id (checked live on Claude Code 2.1.322). The command check accepts `/usr/bin/git`, global options such as `-C <dir>` and `-c k=v`, leading `VAR=value` assignments and the `rtk`, `env`, `command` and `time` wrappers, and does not match `commit-tree` or `git log --grep commit`.
+
 ## Policy
 
 The policy is in `policy/default.json`, and it is the only policy. The guidance Claude reads at session start is `policy/guidance.md`. It says it supersedes the built-in Workflow guidance that says to omit `model`, omit effort and use `low` for cheap mechanical stages.
