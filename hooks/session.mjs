@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const GUIDANCE_PATH = fileURLToPath(new URL('../policy/guidance.md', import.meta.url));
-const MAX_CONTEXT_CHARS = 8000;
+const MAX_CONTEXT_CHARS = 9000;
 const MAX_CONTEXT_LINES = 200;
 const MAX_MESSAGE_CHARS = 4000;
 const MAX_MESSAGE_LINES = 20;
@@ -20,7 +20,7 @@ function pairsTable(policy, { formatClassPairs }) {
   return [
     '## Allowed (model, effort) pairs',
     '',
-    'This table is the authoritative list of allowed (model, effort) pairs per class, as enforced on an Opus session. On a Sonnet or Haiku session the session cap applies.',
+    'This table is the authoritative list of allowed (model, effort) pairs per class on Opus; Sonnet and Haiku sessions apply the session cap.',
     '',
     '| Class | Owns | Allowed pairs |',
     '|---|---|---|',

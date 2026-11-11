@@ -960,11 +960,11 @@ test('the slice fixture marks its sonnet designers as a big fan-out and passes',
   assert.equal(rec.stages.find((st) => st.class === 'investigate').inFanout, false);
 });
 
-test('the haiku fixture records the haiku stages at medium and high', () => {
+test('the haiku fixture records the haiku stages at medium', () => {
   const rec = gateRecordOf(run(launch(fixtureScript('good', 'haiku-fixed-shape.js'))));
   assert.deepEqual(rec.stages.map((st) => [st.class, st.model, st.effort]), [
     ['grunt', 'haiku', 'medium'],
-    ['code', 'haiku', 'high'],
+    ['code', 'haiku', 'medium'],
     ['build', 'sonnet', 'high'],
   ]);
 });
@@ -982,7 +982,7 @@ test('haiku below the classes that own fixed-shape work is denied at every effor
 test('a LABEL deny on a find stage points fixed-shape work at grunt on haiku', () => {
   const reason = denied(run(launch(`await ${agentCall('decide: find broken links', 'opus')}\n`)));
   assert.match(reason, /LABEL/);
-  assert.match(reason, /A fixed list, table or count over named inputs is grunt: on haiku × \{medium, high, xhigh\}; sonnet × \{medium, high, xhigh\}\./);
+  assert.match(reason, /A fixed list, table or count over named inputs is grunt: on haiku × \{medium, high\}; sonnet × \{medium, high, xhigh\}\./);
 });
 
 test('the verdict fixture records verdict true for the sonnet judge only', () => {

@@ -1,11 +1,12 @@
 # ultraguard reference
 
-This is the complete reference for ultraguard 0.4.19. The [README](../README.md) explains what ultraguard is for and why the rules exist. This page lists every rule, code, file and limit, and it is written to match the code in `src/`, `hooks/` and `policy/`.
+This is the complete reference for ultraguard 0.4.20. The [README](../README.md) explains what ultraguard is for and why the rules exist. This page lists every rule, code, file and limit, and it is written to match the code in `src/`, `hooks/` and `policy/`.
 
 ## Contents
 
 1. [Prerequisites and install](#prerequisites-and-install)
 2. [How a launch is checked](#how-a-launch-is-checked)
+   - [Commit reminder](#commit-reminder)
 3. [Policy](#policy)
    - [Classes](#classes)
    - [Models and efforts](#models-and-efforts)
@@ -67,12 +68,13 @@ Kill switch: `/plugin disable ultraguard`, or set `disableAllHooks`. Both are vi
 
 ## How a launch is checked
 
-ultraguard has two hooks and one hooks module. The plugin makes no model call anywhere.
+ultraguard has three hooks and one hooks module. The plugin makes no model call anywhere.
 
 | Part | File | When it runs | What it does |
 |---|---|---|---|
-| SessionStart hook | `hooks/session.mjs` | on `startup`, `resume`, `clear` and `compact` | Adds `policy/guidance.md` and a table of allowed pairs per class (rendered from `policy/default.json`) to the session context, clamped to 8,000 characters and 200 lines. Shows a `systemMessage` warning if the `dontAsk` rule is missing, if the guidance cannot be read, or if the policy fails to load. |
+| SessionStart hook | `hooks/session.mjs` | on `startup`, `resume`, `clear` and `compact` | Adds `policy/guidance.md` and a table of allowed pairs per class (rendered from `policy/default.json`) to the session context, clamped to 9,000 characters and 200 lines. Shows a `systemMessage` warning if the `dontAsk` rule is missing, if the guidance cannot be read, or if the policy fails to load. |
 | PreToolUse hook (the gate) | `hooks/gate.mjs` | before every `Workflow` tool call, 15 second timeout, `onFailure: "block"` | Resolves the script, parses it, applies the rules, writes a gate record, and denies the launch or stays silent. |
+| PostToolUse hook (commit reminder) | `hooks/commit.mjs` | after every successful `Bash` call | Stays silent unless the command was a `git commit` in a session whose gate records show a passed launch with a Haiku `code:` stage. Then it adds a reminder to Claude's context. It never blocks. See [Commit reminder](#commit-reminder). |
 | ultraguard-eval module | `hooks/eval.tsx` | while workflows run | Observes only. Judges each running workflow against the gate record. See [ultraguard-eval](#ultraguard-eval). |
 
 The gate collects problems from these stages and denies if the list is not empty. It reports all of them together, not only the first.
@@ -85,13 +87,25 @@ The gate collects problems from these stages and denies if the list is not empty
 
 A clean script produces no output and exit code 0, plus a gate record on disk.
 
+### Commit reminder
+
+Haiku stages are the only ones that left scratch files in the repo in the replays, so ultraguard checks after a commit. The PostToolUse hook runs after a successful `Bash` call. It does nothing unless the command was a `git commit` and the session's gate records (`*.gate.json`, see [Records](#records)) include a launch that passed with a `code:` stage on `haiku`. Then it adds this to Claude's context:
+
+```
+ultraguard: this session ran Haiku code: stages, which can leave scratch files. Check the commit's file list (git show --stat HEAD) and git status for files no stage meant to change. If there are any, remove them in a follow-up commit.
+```
+
+The hook only adds context. It never denies, blocks or changes the command, and a missing or unreadable record means no reminder.
+
+It also fires for a commit that a workflow agent makes itself, because Claude Code runs plugin hooks inside subagents with the parent session's id (checked live on Claude Code 2.1.322). The command check accepts `/usr/bin/git`, global options such as `-C <dir>` and `-c k=v`, leading `VAR=value` assignments and the `rtk`, `env`, `command` and `time` wrappers, and does not match `commit-tree` or `git log --grep commit`.
+
 ## Policy
 
 The policy is in `policy/default.json`, and it is the only policy. The guidance Claude reads at session start is `policy/guidance.md`. It says it supersedes the built-in Workflow guidance that says to omit `model`, omit effort and use `low` for cheap mechanical stages.
 
 ### Classes
 
-Every `agent()` label starts with a class prefix such as `build:`. The class says who owns the decision, and it decides which (model, effort) pairs are allowed. The table shows the pairs on an Opus session. Every listed model allows the efforts `medium`, `high` and `xhigh`.
+Every `agent()` label starts with a class prefix such as `build:`. The class says who owns the decision, and it decides which (model, effort) pairs are allowed. The table shows the pairs on an Opus session. Every listed Sonnet and Opus pair allows `medium`, `high` and `xhigh`; Haiku allows only the efforts shown.
 
 | Class | Owns | Opus session allows |
 |---|---|---|
@@ -100,13 +114,13 @@ Every `agent()` label starts with a class prefix such as `build:`. The class say
 | `judge:` | Adversarial review, verification and verdicts | `opus`; `sonnet` only with the verdict schema |
 | `synth:` | Synthesizing complex, distributed, multi-faceted or conflicting work | `opus`; `sonnet` only in a big fan-out |
 | `design:` | Visual and UI design | `opus`; `sonnet` only in a big fan-out |
-| `build:` | Decided implementation: well-defined modules, scoped UI implementation, "like this" examples, long build-test-debug loops | `sonnet` or `opus` |
-| `fix:` | Fixes whose cause or repro is known | `sonnet` or `opus` |
+| `build:` | Decided implementation that leaves details open: modules or ports from a plan or prototype, scoped UI implementation, "like this" examples, long build-test-debug loops | `sonnet` or `opus` |
+| `fix:` | Fixes whose cause or repro is known; a fix spelled out file by file is `code:` | `sonnet` or `opus` |
 | `combine:` | Merging groundwork toward one stated goal | `sonnet` or `opus` |
-| `code:` | Very simple, fully specified, mechanically checkable code; blind, well-specified UI implementation | `haiku` or `sonnet` |
-| `grunt:` | Fixed-shape, zero-decision work: tabulate, count or extract named fields from named inputs, run a given command, checks, summaries, compaction | `haiku` or `sonnet` |
+| `code:` | Fully specified implementation: the prompt names the files, the functions or interfaces and the test commands, and leaves nothing to decide; blind, well-specified UI implementation | `haiku` (`medium`) or `sonnet` |
+| `grunt:` | Fixed-shape, zero-decision work: tabulate, count or extract named fields from named inputs, run a given command, checks, summaries, compaction | `haiku` (`medium`, `high`) or `sonnet` |
 
-The Opus classes are `decide:`, `judge:`, `synth:` and `design:`. Opus is for design, decisions, synthesis and complex reviews. Haiku is for fixed-shape work where two agents would produce the same output and a script can check the result: the spec names the inputs, the output fields and how to compute them. Discovery, open-ended review, multi-source web extraction and anything that weighs evidence stay on `investigate:` or above. See [Haiku evidence](#haiku-evidence).
+The Opus classes are `decide:`, `judge:`, `synth:` and `design:`. Opus is for design, decisions, synthesis and complex reviews. Haiku is for work where the prompt leaves nothing to decide. For `grunt:` that is fixed-shape work where two agents would produce the same output and a script can check the result: the spec names the inputs, the output fields and how to compute them. For `code:` it is implementation where the prompt names the files, the functions or interfaces and the test commands. Work that picks names, ownership rules or how stored state stays stable is `build:`, on Sonnet. Haiku is allowed at `xhigh` in no class. Discovery, open-ended review, multi-source web extraction and anything that weighs evidence stay on `investigate:` or above. See [Haiku evidence](#haiku-evidence).
 
 A label that does not start with a known class prefix is denied (`PAIR`, "Unknown class") with the list of valid classes. A label with no usable prefix at all is denied as `SHAPE`.
 
@@ -114,7 +128,7 @@ A label that does not start with a known class prefix is denied (`PAIR`, "Unknow
 
 - Models are the aliases `opus`, `sonnet` and `haiku` only. Full ids, Fable and Mythos are denied (`PAIR`).
 - Efforts are `medium`, `high` or `xhigh`. `low` and `max` are denied (`PAIR`).
-- `haiku` is allowed at the efforts a class lists for it (`medium`, `high` and `xhigh` for `code:` and `grunt:`), and on an Opus or Sonnet session only for classes whose pairs list it. A class that lists `haiku` must also list `sonnet`. Under the Haiku session cap, a class without its own Haiku pair also gets Haiku at every effort any class lists for it; see [Session cap](#session-cap).
+- `haiku` is allowed at the efforts a class lists for it (`medium` for `code:`, `medium` and `high` for `grunt:`; `xhigh` for no class), and on an Opus or Sonnet session only for classes whose pairs list it. A class that lists `haiku` must also list `sonnet`. Under the Haiku session cap, a class without its own Haiku pair also gets Haiku at every effort any class lists for it; see [Session cap](#session-cap).
 - Every `agent()` names both a model and an effort, as quoted string literals.
 - Every Sonnet and Haiku stage needs an inline `schema` with a `blocked_on` property, so the agent reports an open question instead of deciding it. This applies to any stage whose literal model is not `opus`, including the Opus classes when they run on Sonnet. See [Script shape](#script-shape).
 - No stage may use a model above the session model. See [Session cap](#session-cap).
@@ -151,7 +165,7 @@ When a stage misses one of these conditions, the `PAIR` message says which condi
 
 ### Haiku evidence
 
-The Haiku pairs for `code:` and `grunt:` come from a replay of the 10 latest real workflows on Haiku 5.5. The answers were computed by script from the same inputs, then compared with each agent's output.
+The Haiku pairs for `code:` and `grunt:` come from two replays on Haiku 5.5. The first replayed the 10 latest real workflows on fixed-shape tasks. The answers were computed by script from the same inputs, then compared with each agent's output.
 
 | Test | Haiku `xhigh` | Haiku `medium` | Sonnet `high` |
 |---|---|---|---|
@@ -163,12 +177,24 @@ The Haiku pairs for `code:` and `grunt:` come from a replay of the 10 latest rea
 
 On the last row Haiku passed the finding by correcting the wrong details itself instead of failing it. That is why `judge:` has no Haiku pair.
 
-What the replay does not show:
+What the first replay does not show:
 
 - Each cell is 3 runs, so a ceiling of 100% says little about rare failures.
 - The specs named inputs, fields and the way to compute them. Open-ended work was not replayed and should not be expected to match.
 - The agents read snapshots of the inputs, not live tools. Production-host probes, gate runs and web extraction were not replayed.
 - The `medium` arm ran through the Agent tool, not through the gate.
+
+The second replay re-ran 14 past Sonnet coding tasks on Haiku. It decided how `code:` is scoped and removed Haiku `xhigh`.
+
+| Finding | Result |
+|---|---|
+| Prompts that left nothing to decide | Haiku `medium` failed 1 of 33 runs. Sonnet failed 0 of 22. Haiku cost 0.05 to 0.9 times Sonnet's cost. |
+| Prompts that left names, ownership or state rules open | Haiku `medium` failed 5 of 8 runs. Sonnet failed 2 of 6. |
+| Haiku `xhigh` against Sonnet | $0.675 per acceptable run against $0.580, with no gain in quality. |
+| Scratch files left in the repo | Only Haiku did. See [Commit reminder](#commit-reminder). |
+| `blocked_on` set | Haiku set it in 16 of 55 runs. Every one of those runs had finished its work. |
+
+So `code:` is Haiku `medium` only and is limited to fully specified implementation. Work that leaves names, ownership or state rules open is `build:`. The 14 tasks are a small sample, and each side of the result rests on essentially one prompt family.
 
 ### Label check
 
@@ -207,7 +233,7 @@ blocked_on: { type: ['string', 'null'], description: 'An open decision this stag
 
 If a stage with a missing or unreadable model has an inline schema object whose `blocked_on` is not valid, the message starts with "If this stage runs on sonnet or haiku", because the gate cannot tell where the stage will run. A shared schema const on such a stage gets its own message, without that prefix.
 
-If `blocked_on` is set in a stage's result, the guidance tells Claude to re-run that stage as a `decide:` stage with the question.
+If `blocked_on` is set in a stage's result, the guidance tells the orchestrating session to settle it. It is never the user's to answer and never a new `decide:` stage. A step the task defers goes in the final summary. A question the stage needed answered is decided by the session, and the stage is relaunched once with the answer. A contradiction the stage worked past is checked by the session, which accepts the result or relaunches with the fix.
 
 ### The policy file
 
@@ -323,11 +349,19 @@ An unreadable session model counts as Sonnet. That covers an empty or missing `t
 |---|---|
 | Opus | The policy table applies as written. |
 | Sonnet | Opus pairs are denied. A class left with no pair after that runs on `sonnet` at all three efforts, so `decide:`, `judge:`, `synth:` and `design:` run on Sonnet with no verdict schema or fan-out needed. `build:`, `fix:` and `combine:` run on Sonnet. `code:` and `grunt:` keep their Haiku and Sonnet pairs. `FANOUT` is not checked, because it counts only Opus agents. |
-| Haiku | Only Haiku pairs are allowed. A class without its own Haiku pair uses `haiku` at every effort that any class lists for it, as long as the policy lists a Haiku pair anywhere. If the policy lists none, every launch that has an `agent()` call is denied with one `PAIR` line that only the user can clear: "This session runs Haiku and no Haiku pair is allowed; switch with /model sonnet or /model opus." `FANOUT` is not checked. |
+| Haiku | Only Haiku pairs are allowed. A class without its own Haiku pair uses `haiku` at every effort that any class lists for it (`medium` and `high`), as long as the policy lists a Haiku pair anywhere. If the policy lists none, every launch that has an `agent()` call is denied with one `PAIR` line that only the user can clear: "This session runs Haiku and no Haiku pair is allowed; switch with /model sonnet or /model opus." `FANOUT` is not checked. |
 
 A `model` above the session model is denied as `PAIR`: `model "opus" is above the session model (sonnet).` The reason also says what the session runs, and when the model could not be read it says it is treated as Sonnet.
 
-A rejected model gives way to the next lower one at `xhigh`. When a stage names a model its class does not allow, the `PAIR` message adds `Relaunch on sonnet with effort "xhigh".` (or `haiku`) before the allowed list, naming the highest lower model the class allows at `xhigh`. It adds nothing when the model is allowed but the effort is not, or when no lower model is allowed at `xhigh`. The guidance injected at session start says the same.
+A rejected model gives way to the next lower one the class allows. When a stage names a model its class does not allow, the `PAIR` message adds `Relaunch on <model> with effort "<effort>".` before the allowed list. The model is the highest lower model in the class's effective pairs for the session. The effort is `xhigh` if that model lists `xhigh`, otherwise its highest listed effort, ordered `medium`, `high`, `xhigh`. It adds nothing when the model is allowed but the effort is not, or when no lower model is allowed. The guidance injected at session start says the same.
+
+| Session | Stage | Message |
+|---|---|---|
+| Sonnet | `judge:`, `investigate:` or `code:` on `opus` | `Relaunch on sonnet with effort "xhigh".` |
+| Haiku | `code:` on `sonnet` | `Relaunch on haiku with effort "medium".` |
+| Haiku | `decide:` on `opus` | `Relaunch on haiku with effort "high".` |
+
+On a Haiku session `decide:` has no Haiku pair of its own, so its effective pairs are the Haiku pairs any class lists, `medium` and `high`.
 
 ## Deny codes
 
@@ -606,8 +640,8 @@ Enter on a run shows the saved block, then the run's phases like Claude Code's o
 ```
         agent                       API saves   ran on
   ▾ ○ Collect  2 agents             $0.34
-      ✓ grunt: merged PRs           $0.05       haiku xhigh
-      ✓ grunt: changelog entries    $0.06       haiku xhigh
+      ✓ grunt: merged PRs           $0.05       haiku high
+      ✓ grunt: changelog entries    $0.06       haiku high
   ▸ ○ Investigate  2 agents         $1.09       sonnet 2
   ▾ ○ Decide  running  0 of 1 done  —
       ✓ decide: release version     —           opus high
@@ -772,7 +806,7 @@ These clamp an explicit effort downward, so the agent can run lower than declare
 
 ### Not checked: not visible to ultraguard
 
-- `ANTHROPIC_DEFAULT_*` model variables. With `ANTHROPIC_DEFAULT_HAIKU_MODEL` set, `haiku` can resolve to a model without `xhigh`.
+- `ANTHROPIC_DEFAULT_*` model variables. With `ANTHROPIC_DEFAULT_HAIKU_MODEL` set, `haiku` can resolve to another model, and what it sends for `medium` and `high` is not verified.
 - `availableModels`
 - a hooks-module request effort override
 - the automatic downgrade after an API 400 "Invalid effort level"
@@ -780,7 +814,7 @@ These clamp an explicit effort downward, so the agent can run lower than declare
 
 ### Haiku efforts
 
-On first-party Anthropic, `haiku` resolves to `claude-haiku-5-5`, which supports `medium`, `high` and `xhigh`. On Bedrock, Vertex, Foundry, Mantle, `anthropic_aws`, `anthropic_google_cloud` and gateway providers, or with `ANTHROPIC_DEFAULT_HAIKU_MODEL` set, `haiku` can resolve to `claude-haiku-4-5`, which has no `xhigh`, and a stage approved at `xhigh` is then sent as `high`. What Claude Code sends there for `medium` and `high` is not verified. The gate does not check any of this. ultraguard-eval does: a request sent at a different effort than approved turns the run red.
+The policy allows Haiku only at `medium` (`code:`) and `medium` or `high` (`grunt:`). On first-party Anthropic, `haiku` resolves to `claude-haiku-5-5`, which supports `medium`, `high` and `xhigh`. On Bedrock, Vertex, Foundry, Mantle, `anthropic_aws`, `anthropic_google_cloud` and gateway providers, or with `ANTHROPIC_DEFAULT_HAIKU_MODEL` set, `haiku` can resolve to `claude-haiku-4-5`, which has no `xhigh`. Because the policy approves no Haiku stage at `xhigh`, that gap only matters if you add a Haiku `xhigh` pair to your own policy copy: a stage approved at `xhigh` is then sent as `high`. What Claude Code sends there for `medium` and `high` is not verified. The gate does not check any of this. ultraguard-eval does: a request sent at a different effort than approved turns the run red.
 
 To see the effort an agent actually ran at, read `params.output_config.effort` on the `api-request` rows in its `agent-*.jsonl` transcript. `agent-*.meta.json` does not record effort.
 
@@ -810,13 +844,13 @@ The gate fails closed. A bad stdin, a broken policy, a crash or a timeout blocks
 
 The gate writes one record file per decision, pass or deny (see [Records](#records)). If the record of a clean launch cannot be written, the gate fails closed: exit 2, with the path and the error on stderr, and the launch is blocked. On a deny, the deny stands and a write error is ignored. Nothing is rotated or deleted. ultraguard makes no model call.
 
-The SessionStart hook never blocks a session. If it fails, it shows a message and exits 0. If the policy does not load, it says every Workflow launch will be blocked until the policy is fixed, and how to disable the gate.
+The SessionStart hook never blocks a session, and the commit reminder never blocks a command. If the SessionStart hook fails, it shows a message and exits 0. If the policy does not load, it says every Workflow launch will be blocked until the policy is fixed, and how to disable the gate.
 
 ultraguard-eval failures are logged to the debug log and never affect a workflow. If drawing the pane fails, the pane shows the error instead.
 
 ## Changing the policy
 
-Edit `policy/default.json`, then bump the patch version in `package.json`, `.claude-plugin/plugin.json` and the `ultraguard` entry in `.claude-plugin/marketplace.json`. A test checks that the policy is well-formed and that the three versions match. A broken policy is an internal error and blocks every launch. The guidance table at session start is rendered from the policy file, so it follows the change. The prose in `policy/guidance.md` does not, so update it by hand when a rule changes.
+Edit `policy/default.json`, then bump the patch version in `package.json`, `.claude-plugin/plugin.json` and the `ultraguard` entry in `.claude-plugin/marketplace.json`. A test checks that the policy is well-formed and that the three versions match. A broken policy is an internal error and blocks every launch. The guidance table at session start is rendered from the policy file, so it follows the change. The prose in `policy/guidance.md` does not, so update it by hand when a rule changes. The session context is clamped to 9,000 characters, and a test keeps the guidance and the table under 8,600, so a longer guidance fails `npm test` before it is cut.
 
 ## Development
 

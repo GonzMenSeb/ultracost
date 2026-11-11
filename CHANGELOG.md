@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.20 - ultraguard
+
+- `code:` is now fully specified implementation on Haiku medium: the prompt names the files, the functions or interfaces and the test commands, and leaves nothing to decide. `build:` takes decided work that leaves details open (modules or ports from a plan, names, ownership, stored state), and `fix:` says a fix spelled out file by file is `code:`. A replay of 14 past Sonnet coding tasks found Haiku medium failing 1 of 33 runs where the prompt left nothing to decide (Sonnet 0 of 22) at 0.05 to 0.9 times the cost, and failing 5 of 8 where names, ownership or state rules were open (Sonnet 2 of 6).
+- Haiku xhigh is allowed in no class. `code:` is Haiku medium only and `grunt:` is Haiku medium or high. In the replay Haiku xhigh cost more per acceptable run than Sonnet ($0.675 against $0.580) with no gain.
+- The relaunch hint in a `PAIR` deny picks the next lower model in the class's effective pairs, at xhigh if that model lists it and otherwise at its highest listed effort. A Haiku session that names Sonnet for `code:` is told `Relaunch on haiku with effort "medium".`, and one that names Opus for `decide:` is told `Relaunch on haiku with effort "high".`. Sonnet sessions are unchanged.
+- `blocked_on` is settled by the orchestrating session, never by the user and never by a new `decide:` stage: it puts a deferred step in its final summary, decides a question and relaunches the stage once with the answer, or checks a contradiction and accepts the result or relaunches with the fix. Haiku set `blocked_on` in 16 of 55 replay runs, and every one of those runs had finished its work.
+- The guidance tells Claude to start every Haiku prompt with "You are running inside an automated workflow, not an interactive conversation: no one will answer questions, so finish the task and report anything undecided in `blocked_on`."
+- A new PostToolUse hook, `hooks/commit.mjs`, reminds Claude after a `git commit` to check for stray scratch files when the session launched a workflow that passed the gate with a Haiku `code:` stage. Only Haiku left scratch files in the replay. The hook never blocks.
+- The SessionStart context clamp rises from 8,000 to 9,000 characters, under the 10,000 that Claude Code documents for one `additionalContext`. The session test keeps the guidance and table under 8,600.
+
 ## 0.4.19 - ultraguard
 
 - A prior between two of Opus, Sonnet and Haiku now has a ratio per token type, from Artificial Analysis's token counts of both configurations: output from the output tokens, read and fresh from the total input tokens. Before, one published cost ratio divided by the input-price ratio served all three, which understates a Haiku agent's baseline: Haiku's cache reads cost 10× less than Sonnet's while its other classes cost 20× less. The old ratio stays as the fallback, used for every pair with Fable.

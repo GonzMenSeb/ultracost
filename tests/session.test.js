@@ -50,6 +50,20 @@ test('guidance.md tells to replace a rejected model with the next lower one at x
   assert.match(guidance, /A rejected model gives way to the next lower one at xhigh/);
 });
 
+test('guidance.md says blocked_on is settled by the orchestrating session', () => {
+  const guidance = readFileSync(join(ROOT, 'policy', 'guidance.md'), 'utf8');
+  assert.ok(guidance.includes("`blocked_on` is yours to settle as the orchestrating session, never the user's and never a new `decide:` stage:"));
+  assert.ok(!guidance.includes('re-run that stage as a `decide:`'));
+});
+
+test('guidance.md names the Haiku-first workflow and the Haiku start sentence', () => {
+  const guidance = readFileSync(join(ROOT, 'policy', 'guidance.md'), 'utf8');
+  assert.match(guidance, /^## Haiku first for fully specified work$/m);
+  assert.ok(!guidance.includes('Haiku first for fixed-shape work'));
+  assert.ok(guidance.includes('You are running inside an automated workflow, not an interactive conversation: no one will answer questions, so finish the task and report anything undecided in `blocked_on`.'));
+  assert.ok(guidance.includes("(Haiku at its class's highest Haiku effort)"));
+});
+
 test('additionalContext is guidance plus the pairs table rendered from the policy', () => {
   const sb = sandbox();
   try {
@@ -91,7 +105,8 @@ test('the pairs table lists investigate and marks the conditional pairs', () => 
       );
     }
     assert.equal(rows.build, 'sonnet × {medium, high, xhigh}; opus × {medium, high, xhigh}');
-    for (const cls of ['code', 'grunt']) assert.equal(rows[cls], 'haiku × {medium, high, xhigh}; sonnet × {medium, high, xhigh}', cls);
+    assert.equal(rows.code, 'haiku × {medium}; sonnet × {medium, high, xhigh}');
+    assert.equal(rows.grunt, 'haiku × {medium, high}; sonnet × {medium, high, xhigh}');
   } finally {
     sb.cleanup();
   }
@@ -114,11 +129,11 @@ test('the pairs table of a custom policy follows its limits', () => {
   }
 });
 
-test('additionalContext fits 8000 characters and 200 lines', () => {
+test('additionalContext fits 9000 characters and 200 lines', () => {
   const sb = sandbox();
   try {
     const { additionalContext } = runSession(sb).hookSpecificOutput;
-    assert.ok(additionalContext.length <= 7600, `${additionalContext.length} characters leaves under 400 before the 8000 clamp, which cuts the table`);
+    assert.ok(additionalContext.length <= 8600, `${additionalContext.length} characters leaves under 400 before the 9000 clamp, which cuts the table`);
     assert.ok(additionalContext.split('\n').length < 200);
     const lastClass = Object.keys(loadPolicy().classes).at(-1);
     assert.match(additionalContext.split('\n').at(-1), new RegExp(`^\\| \`${lastClass}:\` \\|.*\\|$`), 'the context ends with the whole last table row');

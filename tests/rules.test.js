@@ -104,7 +104,7 @@ test('haiku-listing policy on sonnet and opus sessions', () => {
 })
 
 test('haikuEfforts is the union over classes in effort order', () => {
-  assert.deepEqual(haikuEfforts(shipped), ALL)
+  assert.deepEqual(haikuEfforts(shipped), ['medium', 'high'])
   assert.deepEqual(haikuEfforts(xhighOnly), ['xhigh'])
   assert.deepEqual(haikuEfforts(noHaiku), [])
   const mixed = {
@@ -606,7 +606,7 @@ test('label check: investigation words in decide, judge and design labels are LA
 test('label check: the message points fixed-shape work at the fixed class when the policy names one', () => {
   const st = { line: 1, label: 'decide: find links', class: 'decide', model: 'opus', effort: 'high' }
   const msg = (policy) => rules([st], policy, { sessionModel: 'opus' }).find((e) => e.code === 'LABEL').message
-  assert.match(msg(shipped), /A fixed list, table or count over named inputs is grunt: on haiku × \{medium, high, xhigh\}; sonnet × \{medium, high, xhigh\}\./)
+  assert.match(msg(shipped), /A fixed list, table or count over named inputs is grunt: on haiku × \{medium, high\}; sonnet × \{medium, high, xhigh\}\./)
   const { fixed, ...rest } = shipped.labelCheck
   assert.equal(fixed, 'grunt')
   assert.doesNotMatch(msg({ ...shipped, labelCheck: rest }), /fixed list/)
@@ -648,8 +648,34 @@ test('the relaunch goes to haiku at xhigh when only haiku is allowed below the r
   assert.ok(error.message.includes('Relaunch on haiku with effort "xhigh".'), error.message)
 })
 
-test('no relaunch is offered when the lower model is not allowed at xhigh', () => {
-  const policy = { classes: { ...shipped.classes, code: { owns: 'x', pairs: { haiku: ['medium'], sonnet: ['medium'] } } } }
+test('the relaunch goes to the highest listed effort when the lower model does not list xhigh', () => {
+  const policy = { classes: { ...shipped.classes, code: { owns: 'x', pairs: { haiku: ['medium'], sonnet: ['medium', 'high'] } } } }
   const [error] = rules([stage('code', 'opus', 'high')], policy, { sessionModel: 'opus' })
-  assert.ok(!error.message.includes('Relaunch'), error.message)
+  assert.ok(error.message.includes('Relaunch on sonnet with effort "high".'), error.message)
+})
+
+test('code allows haiku at medium only', () => {
+  assert.deepEqual(rules([stage('code', 'haiku', 'medium')], shipped, { sessionModel: 'sonnet' }), [])
+  for (const effort of ['high', 'xhigh']) {
+    const [error] = rules([stage('code', 'haiku', effort)], shipped, { sessionModel: 'sonnet' })
+    assert.ok(error.message.includes(`Class "code:" does not allow model "haiku" with effort "${effort}"`), error.message)
+  }
+})
+
+test('grunt allows haiku at medium and high, not xhigh', () => {
+  for (const effort of ['medium', 'high']) assert.deepEqual(rules([stage('grunt', 'haiku', effort)], shipped, { sessionModel: 'sonnet' }), [])
+  const [error] = rules([stage('grunt', 'haiku', 'xhigh')], shipped, { sessionModel: 'sonnet' })
+  assert.ok(error.message.includes('Class "grunt:" does not allow model "haiku" with effort "xhigh"'), error.message)
+})
+
+test('on a haiku session the relaunch stays on haiku at its highest effort the class lists', () => {
+  const [code] = rules([stage('code', 'sonnet', 'high')], shipped, { sessionModel: 'haiku' })
+  assert.ok(code.message.includes('Relaunch on haiku with effort "medium".'), code.message)
+  const decide = rules([stage('decide', 'opus', 'high')], shipped, { sessionModel: 'haiku' }).map((e) => e.message)
+  assert.ok(decide.some((m) => m.includes('Relaunch on haiku with effort "high".')), decide.join(' | '))
+})
+
+test('on a sonnet session opus on code is relaunched on sonnet at xhigh', () => {
+  const [error] = rules([stage('code', 'opus', 'high')], shipped, { sessionModel: 'sonnet' })
+  assert.ok(error.message.includes('Relaunch on sonnet with effort "xhigh".'), error.message)
 })
